@@ -1,0 +1,304 @@
+# features.yaml — everything the system may ask about.
+#
+# ============================================================================
+# A FEATURE IS A QUESTION, NOT A CLAIM.
+#
+# Nothing in this file asserts that any answer means anything. "Excess hair
+# growth" appearing here does not say it supports PCOS — that assertion lives
+# in evidence.csv and carries a source_quote. This is why features need no
+# provenance: listing a question makes no clinical claim.
+#
+# The consequence: a feature with no evidence rows and no red-flag clause is
+# dead weight. If no source supports any interpretation of an answer, delete
+# the feature rather than keep asking a question nobody can use.
+# ============================================================================
+#
+# `unknown` is implicit on every feature and must never be listed in
+# allowed_values. It means "the user did not say" and carries no weight.
+#
+# `burden` is 1 (trivial) to 5 (sensitive or effortful). next_question ranks by
+# conditions-separated per unit of burden, which is what stops the system
+# opening with its most intrusive question. The values here are judgements
+# about intrusiveness, not measurements.
+#
+# Probe text is English only. The serving model renders other languages at
+# response time; the schema allows authored fr/ar_eg later without migration.
+# Probes avoid locale-specific references — no coins for clot size, no named
+# services — because users are in Egypt and sources are UK and US.
+
+features:
+  # -------------------------------------------------------------------------
+  # Context — cheap, asked early, and needed by red flags
+  # -------------------------------------------------------------------------
+
+  - id: age_band
+    label: Age band
+    kind: ordinal
+    allowed_values: [under_20, 20_to_29, 30_to_39, 40_to_44, 45_to_54, 55_plus]
+    burden: 1
+    probe:
+      en: Which age group are you in?
+    note: >-
+      Carries weight far beyond PCOS. Separates perimenopause from PCOS in women
+      over 45, and makes bleeding after menopause interpretable at all.
+
+  - id: pregnancy_status
+    label: Pregnancy status
+    kind: categorical
+    allowed_values: [not_pregnant, possibly_pregnant, pregnant]
+    burden: 2
+    probe:
+      en: Is there any chance you could be pregnant?
+    note: >-
+      Asked early and cheaply because several escalation rules depend on it.
+      "possibly_pregnant" is a distinct value, not a missing answer — it is the
+      answer that most often matters.
+
+  # -------------------------------------------------------------------------
+  # Cycle pattern
+  # -------------------------------------------------------------------------
+
+  - id: cycle_regularity
+    label: Cycle regularity
+    kind: categorical
+    allowed_values: [regular, irregular, absent]
+    burden: 1
+    probe:
+      en: Are your periods usually regular, irregular, or have they stopped?
+    note: >-
+      The single most separating question in the phase 1 differential, and the
+      one that makes elimination work at all.
+
+  - id: cycle_length
+    label: Days between periods
+    kind: ordinal
+    allowed_values: [under_21_days, 21_to_35_days, over_35_days, varies_widely]
+    burden: 2
+    probe:
+      en: Roughly how many days are there between the start of one period and the next?
+
+  - id: periods_stopped_duration
+    label: How long periods have been absent
+    kind: ordinal
+    allowed_values: [not_stopped, under_3_months, 3_to_6_months, over_6_months]
+    burden: 2
+    probe:
+      en: If your periods have stopped, how long has it been since your last one?
+
+  - id: period_duration
+    label: Length of bleeding
+    kind: ordinal
+    allowed_values: [under_3_days, 3_to_7_days, over_7_days]
+    burden: 1
+    probe:
+      en: How many days does your bleeding usually last?
+
+  # -------------------------------------------------------------------------
+  # Bleeding — where routine and urgent diverge
+  # -------------------------------------------------------------------------
+
+  - id: bleeding_heaviness
+    label: Heaviness of bleeding
+    kind: ordinal
+    allowed_values: [light, moderate, heavy, soaking_hourly]
+    burden: 2
+    probe:
+      en: How heavy is your bleeding at its worst — light, moderate, heavy, or
+        soaking through protection every hour?
+    note: >-
+      "soaking_hourly" is deliberately its own level rather than the top of
+      "heavy". It is the value escalation rules key on, and collapsing it into
+      "heavy" would lose the distinction that matters most.
+
+  - id: large_clots
+    label: Passing large clots
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Are you passing large blood clots?
+    note: Probe avoids coin-size comparisons, which do not travel between countries.
+
+  - id: bleeding_between_periods
+    label: Bleeding between periods
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you get any bleeding between your periods?
+
+  - id: bleeding_after_menopause
+    label: Bleeding after menopause
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: If your periods had already stopped for good, have you had any bleeding since?
+    note: >-
+      Kept separate from bleeding_between_periods because the two mean entirely
+      different things and only one of them escalates on its own.
+
+  - id: anaemia_symptoms
+    label: Symptoms suggesting blood loss
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Have you been unusually tired, breathless, or dizzy?
+    note: >-
+      Turns "heavy bleeding" from a description into a question about whether it
+      is having an effect, which is what moves it between routine and urgent.
+
+  # -------------------------------------------------------------------------
+  # Pain
+  # -------------------------------------------------------------------------
+
+  - id: pelvic_pain_timing
+    label: When pelvic pain occurs
+    kind: categorical
+    allowed_values: [none, with_periods, before_periods, throughout_cycle, constant]
+    burden: 2
+    probe:
+      en: When do you get pelvic or lower tummy pain — only with your periods, before
+        them, at other times too, or constantly?
+
+  - id: pelvic_pain_severity
+    label: Severity of pelvic pain
+    kind: ordinal
+    allowed_values: [none, mild, moderate, severe]
+    burden: 2
+    probe:
+      en: How bad does the pain get — mild, moderate, or severe enough to stop you
+        doing normal activities?
+
+  - id: pain_onset
+    label: How the pain started
+    kind: categorical
+    allowed_values: [no_pain, gradual, sudden]
+    burden: 2
+    probe:
+      en: Did the pain come on gradually, or suddenly?
+    note: >-
+      Sudden onset is what separates a condition that can wait from one that
+      cannot. Cheap to ask and it changes the action.
+
+  - id: pain_with_sex
+    label: Pain during or after sex
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 3
+    probe:
+      en: Do you get pain during or after sex?
+    note: Higher burden — sensitive. Ranked accordingly, not asked first.
+
+  - id: pain_opening_bowels_or_urinating
+    label: Pain opening bowels or passing urine
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 3
+    probe:
+      en: Do you get pain when opening your bowels or passing urine, especially
+        around your period?
+
+  # -------------------------------------------------------------------------
+  # Signs that separate urgent from routine
+  # -------------------------------------------------------------------------
+
+  - id: fever
+    label: Fever
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you have a fever or feel hot and shivery?
+    note: >-
+      Trivial to ask and it changes the action. Belongs in the differential from
+      phase 1 even though none of the three phase 1 conditions cause it — that
+      absence is exactly what makes it informative.
+
+  - id: feeling_faint
+    label: Faintness or collapse
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Have you felt faint, or actually passed out?
+
+  - id: abnormal_discharge
+    label: Unusual vaginal discharge
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Have you noticed any unusual vaginal discharge?
+
+  - id: urinary_symptoms
+    label: Urinary symptoms
+    kind: categorical
+    allowed_values: [none, frequency, difficulty_passing_urine]
+    burden: 2
+    probe:
+      en: Any problems passing urine — needing to go much more often, or difficulty
+        passing it at all?
+    note: >-
+      Two different things in one question. Frequency suggests pressure from a
+      mass; difficulty passing urine does not wait.
+
+  # -------------------------------------------------------------------------
+  # Androgenic and metabolic
+  # -------------------------------------------------------------------------
+
+  - id: excess_hair_growth
+    label: Excess hair growth
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 3
+    probe:
+      en: Have you noticed more hair growth than usual on your face, chest or back?
+
+  - id: scalp_hair_thinning
+    label: Scalp hair thinning
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 3
+    probe:
+      en: Has the hair on your head been thinning?
+
+  - id: acne_or_oily_skin
+    label: Acne or oily skin
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Have you had acne or unusually oily skin?
+
+  - id: weight_change
+    label: Recent weight change
+    kind: categorical
+    allowed_values: [none, gain, loss]
+    burden: 3
+    probe:
+      en: Has your weight changed noticeably without you trying?
+
+  # -------------------------------------------------------------------------
+  # Bulk effects and fertility
+  # -------------------------------------------------------------------------
+
+  - id: abdominal_swelling_or_pressure
+    label: Abdominal swelling or pressure
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Does your lower tummy feel swollen, bloated, or under pressure?
+
+  - id: difficulty_conceiving
+    label: Difficulty becoming pregnant
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 3
+    probe:
+      en: Have you been trying to become pregnant without success?
+    note: >-
+      Sensitive, and irrelevant to anyone not trying — high burden so it is
+      asked late, and only when it would change the action.

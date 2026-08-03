@@ -1,0 +1,87 @@
+# weights.yaml — tunable constants for the stopping controller.
+#
+# ============================================================================
+# EVERY NUMBER IN THIS FILE WAS CHOSEN BY US.
+#
+# None of it is measured, derived from a source, or clinically validated. These
+# are the knobs that turn the ordinal evidence scale into something a controller
+# can add up, set to defensible starting values and expected to move once the
+# evaluation set gives us something to tune against.
+#
+# Do not cite these numbers. Do not describe them as calibrated. When they
+# change, the change belongs in a commit of its own with the evaluation result
+# that motivated it, so the two can be read together later.
+# ============================================================================
+#
+# Validated against herhealth_contracts.knowledge.Weights, which refuses to
+# load this file if the scale is not monotonic or if the SELF_CARE bar is not
+# strictly higher than the routine bar.
+
+# ---------------------------------------------------------------------------
+# The ordinal scale, in log-odds
+# ---------------------------------------------------------------------------
+# Each answer adds the matching value to the running score of every condition
+# that has a row for it. `neutral` is pinned to 0.0 and never appears in
+# evidence.csv — a neutral row is an omitted row.
+log_odds:
+  # A source describes this as a main or characteristic sign.
+  strong_support: 1.5
+
+  # A source lists it among the features of the condition.
+  weak_support: 0.6
+
+  # Pinned. The absence of evidence, not evidence of absence.
+  neutral: 0.0
+
+  # A source explicitly frames this as distinguishing, excluding, or
+  # characteristic of an alternative.
+  #
+  # Deliberately WEAKER in magnitude than weak_support. The system should
+  # accumulate belief faster than it eliminates, because wrongly dropping a
+  # condition costs more than asking one more question. Making this symmetric
+  # (-0.6) is the first tuning experiment worth running.
+  argues_against: -0.5
+
+  # Large enough that a single rules_out row drops a condition below
+  # plausibility_floor regardless of accumulated support — which is what makes
+  # it mean "rules out" rather than "counts heavily against".
+  rules_out: -4.0
+
+# ---------------------------------------------------------------------------
+# Thresholds, on the normalised plausibility scale (0.0 to 1.0)
+# ---------------------------------------------------------------------------
+
+# Below this, a condition is no longer live: it stops driving question
+# selection and stops counting toward "do all live conditions share an action".
+# Too high and rare conditions vanish before they can be asked about; too low
+# and the controller keeps asking questions to separate conditions nobody
+# believes in.
+plausibility_floor: 0.05
+
+# How confident the top condition must be before the controller stops, for
+# ROUTINE_APPOINTMENT, URGENT_SAME_DAY and EMERGENCY.
+stop_confidence: 0.65
+
+# The same bar for concluding SELF_CARE — strictly higher, and enforced as
+# such by the schema.
+#
+# This is the single most important number in the file. Under-triage is the
+# dominant failure mode: on the benchmark that motivated this architecture,
+# 72% of cases whose correct answer was "see a doctor" were routed to
+# "routine". Concluding "nothing to do" is the conclusion most costly to get
+# wrong, so it has to be the hardest to reach.
+self_care_stop_confidence: 0.85
+
+# How far clear of the runner-up the top condition must be. Guards against
+# stopping while two conditions with different actions are still neck and neck.
+stop_margin: 0.15
+
+# Hard ceiling on questions before stopping and returning the differential.
+# One question per turn, always. Six is a judgement about how much patience a
+# user has, not a statistical result.
+max_questions: 6
+
+note: >-
+  Starting values, not calibrated. Tune against the evaluation set and record
+  the result alongside any change. Red-flag recall must stay at 100% through
+  any retuning; it is gated in CI and is not traded off against question count.

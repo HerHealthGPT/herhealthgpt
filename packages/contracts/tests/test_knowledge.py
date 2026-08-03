@@ -23,6 +23,7 @@ from herhealth_contracts.knowledge import (
     FeaturesFile,
     KnowledgeBase,
     RedFlagRule,
+    Source,
     Weights,
 )
 
@@ -249,6 +250,58 @@ def test_icd_defaults_to_todo_verify() -> None:
 
 
 # --------------------------------------------------------------------------
+# Sources — licensing status
+# --------------------------------------------------------------------------
+
+
+def source(**overrides: Any) -> dict[str, Any]:
+    s: dict[str, Any] = {
+        "id": "nichd_pcos",
+        "name": "NICHD PCOS",
+        "url": "https://www.nichd.nih.gov/health/topics/pcos",
+        "precedence": 3,
+        "licence": "US federal, public domain",
+        "access": "page ingestion",
+        "status": "available",
+    }
+    s.update(overrides)
+    return s
+
+
+def test_status_is_required_so_unchecked_licensing_cannot_default_to_usable() -> None:
+    s = source()
+    del s["status"]
+    with pytest.raises(ValidationError):
+        Source(**s)
+
+
+@pytest.mark.parametrize(
+    ("status", "citable", "ingestible"),
+    [
+        ("available", True, True),
+        ("citable_only", True, False),
+        ("restricted", False, False),
+    ],
+)
+def test_permissions_follow_status(status: str, citable: bool, ingestible: bool) -> None:
+    s = Source(**source(status=status))
+    assert s.may_be_cited is citable
+    assert s.may_be_ingested is ingestible
+
+
+def test_unknown_status_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Source(**source(status="probably_fine"))
+
+
+def test_precedence_ranks_sources_that_are_not_yet_usable() -> None:
+    """NICE CKS outranks everything and is unusable; both facts must be storable."""
+    cks = Source(**source(id="nice_cks", precedence=1, status="restricted"))
+    assert cks.precedence == 1
+    assert not cks.may_be_cited
+
+
+# --------------------------------------------------------------------------
 # Weights — the tunable constants
 # --------------------------------------------------------------------------
 
@@ -329,16 +382,7 @@ def knowledge_base(**overrides: Any) -> dict[str, Any]:
         ],
         "evidence": [evidence_row()],
         "red_flags": [red_flag()],
-        "sources": [
-            {
-                "id": "nichd_pcos",
-                "name": "NICHD PCOS",
-                "url": "https://www.nichd.nih.gov/health/topics/pcos",
-                "precedence": 3,
-                "licence": "US federal, public domain",
-                "access": "page ingestion",
-            }
-        ],
+        "sources": [source()],
         "weights": weights(),
         "actions": {"actions": action_defs()},
     }

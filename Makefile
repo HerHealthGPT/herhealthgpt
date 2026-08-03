@@ -13,12 +13,14 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install lock sync-check validate build eval lint fmt test clean
+.PHONY: help install lock sync-check fetch fetch-plan validate build eval lint fmt test clean
 
 help:
 	@echo "install    create .venv and install everything from uv.lock"
 	@echo "lock       re-resolve uv.lock after changing a dependency"
 	@echo "sync-check fail if uv.lock has drifted from the pyproject files"
+	@echo "fetch-plan show what would be fetched, without making any request"
+	@echo "fetch      fetch source documents into raw/ (makes network requests)"
 	@echo "validate   check knowledge/ against the contracts schemas"
 	@echo "build      fetch -> clean -> chunk -> build/passages.parquet (phase 4)"
 	@echo "eval       run the triage controller over the benchmark cases (phase 3)"
@@ -33,6 +35,15 @@ lock:
 
 sync-check:
 	$(UV) sync --locked
+
+# Dry run. Prints the plan and touches nothing.
+fetch-plan:
+	$(UV) run python -m herhealth_data.cli fetch
+
+# Makes real network requests. Existing files are never overwritten, so this is
+# safe to re-run; a re-fetch on a later date lands in a new dated directory.
+fetch:
+	$(UV) run python -m herhealth_data.cli fetch --yes
 
 validate:
 	$(UV) run python -m herhealth_data.cli validate --knowledge $(KNOWLEDGE_DIR)

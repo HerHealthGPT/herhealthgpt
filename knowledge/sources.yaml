@@ -1,0 +1,120 @@
+# sources.yaml — every source a clinical row may cite, and what we may do with it.
+#
+# ============================================================================
+# ONLY USABLE SOURCES APPEAR HERE.
+#
+# Sources whose licence we cannot satisfy have been REMOVED rather than listed
+# as restricted, so that nothing in this file can be cited by accident. The
+# exclusions and their reasons are recorded in CLAUDE.md so nobody
+# re-investigates them in three months.
+#
+# Two independent facts per source:
+#
+#   precedence  which source wins when two disagree on urgency. Lower wins.
+#               Gaps in the numbering are deliberate — they are the removed
+#               sources, so the ordering stays stable if a licence is ever
+#               cleared.
+#
+#   status      available     public domain. May be quoted AND ingested into
+#                             passages.parquet.
+#               citable_only  may be quoted with attribution for provenance,
+#                             but its text must NOT enter the corpus.
+# ============================================================================
+#
+# Licence terms below were read from the sources' own pages on 2026-08-03.
+# Where a page could not be retrieved that is stated explicitly rather than
+# assumed. Terms change; re-verify before any large ingestion run.
+
+sources:
+  # -------------------------------------------------------------------------
+  # MVP corpus
+  # -------------------------------------------------------------------------
+
+  - id: medlineplus
+    name: MedlinePlus
+    url: https://medlineplus.gov/
+    precedence: 3
+    licence: >-
+      Split. Health topic summaries are US federal works and public domain:
+      "Works produced by the federal government are not copyrighted under U.S.
+      law. You may reproduce, redistribute, and link freely to non-copyrighted
+      content." Attribution required — "Courtesy of MedlinePlus from the
+      National Library of Medicine". BUT the A.D.A.M. Medical Encyclopedia and
+      drug monographs are licensed to MedlinePlus only, and their terms state:
+      "You may not ingest and/or brand the copyrighted content found on
+      MedlinePlus in an EHR, patient portal, or other health IT system."
+      Verified 2026-08-03 at medlineplus.gov/about/using/usingcontent/.
+    access: >-
+      Health topic pages and the topics XML. No key, no registration. Note that
+      robots.txt disallows /xml/ to crawlers; the documented bulk topic file is
+      a direct download rather than a crawl, but keep request rates low.
+    status: available
+    note: >-
+      INGESTION RULE: health topic summaries only. NEVER ingest
+      medlineplus.gov/ency/* — that is the A.D.A.M. encyclopedia, and the clause
+      above names systems like this one directly. The ingestion client must
+      exclude /ency/ by path, not by convention.
+
+  - id: nichd
+    name: >-
+      Eunice Kennedy Shriver National Institute of Child Health and Human
+      Development (NICHD)
+    url: https://www.nichd.nih.gov/
+    precedence: 3
+    licence: >-
+      US federal government work, therefore public domain and free to reproduce.
+      NOT INDEPENDENTLY VERIFIED — the NICHD copyright pages returned 404 on
+      2026-08-03. The claim rests on NICHD being an NIH institute rather than on
+      a retrieved statement. Confirm before a large ingestion run.
+    access: >-
+      Public pages, no key. robots.txt disallows only /core/ and /profiles/,
+      neither of which holds content.
+    status: available
+    note: >-
+      Strongest coverage of the phase 1 conditions — dedicated topic pages for
+      PCOS, endometriosis and uterine fibroids.
+
+  - id: cdc
+    name: Centers for Disease Control and Prevention
+    url: https://www.cdc.gov/
+    precedence: 4
+    licence: >-
+      US federal government work, therefore public domain, with the known
+      caveat that some pages embed third-party material that is not.
+      NOT INDEPENDENTLY VERIFIED — cdc.gov returned 403 to automated requests on
+      2026-08-03. Confirm before a large ingestion run.
+    access: >-
+      Public pages; Socrata open-data endpoints available with an optional app
+      token. The 403 above suggests a WAF that may block automated fetching, so
+      expect to need a real user agent and low request rates.
+    status: available
+    note: Public-health framing and population-level context.
+
+  # -------------------------------------------------------------------------
+  # Citable but not redistributable
+  # -------------------------------------------------------------------------
+
+  - id: nhs
+    name: NHS website
+    url: https://www.nhs.uk/
+    precedence: 2
+    licence: >-
+      Crown copyright, and nothing more permissive. The NHS content policy makes
+      no reuse grant — no Open Government Licence, no Creative Commons terms —
+      it states only "© Crown copyright". Verified 2026-08-03 at
+      nhs.uk/our-policies/content-policy/. Short attributed quotations for
+      academic research are relied on; redistribution of page text is not.
+    access: >-
+      MANUAL READING ONLY. robots.txt contains "Disallow: /Conditions/" under
+      User-agent *. The capitalisation does not match the live lowercase URLs
+      and so is arguably not binding on them, but the intent is unmistakable and
+      we do not exploit the discrepancy. A person reading a page in a browser is
+      not a crawler; a scraper over /conditions/ is. Content API access needs
+      NHS England onboarding with an organisational ODS code — requested via
+      supervisor, treated as a future improvement, never a blocker.
+    status: citable_only
+    note: >-
+      Kept because its "when to get help" sections are the best escalation
+      language available anywhere, and red_flags.yaml is derived only from
+      explicit escalation language. Quote it with attribution; its text must
+      never enter passages.parquet.
