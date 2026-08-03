@@ -1,0 +1,47 @@
+name: data
+
+# Path-filtered: a frontend or model change must not trigger this workflow.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/data/**"
+      - "packages/contracts/**"
+      - "knowledge/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
+      - ".github/workflows/data.yml"
+  pull_request:
+    paths:
+      - "services/data/**"
+      - "packages/contracts/**"
+      - "knowledge/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
+      - ".github/workflows/data.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails rather than re-resolving. CI runs the same pins a
+      # teammate does, or it goes red.
+      - name: Install from lockfile
+        run: uv sync --locked
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      - name: Validate knowledge
+        run: make validate

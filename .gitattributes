@@ -1,0 +1,31 @@
+# Normalise line endings to LF in the repository, on every platform.
+#
+# This is not cosmetic. Phase 4 requires `make fetch clean build` to reproduce
+# build/passages.parquet with a stable content hash. If a knowledge file is
+# CRLF on one teammate's machine and LF on another's, the hashes diverge and
+# the reproducibility guarantee is silently false. Same reason knowledge diffs
+# stay readable instead of showing every line as changed.
+* text=auto eol=lf
+
+# Generated: never hand-merge, always regenerate (see CONTRIBUTING.md).
+uv.lock          linguist-generated=true -merge
+
+# Binary — no line-ending translation, no diff.
+*.parquet        binary
+*.png            binary
+*.jpg            binary
+*.jpeg           binary
+*.gif            binary
+*.ico            binary
+*.pdf            binary
+*.woff           binary
+*.woff2          binary
+
+# Windows-only scripts genuinely need CRLF.
+*.bat            text eol=crlf
+*.cmd            text eol=crlf
+*.ps1            text eol=crlf
+
+# Shell scripts must stay LF or they will not run.
+*.sh             text eol=lf
+Makefile         text eol=lf
