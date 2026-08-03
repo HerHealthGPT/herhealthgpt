@@ -74,6 +74,30 @@ sources:
       Strongest coverage of the phase 1 conditions — dedicated topic pages for
       PCOS, endometriosis and uterine fibroids.
 
+  - id: womenshealth
+    name: Office on Women's Health (OASH, US Department of Health and Human Services)
+    url: https://womenshealth.gov/
+    precedence: 3
+    licence: >-
+      US federal government work, therefore public domain.
+      NOT INDEPENDENTLY VERIFIED — the copyright page returned 404 on
+      2026-08-03. The claim rests on OASH being an HHS agency rather than on a
+      retrieved statement, the same footing as NICHD and CDC. Confirm before a
+      large ingestion run.
+    access: >-
+      Public pages under /a-z-topics/, no key. robots.txt disallows only Drupal
+      infrastructure paths (/core/, /admin/, /user/, /search/); content is not
+      restricted.
+    status: available
+    note: >-
+      Added as the fourth source specifically to give endometriosis real
+      two-source depth — NICHD has no conditioninfo section for it and CDC has
+      no page at all. Its symptom lists are markedly richer than MedlinePlus,
+      naming pain during sex and infertility, and it carries some escalation
+      language ("you should see your doctor"), which the other US federal
+      sources almost entirely lack. Also covers conditions 4-12 for later
+      phases.
+
   - id: cdc
     name: Centers for Disease Control and Prevention
     url: https://www.cdc.gov/

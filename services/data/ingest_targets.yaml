@@ -106,6 +106,33 @@ documents:
       Courtesy of MedlinePlus from the National Library of Medicine.
 
   # ---------------------------------------------------------------------------
+  # Office on Women's Health — US federal government work, public domain.
+  #
+  # The richest patient-facing source for the phase 1 conditions. Added to give
+  # endometriosis genuine two-source backing; its symptom lists name features
+  # (pain during sex, infertility) that MedlinePlus omits entirely.
+  # ---------------------------------------------------------------------------
+  - source_id: womenshealth
+    slug: endometriosis
+    url: https://womenshealth.gov/a-z-topics/endometriosis
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: pcos
+    url: https://womenshealth.gov/a-z-topics/polycystic-ovary-syndrome
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: fibroids
+    url: https://womenshealth.gov/a-z-topics/uterine-fibroids
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: pelvic_inflammatory_disease
+    url: https://womenshealth.gov/a-z-topics/pelvic-inflammatory-disease
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
   # CDC — US federal government work, public domain.
   #
   # CDC has no dedicated endometriosis or uterine fibroid page. It supplements
