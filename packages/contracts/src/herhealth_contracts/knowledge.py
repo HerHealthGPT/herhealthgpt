@@ -56,6 +56,7 @@ __all__ = [
     "RedFlagRule",
     "RedFlagsFile",
     "Source",
+    "SourceStatus",
     "SourcesFile",
     "Weights",
 ]
@@ -108,6 +109,28 @@ class ComparisonOp(StrEnum):
     IN = "in"
     GTE = "gte"
     LTE = "lte"
+
+
+class SourceStatus(StrEnum):
+    """What we are permitted to do with a source, which is not one question.
+
+    Quoting a sentence with attribution and redistributing whole pages in a
+    retrieval corpus are different rights, and a source may grant the first
+    without the second. Recording which is which turns a licensing mistake into
+    a validation failure rather than something noticed after publication.
+    """
+
+    #: Openly licensed or public domain. May be quoted and may be ingested into
+    #: the passage corpus.
+    AVAILABLE = "available"
+
+    #: May be quoted with attribution for provenance, but not redistributed.
+    #: Its text must not enter passages.parquet.
+    CITABLE_ONLY = "citable_only"
+
+    #: Licence barrier not yet cleared. Must not be used at all — no quotes, no
+    #: ingestion. Listed so the barrier is recorded rather than re-investigated.
+    RESTRICTED = "restricted"
 
 
 #: Increasing urgency. `next_question` and `should_stop` rely on this order.
@@ -393,6 +416,10 @@ class Source(_KnowledgeModel):
 
     #: Lower wins on conflict. Never resolve a conflict silently — the losing
     #: claim is appended to build/conflicts.jsonl.
+    #:
+    #: Ranks the full intended source list, including sources not yet usable, so
+    #: the ordering stays correct as licences are cleared. Precedence says which
+    #: source wins an argument; ``status`` says whether it is in the room.
     precedence: int = Field(ge=1)
 
     #: Recorded per source. UMLS stores concept identifiers only, never strings.
@@ -401,7 +428,21 @@ class Source(_KnowledgeModel):
     #: How the content is obtained: bulk XML, page ingestion, REST, and so on.
     access: NonEmptyText
 
+    #: What we may do with it. No default — a source whose licensing nobody
+    #: checked should not quietly become usable.
+    status: SourceStatus
+
     note: str = ""
+
+    @property
+    def may_be_cited(self) -> bool:
+        """Whether a clinical row may quote this source in ``source_quote``."""
+        return self.status is not SourceStatus.RESTRICTED
+
+    @property
+    def may_be_ingested(self) -> bool:
+        """Whether this source's text may enter the retrieval corpus."""
+        return self.status is SourceStatus.AVAILABLE
 
 
 class SourcesFile(_KnowledgeModel):

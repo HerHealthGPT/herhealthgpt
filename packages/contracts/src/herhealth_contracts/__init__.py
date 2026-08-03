@@ -22,6 +22,7 @@ from herhealth_contracts.knowledge import (
     RedFlagsFile,
     Source,
     SourcesFile,
+    SourceStatus,
     Weights,
 )
 
@@ -44,6 +45,7 @@ __all__ = [
     "RedFlagRule",
     "RedFlagsFile",
     "Source",
+    "SourceStatus",
     "SourcesFile",
     "Weights",
 ]

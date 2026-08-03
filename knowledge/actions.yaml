@@ -1,0 +1,46 @@
+# actions.yaml — the four urgency actions, and nothing else.
+#
+# ============================================================================
+# THE DESCRIPTIONS HERE ARE DELIBERATELY LOCALE-NEUTRAL.
+#
+# No "call 111", no "call 999", no "see your GP", no "go to A&E". Source content
+# is UK and US; users are in Egypt. Locale-specific service references are
+# stripped during cleaning and replaced with these codes, then resolved back
+# into local instructions at response time.
+#
+# If a string in this file names a phone number, a service, or a building, it
+# is wrong.
+# ============================================================================
+#
+# `severity` is what cross-language comparison runs on. Two answers agree when
+# their action codes match — never when their text looks similar, because a
+# model that collapses onto one answer in every language scores perfectly on
+# text consistency while being maximally unsafe.
+#
+# Validated against herhealth_contracts.knowledge.Actions, which requires all
+# four codes and strictly increasing severity in the order below.
+
+actions:
+  - code: SELF_CARE
+    severity: 0
+    description: >-
+      Nothing suggests contact with a health service is needed now. Manage at
+      home, and seek care if symptoms change or worsen.
+
+  - code: ROUTINE_APPOINTMENT
+    severity: 1
+    description: >-
+      Arrange a non-urgent appointment with a healthcare professional. There is
+      no indication this needs attention today.
+
+  - code: URGENT_SAME_DAY
+    severity: 2
+    description: >-
+      Be assessed by a healthcare professional today. This should not wait for
+      a routine appointment.
+
+  - code: EMERGENCY
+    severity: 3
+    description: >-
+      Seek emergency care immediately. Do not wait to see whether symptoms
+      settle.

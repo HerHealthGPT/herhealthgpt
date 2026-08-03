@@ -1,0 +1,105 @@
+# ingest_targets.yaml — exactly which documents get fetched, and from where.
+#
+# Tracked in git. `raw/` is not, so this file plus ingest.lock.jsonl is what
+# makes a fetch reproducible: the targets say what to get, the lock records what
+# was got and its hash.
+#
+# `excluded_path_fragments` is a licensing guard, not an optimisation. A URL
+# matching one of these is refused before any request is made, so a licence rule
+# is enforced by code rather than by remembering. See CLAUDE.md.
+
+# Per-source user agent, for sources whose edge rejects the default.
+# The default identifies us honestly and works for NICHD and MedlinePlus.
+user_agents:
+  # cdc.gov sits behind a WAF that allowlists known client tokens and returns
+  # 403 to everything else — including an honest project user agent, an empty
+  # one, and no User-Agent header at all. Only requests whose agent leads with a
+  # recognised token get through. We prepend that token and keep our own
+  # identifier after it, so the request is still attributable to this project.
+  # We do NOT impersonate a browser. Verified 2026-08-03.
+  cdc: curl/8.0 HerHealthGPT-research/0.1 (academic capstone)
+
+excluded_path_fragments:
+  medlineplus:
+    # A.D.A.M. Medical Encyclopedia. Licensed to MedlinePlus only, and its terms
+    # state: "You may not ingest and/or brand the copyrighted content found on
+    # MedlinePlus in an EHR, patient portal, or other health IT system."
+    # That clause names systems like this one.
+    - /ency/
+
+documents:
+  # ---------------------------------------------------------------------------
+  # NICHD — US federal government work, public domain
+  # ---------------------------------------------------------------------------
+  - source_id: nichd
+    slug: pcos
+    url: https://www.nichd.nih.gov/health/topics/pcos
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: endometriosis
+    url: https://www.nichd.nih.gov/health/topics/endometriosis
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids
+    url: https://www.nichd.nih.gov/health/topics/uterine
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
+  # MedlinePlus — health topic pages only. Public domain.
+  # Attribution: "Courtesy of MedlinePlus from the National Library of Medicine"
+  # ---------------------------------------------------------------------------
+  - source_id: medlineplus
+    slug: pcos
+    url: https://medlineplus.gov/polycysticovarysyndrome.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: medlineplus
+    slug: endometriosis
+    url: https://medlineplus.gov/endometriosis.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: medlineplus
+    slug: fibroids
+    url: https://medlineplus.gov/uterinefibroids.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # ---------------------------------------------------------------------------
+  # CDC — US federal government work, public domain.
+  #
+  # CDC has no dedicated endometriosis or uterine fibroid page. It supplements
+  # NICHD and MedlinePlus rather than replacing them: PCOS via its metabolic
+  # framing, and heavy menstrual bleeding, which is where the escalation
+  # language relevant to fibroids actually lives.
+  # ---------------------------------------------------------------------------
+  - source_id: cdc
+    slug: pcos
+    url: https://www.cdc.gov/diabetes/risk-factors/pcos-polycystic-ovary-syndrome.html
+    licence: US federal government work, public domain
+
+  - source_id: cdc
+    slug: heavy_menstrual_bleeding
+    url: https://www.cdc.gov/ncbddd/blooddisorders/women/menorrhagia.html
+    licence: US federal government work, public domain
+
+  - source_id: cdc
+    slug: pelvic_inflammatory_disease
+    url: https://www.cdc.gov/pid/about/index.html
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
+  # Deliberately absent
+  # ---------------------------------------------------------------------------
+  # NHS     — citable_only. Manual reading in a browser, never fetched. Its
+  #           robots.txt disallows the conditions section.
+  # NICE,
+  # RCOG,
+  # ACOG,
+  # UMLS    — licence not satisfiable. Removed from sources.yaml entirely.

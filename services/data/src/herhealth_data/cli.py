@@ -17,14 +17,21 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 # cli.py -> herhealth_data -> src -> data -> services -> <repo root>
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
 DEFAULT_CASES_DIR = REPO_ROOT / "services" / "data" / "eval" / "cases"
+DEFAULT_TARGETS_FILE = REPO_ROOT / "services" / "data" / "ingest_targets.yaml"
+DEFAULT_LOCK_FILE = REPO_ROOT / "services" / "data" / "ingest.lock.jsonl"
 
 KNOWLEDGE_GLOBS = ("*.yaml", "*.yml", "*.csv")
+
+
+def _today() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _knowledge_files(knowledge_dir: Path) -> list[Path]:
@@ -54,6 +61,47 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_fetch(args: argparse.Namespace) -> int:
+    """Fetch source documents. Dry run unless --yes is given."""
+    from herhealth_data.ingest.fetch import (
+        FetchOutcome,
+        fetch_all,
+        http_get,
+        load_plan,
+        write_lock,
+    )
+
+    plan = load_plan(args.targets)
+    dry_run = not args.yes
+
+    records = fetch_all(
+        plan,
+        raw_dir=args.raw_dir,
+        on_date=args.date,
+        transport=http_get,
+        dry_run=dry_run,
+    )
+
+    for r in records:
+        size = f"{r.bytes:>8,}b" if r.bytes else " " * 9
+        print(f"  {r.outcome:<15} {r.source_id:<12} {r.slug:<15} {size}  {r.url}")
+        if r.detail:
+            print(f"  {'':<15} {r.detail}")
+
+    counts: dict[str, int] = {}
+    for r in records:
+        counts[r.outcome] = counts.get(r.outcome, 0) + 1
+    print("\n" + ", ".join(f"{n} {outcome}" for outcome, n in sorted(counts.items())))
+
+    if dry_run:
+        print("\nDry run — no requests were made. Re-run with --yes to fetch.")
+        return 0
+
+    write_lock(records, args.lock, args.date)
+    print(f"lockfile written: {args.lock}")
+    return 1 if counts.get(FetchOutcome.FAILED) else 0
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     print("build is not implemented yet — it lands in phase 4 (ingestion).", file=sys.stderr)
     return 2
@@ -71,6 +119,18 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="check knowledge/ against the schemas")
     validate.add_argument("--knowledge", type=Path, default=DEFAULT_KNOWLEDGE_DIR)
     validate.set_defaults(func=cmd_validate)
+
+    fetch = subparsers.add_parser("fetch", help="fetch source documents into raw/")
+    fetch.add_argument("--targets", type=Path, default=DEFAULT_TARGETS_FILE)
+    fetch.add_argument("--raw-dir", type=Path, default=REPO_ROOT / "raw")
+    fetch.add_argument("--lock", type=Path, default=DEFAULT_LOCK_FILE)
+    fetch.add_argument("--date", default=_today(), help="YYYY-MM-DD, the dated raw/ directory")
+    fetch.add_argument(
+        "--yes",
+        action="store_true",
+        help="actually make network requests; without it this is a dry run",
+    )
+    fetch.set_defaults(func=cmd_fetch)
 
     build = subparsers.add_parser("build", help="build the retrieval corpus")
     build.add_argument("--knowledge", type=Path, default=DEFAULT_KNOWLEDGE_DIR)

@@ -9,6 +9,9 @@ description = "Ingestion, knowledge validation and the evaluation harness for He
 requires-python = ">=3.12"
 dependencies = [
     "herhealth-contracts",
+    # uv installs a python-build-standalone interpreter with no CA bundle,
+    # so urllib cannot verify any HTTPS certificate without this.
+    "certifi>=2024.2.2",
     "pydantic>=2.7",
     "pyyaml>=6.0",
 ]
