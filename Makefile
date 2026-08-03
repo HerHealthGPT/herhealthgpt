@@ -52,7 +52,7 @@ fmt:
 	$(UV) run ruff check --fix packages/contracts services/data
 
 test:
-	$(UV) run pytest services/data/tests -q
+	$(UV) run pytest packages/contracts/tests services/data/tests -q
 
 clean:
 	rm -rf build/
