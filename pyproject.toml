@@ -15,6 +15,12 @@ dependencies = [
     "herhealth-data",
 ]
 
+# Re-exposed from the data service so `uv sync --extra ingest` works from the
+# workspace root and keeps the dev group. Syncing the member directly with
+# `--package` drops dev tooling.
+[project.optional-dependencies]
+ingest = ["herhealth-data[ingest]"]
+
 [tool.uv]
 package = false
 

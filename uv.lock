@@ -144,6 +144,11 @@ dependencies = [
     { name = "herhealth-data" },
 ]
 
+[package.optional-dependencies]
+ingest = [
+    { name = "herhealth-data", extra = ["ingest"] },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
@@ -155,7 +160,9 @@ dev = [
 requires-dist = [
     { name = "herhealth-contracts", editable = "packages/contracts" },
     { name = "herhealth-data", editable = "services/data" },
+    { name = "herhealth-data", extras = ["ingest"], marker = "extra == 'ingest'", editable = "services/data" },
 ]
+provides-extras = ["ingest"]
 
 [package.metadata.requires-dev]
 dev = [

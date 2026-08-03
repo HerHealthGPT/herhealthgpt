@@ -5,6 +5,7 @@ Argument parsing only. Every verb's behaviour lives in
 commands stay testable without constructing a parser.
 
     herhealth-data fetch     retrieve source documents into raw/
+    herhealth-data clean     turn fetched HTML into sectioned text
     herhealth-data validate  check knowledge/ against the schemas
     herhealth-data build     clean, chunk, write build/passages.parquet
     herhealth-data eval      run the controller over the benchmark cases
@@ -52,6 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
     validate_parser.set_defaults(func=commands.run_validate)
+
+    clean_parser = subparsers.add_parser("clean", help="turn fetched HTML into sectioned text")
+    clean_parser.add_argument("--raw-dir", type=Path, default=paths.RAW_DIR)
+    clean_parser.add_argument("--out-dir", type=Path, default=paths.CLEAN_DIR)
+    clean_parser.add_argument("--date", default=utc_today(), help="which dated snapshot to clean")
+    clean_parser.set_defaults(func=commands.run_clean)
 
     build_parser_ = subparsers.add_parser("build", help="build the retrieval corpus")
     build_parser_.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)

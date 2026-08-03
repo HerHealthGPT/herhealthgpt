@@ -46,6 +46,40 @@ documents:
     url: https://www.nichd.nih.gov/health/topics/uterine
     licence: US federal government work, public domain
 
+  # NICHD topic pages are hubs — a paragraph and a set of links. The substance
+  # lives under conditioninfo/. Endometriosis has no conditioninfo section at
+  # all, which is why its NICHD coverage is one paragraph and MedlinePlus
+  # carries that condition.
+  - source_id: nichd
+    slug: pcos_symptoms
+    url: https://www.nichd.nih.gov/health/topics/pcos/conditioninfo/symptoms
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: pcos_causes
+    url: https://www.nichd.nih.gov/health/topics/pcos/conditioninfo/causes
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: pcos_treatments
+    url: https://www.nichd.nih.gov/health/topics/pcos/conditioninfo/treatments
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids_symptoms
+    url: https://www.nichd.nih.gov/health/topics/uterine/conditioninfo/symptoms
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids_causes
+    url: https://www.nichd.nih.gov/health/topics/uterine/conditioninfo/causes
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids_treatments
+    url: https://www.nichd.nih.gov/health/topics/uterine/conditioninfo/treatments
+    licence: US federal government work, public domain
+
   # ---------------------------------------------------------------------------
   # MedlinePlus — health topic pages only. Public domain.
   # Attribution: "Courtesy of MedlinePlus from the National Library of Medicine"

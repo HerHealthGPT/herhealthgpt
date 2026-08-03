@@ -24,7 +24,7 @@ from herhealth_data.ingest import (
     write_lock,
 )
 
-__all__ = ["run_build", "run_eval", "run_fetch", "run_validate"]
+__all__ = ["run_build", "run_clean", "run_eval", "run_fetch", "run_validate"]
 
 KNOWLEDGE_GLOBS = ("*.yaml", "*.yml", "*.csv")
 
@@ -103,6 +103,40 @@ def run_validate(args: argparse.Namespace) -> int:
     print()
     print("WARNING: these files were NOT validated. The schema and cross-file")
     print("checks are not wired up yet; a pass here currently means nothing.")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# clean
+# --------------------------------------------------------------------------
+
+
+def run_clean(args: argparse.Namespace) -> int:
+    """Turn fetched HTML into sectioned, quotable text.
+
+    Imports the cleaner lazily: it needs BeautifulSoup from the optional
+    `ingest` extra, and `make validate` must work without that installed.
+    """
+    try:
+        from herhealth_data.ingest.clean import clean_store, summarise
+    except ImportError:
+        print("error: the clean step needs the ingest extra.")
+        print("  uv sync --extra ingest")
+        return 2
+
+    store = RawStore(args.raw_dir, args.date)
+    if not any(store.documents()):
+        print(f"nothing to clean in {args.raw_dir} for {args.date}; run `make fetch` first")
+        return 2
+
+    documents = clean_store(store, args.out_dir)
+    print(f"cleaned {len(documents)} document(s) into {args.out_dir}\n")
+    print(summarise(documents))
+
+    candidates = sum(len(d.escalation_sentences) for d in documents)
+    print(f"\n{candidates} escalation sentence(s) found — candidates for red_flags.yaml.")
+    print("Candidates, not rules: each still needs a human to confirm it states")
+    print("a condition specific enough to key an escalation rule on.")
     return 0
 
 

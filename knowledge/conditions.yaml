@@ -1,0 +1,67 @@
+# conditions.yaml — everything the system may consider as an explanation.
+#
+# ============================================================================
+# CONSIDERING A CONDITION IS NOT ASSERTING ONE.
+#
+# The system's output is an urgency action and cited information, never a
+# conclusion about what a user has. A condition appearing here means "this may
+# be worth asking about", not "this may be what you have".
+# ============================================================================
+#
+# `icd11` is TODO_VERIFY on every row. ICD-11 codes recalled from training data
+# are unreliable, so none is written by hand; they are filled by the WHO ICD API
+# lookup, which is deferred (identifiers are cosmetic and block nothing).
+#
+# `baseline_action` is what the condition implies on its own, before any
+# evidence moves it. All three phase 1 conditions are ROUTINE_APPOINTMENT: none
+# of them is an emergency in itself. Escalation comes from red_flags.yaml, which
+# runs before any of this and is derived only from explicit escalation language.
+#
+# `source_ids` resolve to sources.yaml and must number at least two, so no
+# condition rests on a single document. Both cited sources are `available`
+# (public domain), so every claim built on them can also be redistributed.
+#
+# Validated against herhealth_contracts.knowledge.ConditionsFile.
+
+conditions:
+  - id: pcos
+    label: Polycystic ovary syndrome (PCOS)
+    icd11: TODO_VERIFY
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nichd]
+    note: >-
+      MedlinePlus: "Polycystic ovary syndrome (PCOS) is the name for set of
+      symptoms that are related to an imbalance of hormones. PCOS affects the
+      ovaries, as well as many other parts of the body." The same page states
+      people with PCOS "usually have at least two of these problems: Not
+      ovulating... High levels of androgens... Cysts in one or both ovaries",
+      which is what the evidence rows key on. NICHD supplies symptom, cause and
+      treatment pages under conditioninfo/.
+
+  - id: endometriosis
+    label: Endometriosis
+    icd11: TODO_VERIFY
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nichd]
+    note: >-
+      MedlinePlus: "Endometriosis is a disease in which tissue like the lining
+      of the uterus grows in other places in your body." It names the main
+      symptom as "Pelvic pain, which often happens during your period".
+      CAVEAT: NICHD has no conditioninfo section for endometriosis — its topic
+      page is a single paragraph — so this condition rests far more heavily on
+      MedlinePlus than the other two. The two-source rule is satisfied in form
+      but is thin in substance here. CDC has no endometriosis page at all.
+
+  - id: uterine_fibroids
+    label: Uterine fibroids
+    icd11: TODO_VERIFY
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nichd]
+    note: >-
+      MedlinePlus: "Many women with fibroids have no symptoms. If you do, the
+      type of symptoms may be due to location, size, and number of fibroids",
+      listing "Heavy or painful periods or bleeding between periods" and
+      "Feeling 'full' in the lower abdomen (belly)". The asymptomatic majority
+      matters for elimination: absence of symptoms argues against far less
+      strongly here than it would for a condition that is always symptomatic.
+      NICHD supplies symptom, cause and treatment pages under conditioninfo/.

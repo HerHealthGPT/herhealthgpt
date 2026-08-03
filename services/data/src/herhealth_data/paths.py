@@ -25,6 +25,9 @@ RAW_DIR: Final[Path] = REPO_ROOT / "raw"
 #: Generated artifacts — cleaned text, passages.parquet, conflicts. Gitignored.
 BUILD_DIR: Final[Path] = REPO_ROOT / "build"
 
+#: Sectioned, quotable text produced by the clean step. Gitignored.
+CLEAN_DIR: Final[Path] = BUILD_DIR / "clean"
+
 DATA_SERVICE_DIR: Final[Path] = REPO_ROOT / "services" / "data"
 
 #: What to fetch, and the per-source guards. Tracked.
