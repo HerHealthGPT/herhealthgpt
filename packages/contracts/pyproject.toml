@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "herhealth-contracts"
+version = "0.1.0"
+description = "Shared schemas, error codes and safety policy for HerHealthGPT."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/herhealth_contracts"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+# mypy runs strict here and nowhere else: these schemas are the single
+# definition every other service validates against.
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true

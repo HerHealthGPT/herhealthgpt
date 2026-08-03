@@ -1,0 +1,29 @@
+# Immutable fetched source content and generated artefacts.
+# Both are reproducible from `make fetch build`; neither belongs in git.
+raw/
+build/
+
+# Secrets. infra/envs/*.env.example is tracked; the real .env files are not.
+.env
+*.env
+!*.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

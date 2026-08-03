@@ -1,0 +1,39 @@
+# Workspace root. Not itself an installable package — it exists so that one
+# `uv sync` produces the same environment on every machine, from one lockfile.
+#
+# uv.lock is committed and is the source of truth for the environment. CI runs
+# `uv sync --locked`, which fails rather than silently re-resolving if the lock
+# and the pyproject files have drifted apart.
+
+[project]
+name = "herhealthgpt"
+version = "0.0.0"
+description = "HerHealthGPT monorepo workspace root."
+requires-python = ">=3.12"
+dependencies = [
+    "herhealth-contracts",
+    "herhealth-data",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "packages/contracts",
+    "services/data",
+]
+
+# The two local packages resolve to the working tree, never to an index.
+[tool.uv.sources]
+herhealth-contracts = { workspace = true }
+herhealth-data = { workspace = true }
+
+# Tooling shared by every member. Installed by default; `uv sync --no-dev`
+# gives the runtime-only environment.
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
