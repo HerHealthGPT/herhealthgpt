@@ -118,7 +118,10 @@ def _render_clause(feature_id: str, op: ComparisonOp, value: object) -> str:
 def _red_flags_table(rules: Sequence[RedFlagRule]) -> Table:
     return Table(
         name="red_flags",
-        columns=("id", "action", "label", "conditions", "source_id", "source_quote", "note"),
+        # "clauses", never "conditions": a Condition is a clinical explanation
+        # in conditions.yaml. Reusing the word for a rule's predicate would put
+        # two meanings on one term in a file people read to check safety.
+        columns=("id", "action", "label", "clauses", "source_id", "source_quote", "note"),
         rows=tuple(
             (
                 r.id,
