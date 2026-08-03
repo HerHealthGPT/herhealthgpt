@@ -6,6 +6,8 @@ commands stay testable without constructing a parser.
 
     herhealth-data fetch     retrieve source documents into raw/
     herhealth-data clean     turn fetched HTML into sectioned text
+    herhealth-data evidence  generate evidence.csv from reviewed batches
+    herhealth-data tables    render every knowledge file as a flat table
     herhealth-data validate  check knowledge/ against the schemas
     herhealth-data build     clean, chunk, write build/passages.parquet
     herhealth-data eval      run the controller over the benchmark cases
@@ -53,6 +55,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
     validate_parser.set_defaults(func=commands.run_validate)
+
+    evidence_parser = subparsers.add_parser(
+        "evidence", help="generate knowledge/evidence.csv from reviewed batches"
+    )
+    evidence_parser.add_argument("--batches", type=Path, default=paths.EVIDENCE_BATCH_DIR)
+    evidence_parser.add_argument("--out", type=Path, default=paths.KNOWLEDGE_DIR / "evidence.csv")
+    evidence_parser.set_defaults(func=commands.run_evidence)
+
+    tables_parser = subparsers.add_parser(
+        "tables", help="render the knowledge base as flat CSV and Markdown tables"
+    )
+    tables_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
+    tables_parser.add_argument("--out", type=Path, default=paths.TABLES_DIR)
+    tables_parser.set_defaults(func=commands.run_tables)
 
     clean_parser = subparsers.add_parser("clean", help="turn fetched HTML into sectioned text")
     clean_parser.add_argument("--raw-dir", type=Path, default=paths.RAW_DIR)

@@ -50,21 +50,23 @@ def test_fetch_date_defaults_to_an_iso_day() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_validate_on_empty_dir_succeeds(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["validate", "--knowledge", str(tmp_path)]) == 0
-    assert "nothing to validate" in capsys.readouterr().out
+def test_validate_on_empty_dir_reports_missing_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An empty directory is not a pass — every required file is absent."""
+    assert main(["validate", "--knowledge", str(tmp_path)]) == 1
+    assert "file is missing" in capsys.readouterr().out
 
 
 def test_validate_on_missing_dir_cannot_run(tmp_path: Path) -> None:
     assert main(["validate", "--knowledge", str(tmp_path / "absent")]) == 2
 
 
-def test_validate_says_plainly_that_it_checked_nothing(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_validate_passes_on_the_repository_knowledge_base(
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    (tmp_path / "features.yaml").write_text("features: []\n", encoding="utf-8")
-    assert main(["validate", "--knowledge", str(tmp_path)]) == 0
-    assert "NOT validated" in capsys.readouterr().out
+    assert main(["validate"]) == 0
+    assert "OK:" in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------

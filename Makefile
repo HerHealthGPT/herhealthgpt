@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean validate build eval lint fmt test clean-build
+.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables validate build eval lint fmt test clean-build
 
 help:
 	@echo "install    create .venv and install everything from uv.lock"
@@ -22,6 +22,8 @@ help:
 	@echo "fetch-plan show what would be fetched, without making any request"
 	@echo "fetch      fetch source documents into raw/ (makes network requests)"
 	@echo "clean      turn fetched HTML into sectioned, quotable text"
+	@echo "evidence   regenerate knowledge/evidence.csv from reviewed batches"
+	@echo "tables     render the knowledge base as CSV + Markdown tables"
 	@echo "validate   check knowledge/ against the contracts schemas"
 	@echo "build      fetch -> clean -> chunk -> build/passages.parquet (phase 4)"
 	@echo "eval       run the triage controller over the benchmark cases (phase 3)"
@@ -52,6 +54,14 @@ fetch:
 # Needs the ingest extra: make install-ingest
 clean:
 	$(UV) run --extra ingest python -m herhealth_data.cli clean
+
+# evidence.csv is generated, never hand-edited. Edit the batch YAML instead.
+evidence:
+	$(UV) run python -m herhealth_data.cli evidence
+
+# Flat views of every knowledge file. Generated; nothing reads them back.
+tables:
+	$(UV) run python -m herhealth_data.cli tables
 
 validate:
 	$(UV) run python -m herhealth_data.cli validate --knowledge $(KNOWLEDGE_DIR)

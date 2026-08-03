@@ -1,0 +1,268 @@
+# red_flags.yaml — deterministic escalation rules.
+#
+# ============================================================================
+# THESE RUN BEFORE ANY MODEL CALL AND CANNOT BE OVERRIDDEN BY ONE.
+#
+# Plain conditionals. A match short-circuits straight to escalation without
+# asking anything further and without consulting the differential.
+#
+# Every rule is derived from EXPLICIT escalation language in a source — the
+# "Ask for an urgent GP appointment or get help from NHS 111 if:" and "Call 999
+# or go to A&E if:" boxes on nhs.uk. None is inferred. A rule that cannot be
+# traced to a specific sentence is not written.
+#
+# The schema permits only URGENT_SAME_DAY and EMERGENCY here: a red flag that
+# de-escalates is unconstructible.
+# ============================================================================
+#
+# All source_quote values are verbatim from NHS pages, read manually on
+# 2026-08-03. NHS is `citable_only` in sources.yaml: quoting with attribution
+# is what we rely on, and NHS text must never enter passages.parquet.
+#
+# STRUCTURE. Every NHS bullet is conditioned on "You have pelvic pain and:", so
+# every rule below is a conjunction with pelvic pain as its first clause.
+# `all_of` is conjunction-only by design — an "or" is two rules, which keeps
+# each rule traceable to its own quote.
+#
+# COVERAGE GAPS, recorded rather than guessed. The NHS 999 bullet reads
+# "severe, getting worse, or hurts when you move or touch the area". We have a
+# feature for severity but none for progression or for tenderness on movement,
+# so only severity is encoded. Also dropped for want of a feature:
+# "painkillers have not helped" (period pain page) and "pain under your ribs on
+# the right side" (PID page).
+
+red_flags:
+  # =========================================================================
+  # EMERGENCY
+  # =========================================================================
+
+  - id: sudden_severe_pelvic_pain
+    label: Sudden onset of severe pelvic pain
+    all_of:
+      - feature_id: pain_onset
+        op: equals
+        value: sudden
+      - feature_id: pelvic_pain_severity
+        op: equals
+        value: severe
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      have a sharp, sudden and intense pain in your lower tummy
+    note: >-
+      From the PID page's "Call 999 or go straight to A&E if:" box. Sudden onset
+      plus severity is the acute-abdomen picture; severity alone is URGENT (see
+      severe_pelvic_pain below) because two of three NHS pages route that to
+      111. This split was decided explicitly and the conflict is recorded in
+      build/conflicts.jsonl.
+
+  - id: pelvic_pain_with_faintness
+    label: Pelvic pain with faintness or collapse
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: feeling_faint
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you feel faint, dizzy or lightheaded, or pass out
+
+  - id: pelvic_pain_with_shoulder_tip_pain
+    label: Pelvic pain with shoulder tip pain
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: shoulder_tip_pain
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you have pain in the tip of your shoulder
+    note: >-
+      Referred pain from blood in the abdomen. The question is trivial to ask
+      and changes the action completely, so burden is set to 1 and
+      next_question should reach it early.
+
+  - id: pelvic_pain_with_heavy_bleeding
+    label: Pelvic pain with heavy vaginal bleeding
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: bleeding_heaviness
+        op: in
+        value: [heavy, soaking_hourly]
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you have heavy bleeding from your vagina
+    note: >-
+      The source says "heavy" without defining a threshold here, so both the
+      heavy and soaking_hourly levels match. Choosing the wider reading trades
+      false alarms against missed escalations in the direction the protocol
+      requires.
+
+  - id: pelvic_pain_with_breathing_difficulty
+    label: Pelvic pain with difficulty breathing
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: difficulty_breathing
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you have difficulty breathing
+
+  - id: pelvic_pain_with_sudden_confusion
+    label: Pelvic pain with sudden confusion
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: sudden_confusion
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you suddenly feel confused
+
+  # =========================================================================
+  # URGENT_SAME_DAY
+  # =========================================================================
+
+  - id: severe_pelvic_pain
+    label: Severe pelvic pain
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: equals
+        value: severe
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      your pelvic pain or period pain is severe or worse than usual, and
+      painkillers have not helped
+    note: >-
+      CONFLICT, resolved deliberately and recorded in build/conflicts.jsonl.
+      Three NHS pages disagree on severe pelvic pain: the pelvic pain page
+      routes it to 999, while the period pain and ovarian cyst pages route it to
+      111. Two of three say 111, and the 999 bullet is not severity alone — it
+      reads "severe, getting worse, or hurts when you move or touch the area",
+      which is an acute abdomen rather than severity per se. Severity alone is
+      therefore URGENT_SAME_DAY, and severity with sudden onset escalates via
+      sudden_severe_pelvic_pain. Revisit if a pain_getting_worse or
+      pain_on_movement feature is added; the 999 reading becomes encodable then.
+      Note also that this rule omits "painkillers have not helped" — no feature
+      exists for it, so the rule fires more readily than the source states.
+
+  - id: possible_ectopic_pregnancy
+    label: Missed period with bleeding and abdominal pain
+    all_of:
+      - feature_id: periods_stopped_duration
+        op: equals
+        value: under_3_months
+      - feature_id: bleeding_between_periods
+        op: equals
+        value: "yes"
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have recently missed a period, have unusual vaginal bleeding, and have
+      pain anywhere in your tummy (abdomen), including your lower tummy (pelvic
+      pain)
+    note: >-
+      The source names the concern directly: "This could be a sign of an ectopic
+      pregnancy and needs to be checked as soon as possible." Three clauses, all
+      required. "Recently missed a period" is mapped to under_3_months, the
+      narrowest available value.
+
+  - id: pelvic_pain_in_pregnancy
+    label: Pelvic pain when pregnant or possibly pregnant
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: pregnancy_status
+        op: in
+        value: [pregnant, possibly_pregnant]
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you are pregnant or may be pregnant
+    note: >-
+      "May be pregnant" is included explicitly by the source, so
+      possibly_pregnant fires this rule exactly as pregnant does.
+
+  - id: pelvic_pain_with_fever
+    label: Pelvic pain with fever
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: fever
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have a very high temperature (or you feel hot, cold or shivery)
+
+  - id: pelvic_pain_with_abnormal_discharge
+    label: Pelvic pain with unusual vaginal discharge
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: abnormal_discharge
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have unusual discharge, fluid or bleeding from your vagina
+
+  - id: pelvic_pain_with_urinary_retention
+    label: Pelvic pain with difficulty passing urine or stool
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: urinary_symptoms
+        op: equals
+        value: difficulty_passing_urine
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you find it difficult to pee or poo
+    note: >-
+      The source covers urine and stool together. Our feature covers urine only,
+      so bowel difficulty alone does not fire this rule — a known gap.
+
+  - id: pelvic_pain_with_nausea_or_vomiting
+    label: Pelvic pain with nausea or vomiting
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: feeling_sick_or_vomiting
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have pain in your tummy (abdomen) and you also feel sick (nausea) or
+      are being sick (vomiting)
+    note: >-
+      Corroborated by the pelvic pain page, which lists "you have vomiting and
+      diarrhoea, or you feel sick" under the same urgency.

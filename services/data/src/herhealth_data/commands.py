@@ -23,10 +23,18 @@ from herhealth_data.ingest import (
     load_plan,
     write_lock,
 )
+from herhealth_data.knowledge import Severity, load_knowledge_base, validate_directory
 
-__all__ = ["run_build", "run_clean", "run_eval", "run_fetch", "run_validate"]
+__all__ = [
+    "run_build",
+    "run_clean",
+    "run_eval",
+    "run_evidence",
+    "run_tables",
+    "run_fetch",
+    "run_validate",
+]
 
-KNOWLEDGE_GLOBS = ("*.yaml", "*.yml", "*.csv")
 
 
 # --------------------------------------------------------------------------
@@ -78,31 +86,104 @@ def _report_fetch(records: list[FetchRecord]) -> None:
 
 
 def run_validate(args: argparse.Namespace) -> int:
-    """Check knowledge/ against the schemas.
+    """Check knowledge/ against the schemas and the cross-file rules.
 
-    Currently reports what it found and says plainly that it verified nothing.
-    A validation step that silently approves everything is worse than none.
+    Reports every problem in one run rather than stopping at the first.
+    Warnings are printed but do not fail; errors do.
     """
     knowledge_dir: Path = args.knowledge
     if not knowledge_dir.is_dir():
         print(f"error: no such directory: {knowledge_dir}")
         return 2
 
-    files: list[Path] = []
-    for pattern in KNOWLEDGE_GLOBS:
-        files.extend(knowledge_dir.glob(pattern))
-    files.sort()
+    problems = validate_directory(knowledge_dir)
+    failures = [p for p in problems if p.severity is Severity.ERROR]
+    warnings = [p for p in problems if p.severity is Severity.WARNING]
 
-    if not files:
-        print(f"{knowledge_dir}: no knowledge files yet, nothing to validate")
-        return 0
+    for problem in failures:
+        print(problem)
+    if failures and warnings:
+        print()
+    for problem in warnings:
+        print(problem)
 
-    print(f"{knowledge_dir}: found {len(files)} knowledge file(s):")
-    for path in files:
-        print(f"  {path.name}")
     print()
-    print("WARNING: these files were NOT validated. The schema and cross-file")
-    print("checks are not wired up yet; a pass here currently means nothing.")
+    if failures:
+        print(f"FAILED: {len(failures)} error(s), {len(warnings)} warning(s)")
+        return 1
+
+    base, _ = load_knowledge_base(knowledge_dir)
+    if base is not None:
+        print(
+            f"OK: {len(base.features)} features, {len(base.conditions)} conditions, "
+            f"{len(base.evidence)} evidence rows, {len(base.red_flags)} red flags, "
+            f"{len(base.sources)} sources"
+        )
+    print(f"{len(warnings)} warning(s)")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# evidence
+# --------------------------------------------------------------------------
+
+
+def run_evidence(args: argparse.Namespace) -> int:
+    """Generate knowledge/evidence.csv from the reviewed batch files.
+
+    Deterministic: rows are sorted, so re-running produces a byte-identical
+    file and a diff only ever shows real changes.
+    """
+    from herhealth_data.evidence import BatchError, build_evidence_csv
+
+    try:
+        written, batches = build_evidence_csv(args.batches, args.out)
+    except BatchError as error:
+        print(f"error: {error}")
+        return 1
+
+    for batch in batches:
+        state = f"approved {batch.reviewed_on}" if batch.approved else "DRAFT - not included"
+        print(f"  {batch.name:<40} {len(batch.rows):>3} row(s)   {state}")
+
+    drafts = [b for b in batches if not b.approved]
+    if drafts:
+        print(
+            f"\n{len(drafts)} batch(es) awaiting review. "
+            "Set `approved: true` in the file to include them."
+        )
+    print(f"\nwrote {written} row(s) to {args.out}")
+    print("Run `make validate` to check them against the rest of the knowledge base.")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# tables
+# --------------------------------------------------------------------------
+
+
+def run_tables(args: argparse.Namespace) -> int:
+    """Render every knowledge file as a flat table.
+
+    Generated and disposable: nothing reads these back. They exist so a whole
+    file can be read at a glance and pasted into a report.
+    """
+    from herhealth_data.tables import build_tables, write_csvs, write_markdown
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        print("error: the knowledge base does not load; run `make validate` first")
+        for problem in problems:
+            print(problem)
+        return 1
+
+    tables = build_tables(base)
+    written = write_csvs(tables, args.out)
+    document = write_markdown(tables, args.out / "knowledge.md")
+
+    for table in tables:
+        print(f"  {table.name:<12} {len(table):>4} rows")
+    print(f"\nwrote {len(written)} CSV(s) and {document}")
     return 0
 
 

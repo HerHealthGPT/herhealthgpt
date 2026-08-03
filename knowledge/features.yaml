@@ -245,6 +245,60 @@ features:
       mass; difficulty passing urine does not wait.
 
   # -------------------------------------------------------------------------
+  # Emergency signs
+  #
+  # Every feature below exists to key a specific NHS escalation bullet from
+  # nhs.uk/symptoms/pelvic-pain/ (reviewed 24 November 2025). None identifies a
+  # phase 1 condition; all of them change the action, which is the point. A
+  # feature that only ever appears in a red-flag clause is still earning its
+  # place — red flags run before any of the differential reasoning.
+  # -------------------------------------------------------------------------
+
+  - id: shoulder_tip_pain
+    label: Pain at the tip of the shoulder
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you have pain right at the tip of your shoulder?
+    note: >-
+      Odd-sounding and trivial to ask, and it is the classic referred sign of
+      bleeding into the abdomen. NHS lists it under "Call 999 or go to A&E".
+      Cheap question, largest possible change in action.
+
+  - id: difficulty_breathing
+    label: Difficulty breathing
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Are you having any difficulty breathing?
+
+  - id: sudden_confusion
+    label: Sudden confusion
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Have you suddenly become confused or disoriented?
+
+  - id: feeling_sick_or_vomiting
+    label: Nausea or vomiting
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Have you been feeling sick, or been vomiting?
+
+  - id: blood_in_urine_or_stool
+    label: Blood when passing urine or opening bowels
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Have you noticed blood when you pass urine or open your bowels?
+
+  # -------------------------------------------------------------------------
   # Androgenic and metabolic
   # -------------------------------------------------------------------------
 
