@@ -13,7 +13,11 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate build eval lint fmt test clean-build
+.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate build eval triage triage-all lint fmt test clean-build
+
+# A demonstration case for `make triage`. Override to run another:
+#   make triage CASE=services/backend/cases/says_nothing.yaml
+CASE ?= services/backend/cases/heavy_periods_over_40.yaml
 
 help:
 	@echo "install    create .venv and install everything from uv.lock"
@@ -29,6 +33,8 @@ help:
 	@echo "validate   check knowledge/ against the contracts schemas"
 	@echo "build      fetch -> clean -> chunk -> build/passages.parquet (phase 4)"
 	@echo "eval       run the triage controller over the benchmark cases (phase 3)"
+	@echo "triage     run one scripted consultation and print the trace (CASE=...)"
+	@echo "triage-all run every demonstration case in services/backend/cases/"
 	@echo "lint       ruff check + mypy strict on packages/contracts"
 	@echo "test       pytest"
 
@@ -82,6 +88,16 @@ build:
 
 eval:
 	$(UV) run python -m herhealth_data.cli eval --knowledge $(KNOWLEDGE_DIR) --cases $(CASES_DIR)
+
+# Run one scripted consultation and print the whole trace. No model, no network,
+# no server — the same case gives the same trace on any machine.
+triage:
+	HERHEALTH_KNOWLEDGE_DIR=$(KNOWLEDGE_DIR) $(UV) run herhealth-triage --case $(CASE)
+
+triage-all:
+	@for case in services/backend/cases/*.yaml; do \
+		HERHEALTH_KNOWLEDGE_DIR=$(KNOWLEDGE_DIR) $(UV) run herhealth-triage --case $$case || true; \
+	done
 
 lint:
 	$(UV) run ruff check packages/contracts services/data services/backend

@@ -4,8 +4,9 @@ Every module in the repository, what it is responsible for, and why it is shaped
 that way. Read [`CLAUDE.md`](CLAUDE.md) first for *what* the system does; this
 document covers *how the code is arranged*.
 
-**Status:** Phase 1. `packages/contracts` and `services/data` exist.
-`services/backend`, `services/frontend` and `services/model` do not yet.
+**Status:** Phase 2. `packages/contracts`, `services/data` and the triage core of
+`services/backend` exist. The backend has no API layer yet; `services/frontend`
+and `services/model` do not exist at all.
 
 ---
 
@@ -21,6 +22,11 @@ document covers *how the code is arranged*.
   - [`ingest/fetch.py`](#ingestfetchpy)
   - [`commands.py`](#commandspy)
   - [`cli.py`](#clipy)
+- [`services/backend`](#servicesbackend)
+  - [`triage/state.py`](#triagestatepy)
+  - [`triage/engine.py`](#triageenginepy)
+  - [`triage/dialogue.py`](#triagedialoguepy)
+  - [`triage/cli.py`](#triageclipy)
 - [`knowledge/`](#knowledge)
 - [Invariants, and where each is enforced](#invariants-and-where-each-is-enforced)
 - [Testing strategy](#testing-strategy)
@@ -47,12 +53,14 @@ ingest_targets.yaml          what to fetch, and the rules
         ▼
    make validate ───────────▶  knowledge/ checked against the schemas
         │
+        ├──────────────────▶  make triage — one scripted consultation, traced
         ▼
    make eval   ─────────────▶  benchmark metrics               (phase 3, not built)
 ```
 
-Only `fetch` and `validate` exist today. `build` and `eval` are honest stubs that
-exit `2` naming the phase that implements them — they never succeed vacuously.
+`fetch`, `clean`, `evidence`, `tables`, `icd`, `verify-quotes`, `validate` and
+`triage` all exist. `build` and `eval` are honest stubs that exit `2` naming the
+phase that implements them — they never succeed vacuously.
 
 **Why the odd order.** Knowledge is hand-authored and evaluated on three
 conditions *before* the corpus is built. If elimination does not work at three
@@ -156,6 +164,27 @@ source.may_be_ingested  # status is available       → may enter passages.parqu
 That split is what lets NHS content back a red-flag rule (its "when to get help"
 sections are the best escalation language available) while staying out of the
 corpus.
+
+### [`loading.py`](packages/contracts/src/herhealth_contracts/loading.py)
+
+`load_knowledge_base(directory) -> KnowledgeBase`. Strict: anything wrong raises.
+
+It lives here rather than in a service because **both** services need it — the
+data service validates the files, the backend reasons over them — and the import
+rule says a thing two services need belongs in contracts. Putting the triage CLI
+in `services/data` so it could reuse that service's loader would have been the
+easy move and would have broken the boundary.
+
+**There are two loaders, on purpose.** This one fails on the first problem,
+which is what a runtime caller needs: a controller must not start against a
+knowledge base it could not fully parse, because a half-loaded differential is
+more dangerous than none. `services/data/knowledge.py` collects every problem
+with file and row context instead, which is what `make validate` needs. Merging
+them would make one of the two jobs worse.
+
+`model_validate` rather than `Model(**payload)` throughout, because the payload
+is `dict[str, object]` until validation says otherwise and `mypy --strict` runs
+in this package.
 
 ---
 
@@ -344,6 +373,130 @@ everything is worse than no validation step at all.
 ### [`cli.py`](services/data/src/herhealth_data/cli.py)
 
 Argument parsing only — a table of contents. Every default comes from `paths`.
+
+---
+
+## `services/backend`
+
+The triage core. **No FastAPI yet**, and deliberately no dependency beyond
+`herhealth-contracts` and `pyyaml`: the controller must be runnable from a test
+or a CLI with no server, no GPU and no network, because that is what makes the
+evaluation harness possible.
+
+```
+   cli.py         argument parsing, file I/O, rendering
+      │
+      ▼
+   dialogue.py    the consultation loop — pure, no I/O
+      │
+      ▼
+   engine.py      the six stopping rules
+      │
+      ▼
+   state.py       pure data; imports nothing from this package
+```
+
+### [`triage/state.py`](services/backend/src/herhealth_backend/triage/state.py)
+
+`Answer`, `StopReason`, `TriageState`, `Decision`. Pure data, all frozen.
+
+Everything is immutable and `update` returns a **new** state, so a consultation
+is a list of states and any of them can be replayed. That is what makes a
+scripted dialogue reproducible and what will let the evaluation harness explain
+*why* a case went the way it did rather than only what it concluded.
+
+`StopReason` has six members because `should_stop` has six branches. `ASK` is
+one of them — "keep going" is a decision with a reason, not the absence of one.
+
+### [`triage/engine.py`](services/backend/src/herhealth_backend/triage/engine.py)
+
+`TriageEngine`. Plain Python, no LLM. Takes a `KnowledgeBase` and injects
+nothing — it never loads a file, which is why every engine test builds its own
+three-condition fixture in memory.
+
+`should_stop` checks in order, **first match wins, and the order is the policy**:
+
+| # | `StopReason` | Fires when |
+|---|---|---|
+| 1 | `RED_FLAG` | A deterministic rule matched. No differential, no model call |
+| 2 | `SHARED_ACTION` | Every live condition implies the same action |
+| 3 | `NO_INFORMATIVE_QUESTION` | No unasked question could change the action |
+| 4 | `CONFIDENT` | One condition clears its bar and the margin |
+| 5 | `MAX_QUESTIONS` | The budget ran out; returns the differential |
+| 6 | `ASK` | Otherwise — exactly one question |
+
+Two places choose the more urgent option, and they are the design:
+
+- `_out_of_questions` returns the differential's **most urgent** member, not its
+  most likely one. A differential holding both `normal_variation` and
+  `pelvic_inflammatory_disease` must not be reported as self-care because the
+  benign one scored higher.
+- `_bar_for` gives `SELF_CARE` a strictly higher bar
+  (`self_care_stop_confidence`) than every other action. Concluding "nothing to
+  do" is the conclusion most costly to get wrong, so it is the hardest to reach.
+
+Rule 4 does **not** yet take the most urgent, and that inconsistency is a known
+gap — see [ADR 0007](docs/adr/0007-what-the-first-real-consultations-showed.md).
+
+### [`triage/dialogue.py`](services/backend/src/herhealth_backend/triage/dialogue.py)
+
+`run_consultation(engine, provider) -> Transcript`. Drives the engine to a
+conclusion and records every turn: the state the decision was made *from*, the
+decision, and the answer that followed.
+
+Pure — no printing, no files, no argument parsing. The evaluation harness will
+import this directly rather than re-implementing the loop, which is the whole
+reason it is not inside the CLI.
+
+**A case is a lookup, not a script of turns.** `ScriptedAnswers` maps
+`feature_id → value` and returns `unknown` for anything absent. Encoding a case
+as an ordered list of answers would bake the question order into the fixture and
+hide the very thing under test.
+
+`ScriptedAnswers.validated` refuses a feature that does not exist or a value
+outside `allowed_values`. That check is not politeness: an unrecognised value
+would be applied, match no evidence row, move no score, and read exactly like an
+honest `unknown` — a case meant to escalate would come back routine with nothing
+in the output saying why.
+
+### [`triage/cli.py`](services/backend/src/herhealth_backend/triage/cli.py)
+
+`herhealth-triage`. The only way to watch the controller work end to end before
+the API exists.
+
+```bash
+make triage CASE=services/backend/cases/sudden_severe_pain.yaml
+make triage-all
+uv run herhealth-triage --interactive
+uv run herhealth-triage --answer bleeding_heaviness=heavy --json
+```
+
+Per turn it prints the question chosen, why it was chosen, and what the answer
+was worth — named by strength (`strong_support (+1.5)`), because that explains a
+jump in a way a bare number does not. `--json` gives a stable shape for diffing
+runs in CI.
+
+Details worth knowing:
+
+- **Knowledge directory:** `--knowledge`, then `HERHEALTH_KNOWLEDGE_DIR`, then
+  `./knowledge`. Never a walk up the tree — that finds a different knowledge base
+  depending on where you were standing, and a run that silently used the wrong
+  one is worse than one that refused to start.
+- **YAML booleans:** `fever: yes` parses as `True` under YAML 1.1, not `"yes"`.
+  Converted; every other non-string type is **refused** rather than stringified,
+  since `1.0` becoming `"1.0"` would be a silent wrong answer.
+- **UTF-8 is forced on stdout.** Windows consoles default to cp1252 and cannot
+  encode the em-dashes and curly quotes that appear in real source quotes.
+  Since verifying quotes by eye is the review protocol, output that mangles its
+  own characters is not acceptable.
+- **Exit code 1 means `EMERGENCY`**, so a shell script can key on it. 2 means
+  the run never started.
+
+`services/backend/cases/` holds four hand-written consultations, each pinned by
+a test in `tests/test_triage_cli.py`. They are **not** the evaluation set — that
+is `services/data/eval/cases/` and it is scored. These exist so a change to the
+weights or the question ranking shows up as a named failing case rather than as
+a silent shift in behaviour.
 
 ---
 

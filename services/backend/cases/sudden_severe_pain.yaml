@@ -1,0 +1,10 @@
+name: sudden severe pelvic pain
+note: >-
+  The case red flags exist for. Two answers satisfy sudden_severe_pelvic_pain,
+  and the controller must escalate on them without asking anything further and
+  without consulting the differential at all.
+answers:
+  pelvic_pain_severity: severe
+  pain_onset: sudden
+  age_band: 30_to_39
+  pregnancy_status: not_pregnant

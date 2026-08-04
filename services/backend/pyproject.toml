@@ -9,12 +9,16 @@ description = "Triage, tracker, directory, visit prep, retrieval, safety and orc
 requires-python = ">=3.12"
 dependencies = [
     "herhealth-contracts",
+    "pyyaml>=6.0",  # the CLI reads case files
 ]
 
 # FastAPI, the model client and retrieval arrive with the API layer. The triage
 # core deliberately has no dependency beyond the contracts package: it must be
 # runnable from a test or a CLI with no server, no GPU and no network, because
 # that is what makes the evaluation harness possible.
+
+[project.scripts]
+herhealth-triage = "herhealth_backend.triage.cli:main"
 
 [project.optional-dependencies]
 api = [

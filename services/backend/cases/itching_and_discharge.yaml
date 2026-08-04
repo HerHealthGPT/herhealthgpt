@@ -1,0 +1,17 @@
+name: vulval itching with discharge, no pain
+note: >-
+  The shape thrush takes, and the case that tests the higher SELF_CARE bar.
+  Concluding "nothing to do" here requires clearing 0.85 rather than 0.65. If
+  this ever stops at SELF_CARE on thin evidence, that is the under-triage this
+  system exists to avoid, so the test pins the outcome.
+answers:
+  vulval_itching: "yes"
+  abnormal_discharge: "yes"
+  pelvic_pain_severity: none
+  pelvic_pain_timing: none
+  fever: "no"
+  bleeding_between_periods: "no"
+  bleeding_heaviness: moderate
+  cycle_regularity: regular
+  pregnancy_status: not_pregnant
+  age_band: 20_to_29

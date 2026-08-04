@@ -1,0 +1,11 @@
+name: answers nothing
+note: >-
+  The floor. Six questions, every one answered "I do not know", so no score
+  moves and all twelve conditions sit at 0.50 where they started.
+
+  This is the degenerate case for rule 5, and it is here to keep that visible
+  rather than to endorse it: because nothing was eliminated, the differential
+  still contains the most urgent baseline in the knowledge base, and the run
+  returns that action on no information at all. Recorded as a known limitation
+  in the phase 2 notes.
+answers: {}

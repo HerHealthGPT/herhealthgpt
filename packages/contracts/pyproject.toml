@@ -9,6 +9,9 @@ description = "Shared schemas, error codes and safety policy for HerHealthGPT."
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.7",
+    # For loading.py. The knowledge files are YAML, and both services load them,
+    # so the loader lives here and its parser has to come with it.
+    "pyyaml>=6.0",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -7,10 +7,11 @@ same state produces the same decision every time, which is what makes the
 evaluation harness meaningful and what stops a model from talking the system out
 of an escalation.
 
-The engine takes a :class:`KnowledgeBase` rather than loading one. Loading lives
-in ``services/data``, and nothing outside ``packages/contracts`` may cross a
-service boundary — so the caller loads and injects. That also means every test
-here constructs its own tiny knowledge base and none of them touch a file.
+The engine takes a :class:`KnowledgeBase` rather than loading one, so every test
+here constructs its own tiny knowledge base and none of them touch a file. The
+strict loader that reads the real files lives in ``herhealth_contracts.loading``
+— it is in contracts precisely because both services need it, and nothing
+outside contracts may cross a service boundary.
 
 ``should_stop`` checks in order, first match wins. The order IS the policy:
 
