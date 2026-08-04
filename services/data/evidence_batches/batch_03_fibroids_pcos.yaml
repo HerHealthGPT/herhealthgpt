@@ -28,8 +28,7 @@ rows:
     strength: strong_support
     source_id: nichd
     source_quote: >-
-      Feeling "full" in the lower abdomen (belly)—this is sometimes called
-      pelvic pressure
+      Feeling “full” in the lower abdomen (belly)—this is sometimes called pelvic pressure
     note: >-
       A bulk effect, and the most discriminating fibroid feature: neither PCOS
       nor endometriosis is characterised by a sensation of fullness or pressure.
@@ -54,7 +53,7 @@ rows:
     value: "yes"
     strength: strong_support
     source_id: nichd
-    source_quote: Anemia (when you don't have enough red blood cells)
+    source_quote: Anemia (when you don’t have enough red blood cells)
     note: >-
       Named directly as a symptom of fibroids, and the Office on Women's Health
       ties it explicitly to the bleeding: "Heavy bleeding (which can be heavy

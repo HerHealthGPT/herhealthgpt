@@ -352,6 +352,24 @@ features:
       bleeding into the abdomen. NHS lists it under "Call 999 or go to A&E".
       Cheap question, largest possible change in action.
 
+  - id: right_upper_quadrant_pain
+    label: Pain under the ribs on the right side
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you have pain under your ribs on the right side?
+    note: >-
+      Added so the NHS PID escalation bullet can be encoded as written: "have
+      pain under your ribs on the right side and in your right shoulder". That
+      is a conjunction, and until now only the shoulder half existed, so the
+      bullet had no rule at all.
+
+      Distinct from shoulder_tip_pain, which keys its own rule from the pelvic
+      pain page where the shoulder is the entire trigger. Two sources, two
+      bullets, two rules — combining them would make each fire on something its
+      source does not say.
+
   - id: difficulty_breathing
     label: Difficulty breathing
     kind: boolean

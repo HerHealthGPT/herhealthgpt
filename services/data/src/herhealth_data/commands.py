@@ -35,6 +35,7 @@ __all__ = [
     "run_tables",
     "run_fetch",
     "run_validate",
+    "run_verify_quotes",
 ]
 
 
@@ -158,6 +159,57 @@ def run_evidence(args: argparse.Namespace) -> int:
         )
     print(f"\nwrote {written} row(s) to {args.out}")
     print("Run `make validate` to check them against the rest of the knowledge base.")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# verify-quotes
+# --------------------------------------------------------------------------
+
+
+def run_verify_quotes(args: argparse.Namespace) -> int:
+    """Check every source_quote appears verbatim in the source it cites.
+
+    Separate from `validate` because it needs build/clean, which is generated
+    and gitignored — validate must work from a fresh clone with no corpus.
+    """
+    from herhealth_data.provenance import load_corpus, summarise, verify_quotes
+
+    if not args.clean_dir.is_dir():
+        print(f"error: no cleaned corpus at {args.clean_dir}")
+        print("Run `make fetch` then `make clean` first.")
+        return 2
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        print("error: the knowledge base does not load; run `make validate` first")
+        for problem in problems:
+            print(problem)
+        return 1
+
+    quotes = [
+        (f"evidence.csv  {r.condition_id}/{r.feature_id}={r.value}", r.source_id, r.source_quote)
+        for r in base.evidence
+    ] + [
+        (f"red_flags.yaml  {rule.id}", rule.source_id, rule.source_quote)
+        for rule in base.red_flags
+    ]
+
+    corpus = load_corpus(args.clean_dir)
+    checks = verify_quotes(quotes, corpus)
+    failures = [c for c in checks if c.is_problem]
+
+    for check in checks:
+        if check.is_problem or args.verbose:
+            print(check.describe())
+
+    print(f"\n{len(quotes)} quote(s) checked against {len(corpus.sources())} source(s)")
+    print(summarise(checks))
+
+    if failures:
+        print(f"\nFAILED: {len(failures)} quote(s) could not be verified against their source")
+        return 1
+    print("\nEvery quote appears verbatim in the source it cites.")
     return 0
 
 

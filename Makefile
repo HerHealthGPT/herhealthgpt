@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd validate build eval lint fmt test clean-build
+.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate build eval lint fmt test clean-build
 
 help:
 	@echo "install    create .venv and install everything from uv.lock"
@@ -25,6 +25,7 @@ help:
 	@echo "evidence   regenerate knowledge/evidence.csv from reviewed batches"
 	@echo "tables     render the knowledge base as CSV + Markdown tables"
 	@echo "icd        propose ICD-11 codes (needs WHO_ICD_* in infra/envs/data.env)"
+	@echo "verify-quotes  check every source_quote against its cited source"
 	@echo "validate   check knowledge/ against the contracts schemas"
 	@echo "build      fetch -> clean -> chunk -> build/passages.parquet (phase 4)"
 	@echo "eval       run the triage controller over the benchmark cases (phase 3)"
@@ -67,6 +68,11 @@ tables:
 # Reads credentials from infra/envs/data.env. Proposes only; --apply to write.
 icd:
 	set -a; . ./infra/envs/data.env; set +a; $(UV) run python -m herhealth_data.cli icd
+
+# Needs build/clean, so run after `make clean`. This is the check that makes
+# the verification protocol real: it confirms each quote exists in its source.
+verify-quotes:
+	$(UV) run python -m herhealth_data.cli verify-quotes
 
 validate:
 	$(UV) run python -m herhealth_data.cli validate --knowledge $(KNOWLEDGE_DIR)

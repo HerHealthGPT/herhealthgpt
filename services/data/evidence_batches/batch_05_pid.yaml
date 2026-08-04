@@ -32,7 +32,7 @@ rows:
     value: "yes"
     strength: strong_support
     source_id: womenshealth
-    source_quote: Fever (100.4 F or higher)
+    source_quote: Fever (100.4° F or higher)
     note: >-
       Named directly among the signs, with a threshold. Strong because none of
       PCOS, endometriosis or fibroids causes fever, so this feature does almost

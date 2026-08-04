@@ -9,6 +9,7 @@ commands stay testable without constructing a parser.
     herhealth-data evidence  generate evidence.csv from reviewed batches
     herhealth-data tables    render every knowledge file as a flat table
     herhealth-data icd       propose ICD-11 codes from the WHO API
+    herhealth-data verify-quotes  check quotes against their cited source
     herhealth-data validate  check knowledge/ against the schemas
     herhealth-data build     clean, chunk, write build/passages.parquet
     herhealth-data eval      run the controller over the benchmark cases
@@ -63,6 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
     evidence_parser.add_argument("--batches", type=Path, default=paths.EVIDENCE_BATCH_DIR)
     evidence_parser.add_argument("--out", type=Path, default=paths.KNOWLEDGE_DIR / "evidence.csv")
     evidence_parser.set_defaults(func=commands.run_evidence)
+
+    verify_parser = subparsers.add_parser(
+        "verify-quotes",
+        help="check every source_quote appears verbatim in the source it cites",
+    )
+    verify_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
+    verify_parser.add_argument("--clean-dir", type=Path, default=paths.CLEAN_DIR)
+    verify_parser.add_argument(
+        "--verbose", action="store_true", help="list every quote, not only the failures"
+    )
+    verify_parser.set_defaults(func=commands.run_verify_quotes)
 
     icd_parser = subparsers.add_parser(
         "icd", help="propose ICD-11 codes for conditions marked TODO_VERIFY"

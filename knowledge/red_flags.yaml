@@ -88,6 +88,34 @@ red_flags:
       and changes the action completely, so burden is set to 1 and
       next_question should reach it early.
 
+  - id: pelvic_pain_with_right_sided_referred_pain
+    label: Pelvic pain with right rib and right shoulder pain
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: right_upper_quadrant_pain
+        op: equals
+        value: "yes"
+      - feature_id: shoulder_tip_pain
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      have pain under your ribs on the right side and in your right shoulder
+    note: >-
+      From the PID page's "Call 999 or go straight to A&E if:" box. A
+      CONJUNCTION, and encoded as one: the source names both sites together, so
+      requiring both is what the sentence says.
+
+      Deliberately separate from pelvic_pain_with_shoulder_tip_pain, which comes
+      from the pelvic pain page where shoulder tip pain alone is the whole
+      trigger. Two sources state two different things; merging them would make
+      one rule fire on less, and the other on more, than its source says. The
+      broader rule still catches this case — this one exists so the PID bullet
+      is represented rather than assumed covered.
+
   - id: pelvic_pain_with_heavy_bleeding
     label: Pelvic pain with heavy vaginal bleeding
     all_of:
