@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 
 import pytest
+from ingest_factories import DATE, make_target
 
-from conftest import DATE, make_target
 from herhealth_data.ingest import (
     FetchOutcome,
     FetchRecord,

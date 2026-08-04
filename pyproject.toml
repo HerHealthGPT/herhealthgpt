@@ -13,6 +13,7 @@ requires-python = ">=3.12"
 dependencies = [
     "herhealth-contracts",
     "herhealth-data",
+    "herhealth-backend",
 ]
 
 # Re-exposed from the data service so `uv sync --extra ingest` works from the
@@ -28,12 +29,14 @@ package = false
 members = [
     "packages/contracts",
     "services/data",
+    "services/backend",
 ]
 
 # The two local packages resolve to the working tree, never to an index.
 [tool.uv.sources]
 herhealth-contracts = { workspace = true }
 herhealth-data = { workspace = true }
+herhealth-backend = { workspace = true }
 
 # Tooling shared by every member. Installed by default; `uv sync --no-dev`
 # gives the runtime-only environment.
