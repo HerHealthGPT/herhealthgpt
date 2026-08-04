@@ -103,21 +103,38 @@ features:
     allowed_values: [light, moderate, heavy, soaking_hourly]
     burden: 2
     probe:
-      en: How heavy is your bleeding at its worst — light, moderate, heavy, or
+      en: How heavy is your bleeding at its worst — light, moderate, heavy (for
+        example, passing large clots or bleeding through your clothes), or
         soaking through protection every hour?
     note: >-
       "soaking_hourly" is deliberately its own level rather than the top of
       "heavy". It is the value escalation rules key on, and collapsing it into
       "heavy" would lose the distinction that matters most.
 
-  - id: large_clots
-    label: Passing large clots
-    kind: boolean
-    allowed_values: ["yes", "no"]
-    burden: 2
-    probe:
-      en: Are you passing large blood clots?
-    note: Probe avoids coin-size comparisons, which do not travel between countries.
+      The clot and clothes-soaking examples come from the NHS definition of
+      heavy periods: "need to change your pad or tampon every 1 to 2 hours",
+      "pass blood clots larger than about 2.5cm", "bleed through to your
+      clothes or bedding". They live in the PROBE rather than in a feature of
+      their own, because they describe how to judge heaviness rather than being
+      findings a source ties to any condition. The 2.5cm figure is deliberately
+      omitted from the wording — coin comparisons do not travel, and a
+      centimetre judgement is not one a user can reliably make.
+
+# DELETED 2026-08-04: large_clots.
+#
+# No source ties clots to any condition. The only mention in 43 fetched
+# documents is the NHS definition of heavy periods — "pass blood clots larger
+# than about 2.5cm (the size of a 10p coin)" — which describes what heavy
+# bleeding IS, not what causes it. Reaching "clots support fibroids" needs two
+# inferential steps, and the protocol forbids inferring rows.
+#
+# A feature no evidence row and no red-flag clause can use is a question whose
+# answer can never change the outcome. Deleted rather than kept hopefully.
+#
+# The information is not lost: the clot threshold now appears in the
+# bleeding_heaviness probe below, where it helps a user judge their own answer.
+# That is a better home for it — it was always a way of describing heaviness
+# rather than a finding in its own right.
 
   - id: bleeding_between_periods
     label: Bleeding between periods

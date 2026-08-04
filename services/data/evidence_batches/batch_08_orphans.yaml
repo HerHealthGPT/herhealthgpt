@@ -1,0 +1,72 @@
+# Batch 08 — the last orphan feature, and two endometriosis rows.
+#
+# APPROVED 2026-08-04. With these rows every feature in features.yaml is used by
+# at least one evidence row or red-flag clause — no dead weight remains.
+#
+# Small and deliberately so. This clears the final validator warning and adds
+# two endometriosis rows whose sources were found while looking for it.
+#
+# After this every feature in features.yaml is used by at least one evidence row
+# or red-flag clause, which is the point of the dead-weight check: a question
+# whose answer can never change the outcome should not be asked.
+
+batch: 08
+covers: [pcos, endometriosis]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  - condition_id: pcos
+    feature_id: acanthosis_nigricans
+    value: "yes"
+    strength: strong_support
+    source_id: nichd
+    source_quote: >-
+      Patches of thickened, dark, velvety skin, called acanthosis nigricans, are
+      associated with insulin resistance.
+    note: >-
+      Strong, and unusually well corroborated — CDC ("Darkening of the skin in
+      body creases, known as acanthosis nigricans"), MedlinePlus ("Patches of
+      thickened dark skin") and NICHD all name it.
+
+      The NICHD sentence is chosen over the others because it states the
+      MECHANISM: the sign is tied to insulin resistance, which the same page
+      says more than half of women with PCOS have. That is characteristic
+      framing rather than a list entry.
+
+      Also one of the few findings in the knowledge base that is visually
+      distinctive and specific — most of what this system asks about is common
+      to several conditions, and this is not.
+
+  - condition_id: endometriosis
+    feature_id: extreme_tiredness
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: extreme tiredness (fatigue)
+    note: >-
+      Listed among the symptoms that can occur at any time, rather than only
+      during a period. Weak: fatigue is non-specific and now also supports
+      perimenopause.
+
+      Note this row is on firmer ground than the perimenopause one, where the
+      source described fatigue as a consequence of disturbed sleep. Here it is
+      named directly as a symptom.
+
+  - condition_id: endometriosis
+    feature_id: low_mood_or_anxiety
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      You may also have difficulty getting pregnant and have low mood or
+      anxiety.
+    note: >-
+      Weak and non-specific — it supports perimenopause too, and the same
+      sentence covers difficulty conceiving, which endometriosis already has a
+      row for from another source.
+
+      Worth keeping despite the weakness: the system provides informational
+      guidance as well as urgency, and low mood is part of what living with this
+      condition involves. The NHS page devotes a section to it.

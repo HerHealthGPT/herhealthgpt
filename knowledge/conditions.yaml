@@ -156,7 +156,7 @@ conditions:
     label: Sexually transmitted infection (STI)
     icd11: 1A9Z
     baseline_action: ROUTINE_APPOINTMENT
-    source_ids: [womenshealth, nhs]
+    source_ids: [womenshealth, nhs, medlineplus]
     note: >-
       Included because it is the CAUSE of pelvic inflammatory disease — NHS:
       "Pelvic inflammatory disease (PID) is usually caused by sexually
