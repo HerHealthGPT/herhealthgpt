@@ -285,6 +285,16 @@ class Condition(_KnowledgeModel):
     #: At least two, so no condition rests on a single document.
     source_ids: tuple[Identifier, ...] = Field(min_length=2)
 
+    #: What to search external terminologies for, when our label does not match
+    #: theirs. Empty means the label is the query.
+    #:
+    #: Exists because naming drifts: NHS and NICHD now call PCOS "polyendocrine
+    #: metabolic ovarian syndrome", while ICD-11 still indexes "polycystic ovary
+    #: syndrome". Recording the search term explicitly is honest about the
+    #: mismatch; fuzzy-matching around it would hide a real disagreement between
+    #: authorities.
+    search_term: str = ""
+
     note: str = ""
 
     @field_validator("source_ids")

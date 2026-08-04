@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables validate build eval lint fmt test clean-build
+.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd validate build eval lint fmt test clean-build
 
 help:
 	@echo "install    create .venv and install everything from uv.lock"
@@ -24,6 +24,7 @@ help:
 	@echo "clean      turn fetched HTML into sectioned, quotable text"
 	@echo "evidence   regenerate knowledge/evidence.csv from reviewed batches"
 	@echo "tables     render the knowledge base as CSV + Markdown tables"
+	@echo "icd        propose ICD-11 codes (needs WHO_ICD_* in infra/envs/data.env)"
 	@echo "validate   check knowledge/ against the contracts schemas"
 	@echo "build      fetch -> clean -> chunk -> build/passages.parquet (phase 4)"
 	@echo "eval       run the triage controller over the benchmark cases (phase 3)"
@@ -62,6 +63,10 @@ evidence:
 # Flat views of every knowledge file. Generated; nothing reads them back.
 tables:
 	$(UV) run python -m herhealth_data.cli tables
+
+# Reads credentials from infra/envs/data.env. Proposes only; --apply to write.
+icd:
+	set -a; . ./infra/envs/data.env; set +a; $(UV) run python -m herhealth_data.cli icd
 
 validate:
 	$(UV) run python -m herhealth_data.cli validate --knowledge $(KNOWLEDGE_DIR)

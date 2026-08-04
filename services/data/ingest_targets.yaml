@@ -275,3 +275,62 @@ documents:
     slug: stopped_or_missed_periods
     url: https://www.nhs.uk/conditions/stopped-or-missed-periods/
     licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # ---------------------------------------------------------------------------
+  # Ovarian cyst, UTI and STI — added 2026-08-04.
+  #
+  # Not in the original fourteen. Added after auditing what our own sources name
+  # as differentials: NHS lists all three as causes of pelvic pain. They are the
+  # benign and infective alternatives the differential was missing, and without
+  # them several existing features point at the wrong condition.
+  # ---------------------------------------------------------------------------
+  - source_id: medlineplus
+    slug: ovarian_cyst
+    url: https://medlineplus.gov/ovariancysts.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: ovarian_cyst
+    url: https://womenshealth.gov/a-z-topics/ovarian-cysts
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: ovarian_cyst
+    url: https://www.nhs.uk/conditions/ovarian-cyst/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: medlineplus
+    slug: urinary_tract_infection
+    url: https://medlineplus.gov/urinarytractinfections.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: urinary_tract_infection
+    url: https://womenshealth.gov/a-z-topics/urinary-tract-infections
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: urinary_tract_infection
+    url: https://www.nhs.uk/conditions/urinary-tract-infections-utis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: medlineplus
+    slug: chlamydia
+    url: https://medlineplus.gov/chlamydiainfections.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: sexually_transmitted_infection
+    url: https://womenshealth.gov/a-z-topics/sexually-transmitted-infections
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: sexually_transmitted_infection
+    url: https://www.nhs.uk/conditions/sexually-transmitted-infections-stis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.

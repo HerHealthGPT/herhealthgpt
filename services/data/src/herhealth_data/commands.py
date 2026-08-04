@@ -31,6 +31,7 @@ __all__ = [
     "run_clean",
     "run_eval",
     "run_evidence",
+    "run_icd",
     "run_tables",
     "run_fetch",
     "run_validate",
@@ -157,6 +158,63 @@ def run_evidence(args: argparse.Namespace) -> int:
         )
     print(f"\nwrote {written} row(s) to {args.out}")
     print("Run `make validate` to check them against the rest of the knowledge base.")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# icd
+# --------------------------------------------------------------------------
+
+
+def run_icd(args: argparse.Namespace) -> int:
+    """Propose ICD-11 codes for conditions still marked TODO_VERIFY.
+
+    Prints proposals for review. Writes nothing unless --apply is given, and
+    never writes a code it is not confident in: an unfilled field is honest,
+    a wrong identifier looks authoritative and is not.
+    """
+    import yaml
+
+    from herhealth_data.icd import IcdError, credentials_from_env, fetch_token, propose_codes
+
+    payload = yaml.safe_load(args.conditions.read_text(encoding="utf-8"))
+    pending = [
+        (c["id"], str(c.get("search_term") or c["label"]).split(",")[0].strip())
+        for c in payload["conditions"]
+        if str(c.get("icd11", "")).strip() == "TODO_VERIFY"
+    ]
+    if not pending:
+        print("no conditions are marked TODO_VERIFY; nothing to resolve")
+        return 0
+
+    try:
+        client_id, secret = credentials_from_env()
+        token = fetch_token(client_id, secret)
+        proposals = propose_codes(pending, token)
+    except IcdError as error:
+        print(f"error: {error}")
+        return 2
+
+    print(f"{len(pending)} condition(s) to resolve:\n")
+    for proposal in proposals:
+        print(proposal.describe())
+
+    confident = [p for p in proposals if p.is_confident]
+    unresolved = len(proposals) - len(confident)
+    print(f"\n{len(confident)} confident, {unresolved} left as TODO_VERIFY")
+
+    if not args.apply:
+        print("\nProposals only. Re-run with --apply to write them into conditions.yaml.")
+        return 0
+
+    text = args.conditions.read_text(encoding="utf-8")
+    for proposal in confident:
+        marker = f"  - id: {proposal.condition_id}"
+        start = text.index(marker)
+        todo = text.index("icd11: TODO_VERIFY", start)
+        text = text[:todo] + f"icd11: {proposal.code}" + text[todo + len("icd11: TODO_VERIFY"):]
+    args.conditions.write_text(text, encoding="utf-8")
+    print(f"\nwrote {len(confident)} code(s) into {args.conditions}")
     return 0
 
 

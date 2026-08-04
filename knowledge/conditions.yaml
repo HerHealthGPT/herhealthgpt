@@ -8,18 +8,22 @@
 # be worth asking about", not "this may be what you have".
 # ============================================================================
 #
-# `icd11` is TODO_VERIFY on every row. ICD-11 codes recalled from training data
-# are unreliable, so none is written by hand; they are filled by the WHO ICD API
-# lookup, which is deferred (identifiers are cosmetic and block nothing).
+# `icd11` is never written by hand — codes recalled from a language model are
+# unreliable, and a wrong identifier is worse than an absent one because it looks
+# authoritative. Every code here was resolved by `make icd` against the WHO ICD
+# API, release 2026-01, which is pinned so codes cannot shift between runs. A
+# condition the API could not match confidently keeps TODO_VERIFY.
 #
-# `baseline_action` is what the condition implies on its own, before any
-# evidence moves it. All three phase 1 conditions are ROUTINE_APPOINTMENT: none
-# of them is an emergency in itself. Escalation comes from red_flags.yaml, which
-# runs before any of this and is derived only from explicit escalation language.
+# `baseline_action` is what the condition implies on its own, before any evidence
+# moves it. Most sit at ROUTINE_APPOINTMENT, escalation coming only from
+# red_flags.yaml. Two exceptions, both deliberate:
+#   pelvic_inflammatory_disease  URGENT_SAME_DAY — NHS routes the mere suspicion
+#                                of it to urgent care
+#   normal_variation             SELF_CARE — the only route to that action
 #
 # `source_ids` resolve to sources.yaml and must number at least two, so no
-# condition rests on a single document. Both cited sources are `available`
-# (public domain), so every claim built on them can also be redistributed.
+# condition rests on a single document. Sources marked `citable_only` (NHS) may
+# be cited here; only `available` sources may enter the passage corpus.
 #
 # Validated against herhealth_contracts.knowledge.ConditionsFile.
 
@@ -32,9 +36,12 @@ conditions:
     label: >-
       Polyendocrine metabolic ovarian syndrome (PMOS), formerly polycystic
       ovary syndrome (PCOS)
-    icd11: TODO_VERIFY
+    icd11: 5A80.1
     baseline_action: ROUTINE_APPOINTMENT
     source_ids: [medlineplus, nichd]
+    # ICD-11 still indexes the old name, so searching our label finds nothing.
+    # Recorded rather than fuzzy-matched: the authorities genuinely disagree.
+    search_term: Polycystic ovary syndrome
     note: >-
       MedlinePlus: "Polycystic ovary syndrome (PCOS) is the name for set of
       symptoms that are related to an imbalance of hormones. PCOS affects the
@@ -46,7 +53,7 @@ conditions:
 
   - id: endometriosis
     label: Endometriosis
-    icd11: TODO_VERIFY
+    icd11: GA10.Z
     baseline_action: ROUTINE_APPOINTMENT
     source_ids: [medlineplus, nichd]
     note: >-
@@ -57,6 +64,110 @@ conditions:
       page is a single paragraph — so this condition rests far more heavily on
       MedlinePlus than the other two. The two-source rule is satisfied in form
       but is thin in substance here. CDC has no endometriosis page at all.
+
+  # ---------------------------------------------------------------------------
+  # The first condition whose baseline is not routine.
+  # ---------------------------------------------------------------------------
+  - id: pelvic_inflammatory_disease
+    label: Pelvic inflammatory disease (PID)
+    icd11: GA05.Z
+    baseline_action: URGENT_SAME_DAY
+    source_ids: [womenshealth, cdc, nhs]
+    note: >-
+      BASELINE IS URGENT, WHICH IS NEW. Every other condition here sits at
+      ROUTINE_APPOINTMENT or below, and escalation comes only from red_flags.
+      PID is different because the NHS routes the mere suspicion of it to urgent
+      care: "Ask for an urgent GP appointment or get help from NHS 111 if: you
+      think you have symptoms of pelvic inflammatory disease (PID)". So the
+      condition being live in the differential is itself enough.
+
+      That makes it the most important addition to the differential so far. It
+      is THE urgent alternative to the phase 1 three: fever, unusual discharge
+      and pelvic pain together point here rather than at endometriosis or
+      fibroids, and those three features already exist and currently do very
+      little work.
+
+      CDC states the escalation trigger plainly too: "Promptly see a doctor if
+      you have any genital symptoms such as an unusual sore, a smelly discharge,
+      burning when peeing, or bleeding between periods." Three sources, all
+      already fetched.
+
+  - id: perimenopause
+    label: Perimenopause and menopause
+    icd11: GA30.Z
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nhs]
+    note: >-
+      Included for the reason CLAUDE.md gives: without it the system
+      over-suspects PCOS in women over 45, because irregular periods, weight
+      change, low mood and thinning hair all appear under both. Age is what
+      separates them, and age_band already exists.
+
+      A natural life stage rather than a disease, so the baseline is a judgement
+      call. NHS calls it "a natural part of life" but still routes symptoms to a
+      GP — "Contact your GP if you think you have symptoms of menopause or
+      perimenopause and want to know what your options are" — so
+      ROUTINE_APPOINTMENT rather than SELF_CARE. Only normal_variation sits at
+      SELF_CARE.
+
+      NHS defines the boundary usefully: "Perimenopause happens when your
+      periods become irregular and menopause is when your periods stop
+      altogether", and "usually affects women between the ages of 45 and 55".
+
+  # ---------------------------------------------------------------------------
+  # The benign and infective alternatives — added 2026-08-04.
+  #
+  # None of these was in the original fourteen. They were added after auditing
+  # what our own sources name as differentials: NHS lists all three as causes of
+  # pelvic pain. Without them several existing features point at the wrong
+  # condition, which is a worse failure than not modelling them at all.
+  # ---------------------------------------------------------------------------
+  - id: ovarian_cyst
+    label: Ovarian cyst
+    icd11: GA18.6
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, womenshealth, nhs]
+    note: >-
+      Baseline is routine because most cysts are harmless: NHS says they are
+      "very common and do not usually cause any symptoms" and that "Most ovarian
+      cysts occur naturally and go away in a few months without needing any
+      treatment." The dangerous cases — torsion and rupture — are handled by red
+      flags, not by the baseline.
+
+      Its real value is explaining `pain_onset: sudden`, which until now had
+      nothing to point at. NHS: "An ovarian cyst usually only causes symptoms if
+      it splits (ruptures), is very large or twists and then blocks the blood
+      supply to the ovaries", with pain that "can range from a dull, heavy
+      sensation to a sudden, severe and sharp pain."
+
+  - id: urinary_tract_infection
+    label: Urinary tract infection (UTI)
+    icd11: GC08.Z
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, womenshealth, nhs]
+    note: >-
+      The commonest benign cause of pelvic pain with urinary symptoms, and NHS
+      names it first among the common causes of pelvic pain. Without it,
+      `urinary_symptoms` pushes toward fibroids when the answer is usually far
+      simpler — a differential that omits the common explanation will
+      systematically over-suspect the rare one.
+
+  - id: sexually_transmitted_infection
+    label: Sexually transmitted infection (STI)
+    icd11: 1A9Z
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, nhs]
+    note: >-
+      Included because it is the CAUSE of pelvic inflammatory disease — NHS:
+      "Pelvic inflammatory disease (PID) is usually caused by sexually
+      transmitted infections (STIs) like chlamydia and gonorrhoea" — and because
+      it is what `abnormal_discharge` should point at before anything else.
+
+      Baseline routine rather than urgent: NHS routes to a GP or sexual health
+      clinic. It escalates only through PID, which carries the urgent baseline.
+      Treated as one condition rather than one per organism: the triage action
+      is the same for all of them, and this system decides urgency, not which
+      organism.
 
   # ---------------------------------------------------------------------------
   # Not a disease. Included because without it SELF_CARE is unreachable.
@@ -87,7 +198,7 @@ conditions:
 
   - id: uterine_fibroids
     label: Uterine fibroids
-    icd11: TODO_VERIFY
+    icd11: 2E86.0
     baseline_action: ROUTINE_APPOINTMENT
     source_ids: [medlineplus, nichd]
     note: >-

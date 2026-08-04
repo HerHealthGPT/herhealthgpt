@@ -235,14 +235,100 @@ features:
   - id: urinary_symptoms
     label: Urinary symptoms
     kind: categorical
-    allowed_values: [none, frequency, difficulty_passing_urine]
+    allowed_values: [none, frequency, incontinence, difficulty_passing_urine]
     burden: 2
     probe:
-      en: Any problems passing urine — needing to go much more often, or difficulty
-        passing it at all?
+      en: Any problems passing urine — needing to go much more often, leaking, or
+        difficulty passing it at all?
     note: >-
-      Two different things in one question. Frequency suggests pressure from a
-      mass; difficulty passing urine does not wait.
+      Three different things in one question, in increasing urgency. Frequency
+      suggests pressure from a mass; incontinence likewise but is separately
+      named by NHS for fibroids ("not being able to control when you pee") and
+      for perimenopause; difficulty passing urine does not wait and keys a red
+      flag.
+
+      `incontinence` added 2026-08-04. Adding a value is safe — no existing row
+      referenced it — but note that a value which no evidence row uses is dead
+      weight in the same way an unused feature is.
+
+  # -------------------------------------------------------------------------
+  # Systemic and constitutional
+  #
+  # Added 2026-08-04 after auditing the fetched corpus for symptoms our sources
+  # name but no feature covered. Each of these is named by at least two sources,
+  # which is why they were chosen over other candidates.
+  # -------------------------------------------------------------------------
+
+  - id: acanthosis_nigricans
+    label: Dark velvety patches of skin
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Have you noticed dark, velvety patches of skin, especially on your neck,
+        armpits or groin?
+    note: >-
+      Named by CDC, MedlinePlus and NICHD, all of which tie it to insulin
+      resistance in PCOS. Visually distinctive and easy for a user to recognise
+      once described, which is why the probe describes it rather than naming it.
+
+  - id: extreme_tiredness
+    label: Extreme tiredness
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Have you been extremely or unusually tired?
+    note: >-
+      OVERLAPS anaemia_symptoms, deliberately and with care. That feature asks
+      about tiredness WITH breathlessness and dizziness — the picture of blood
+      loss. This one is fatigue on its own, which the NHS lists for
+      endometriosis ("extreme tiredness (fatigue)") and for PMOS ("feeling very
+      tired") without any bleeding context.
+
+      The two are correlated, so a user may answer yes to both and the
+      controller would count fatigue twice. Flagged for phase 2: correlated
+      features are a known weakness of naive log-odds accumulation, and this is
+      the clearest instance in the set.
+
+  - id: bloating_or_digestive_symptoms
+    label: Bloating or digestive problems
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Do you get bloating, constipation, diarrhoea or other tummy problems,
+        especially around your period?
+    note: >-
+      Named by NHS, MedlinePlus and the Office on Women's Health. The tie to the
+      menstrual cycle is what makes it point at endometriosis rather than at a
+      bowel condition, which is why the probe asks about the timing.
+
+  - id: lower_back_pain
+    label: Lower back pain
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you get pain in your lower back?
+    note: >-
+      NHS lists it for fibroids; the Office on Women's Health describes
+      "Chronic (long-term) pain in the lower back and pelvis" for endometriosis.
+      Cheap to ask and non-sensitive, so burden 1.
+
+  - id: low_mood_or_anxiety
+    label: Low mood or anxiety
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 3
+    probe:
+      en: Have you been feeling low, anxious or depressed?
+    note: >-
+      Named by NHS (for both PMOS and endometriosis), MedlinePlus and NICHD.
+      Burden 3 because it is personal, so next_question should reach it late and
+      only when it would change the action. It is a poor discriminator on its
+      own — it appears under several conditions — but it matters for the
+      informational half of what this system does.
 
   # -------------------------------------------------------------------------
   # Emergency signs

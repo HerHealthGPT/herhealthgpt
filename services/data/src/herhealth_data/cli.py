@@ -8,6 +8,7 @@ commands stay testable without constructing a parser.
     herhealth-data clean     turn fetched HTML into sectioned text
     herhealth-data evidence  generate evidence.csv from reviewed batches
     herhealth-data tables    render every knowledge file as a flat table
+    herhealth-data icd       propose ICD-11 codes from the WHO API
     herhealth-data validate  check knowledge/ against the schemas
     herhealth-data build     clean, chunk, write build/passages.parquet
     herhealth-data eval      run the controller over the benchmark cases
@@ -62,6 +63,17 @@ def build_parser() -> argparse.ArgumentParser:
     evidence_parser.add_argument("--batches", type=Path, default=paths.EVIDENCE_BATCH_DIR)
     evidence_parser.add_argument("--out", type=Path, default=paths.KNOWLEDGE_DIR / "evidence.csv")
     evidence_parser.set_defaults(func=commands.run_evidence)
+
+    icd_parser = subparsers.add_parser(
+        "icd", help="propose ICD-11 codes for conditions marked TODO_VERIFY"
+    )
+    icd_parser.add_argument(
+        "--conditions", type=Path, default=paths.KNOWLEDGE_DIR / "conditions.yaml"
+    )
+    icd_parser.add_argument(
+        "--apply", action="store_true", help="write confident codes into conditions.yaml"
+    )
+    icd_parser.set_defaults(func=commands.run_icd)
 
     tables_parser = subparsers.add_parser(
         "tables", help="render the knowledge base as flat CSV and Markdown tables"
