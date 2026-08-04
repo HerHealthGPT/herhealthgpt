@@ -10,18 +10,26 @@ Completed 2026-08-04. Everything below is reproducible from `make fetch` onward.
 
 | | Count | |
 |---|---|---|
-| Features | 36 | Everything the system may ask about |
-| Conditions | 9 | Everything it may consider |
-| Evidence rows | 80 | The sparse grid connecting them |
+| Features | 37 | Everything the system may ask about |
+| Conditions | 12 | Everything it may consider |
+| Evidence rows | 89 | The sparse grid connecting them |
 | Red flags | 14 | 7 `EMERGENCY`, 7 `URGENT_SAME_DAY` |
 | Sources | 5 | 4 public domain, 1 `citable_only` |
-| Documents fetched | 43 | Immutable, hashed, in `raw/2026-08-04/` |
-| Tests | 225 | None touch the network |
+| Documents fetched | 49 | Immutable, hashed, in `raw/2026-08-04/` |
+| Tests | 230 | None touch the network |
 | Validator warnings | 0 | |
-| Quotes verified verbatim | 94 / 94 | |
+| Quotes verified verbatim | 103 / 103 | |
 
-Grid density is **80 of 324 possible cells (24.7%)**, which is the sparseness the
+Grid density is **89 of 444 possible cells (20.0%)**, which is the sparseness the
 design intends — `neutral` is expressed by omitting a row.
+
+**Scope grew well beyond the brief**, from three conditions to twelve. Each
+addition was individually justified — the differential was missing the benign
+and infective alternatives, so several features pointed at the wrong condition —
+but the growth happened without the reasoning core ever being run. That is worth
+recording as a process observation, not just a count: the phase order exists
+precisely to test elimination early, and enrichment is easier to justify one
+step at a time than to stop.
 
 ## The headline finding: elimination barely works
 
@@ -35,9 +43,13 @@ design intends — `neutral` is expressed by omitting a row.
 | `pelvic_inflammatory_disease` | 9 | **0** |
 | `perimenopause` | 8 | **0** |
 | `urinary_tract_infection` | 6 | **0** |
+| `adenomyosis` | 5 | **0** |
 | `sexually_transmitted_infection` | 3 | **0** |
+| `thrush` | 3 | **0** |
+| `bacterial_vaginosis` | 1 | **0** |
 
-**Five of nine conditions have no way down.** They can be raised by evidence and
+**Eight of twelve conditions have no way down**, and the ratio got worse as the
+knowledge base grew: 9 eliminating rows out of 89. They can be raised by evidence and
 never lowered, so once live they persist until `max_questions` runs out.
 
 This is not an authoring failure. It follows directly from the verification
@@ -50,6 +62,8 @@ argues against it, and several say the opposite outright:
 - *"Not everyone with pelvic inflammatory disease (PID) will have symptoms"* — NHS
 - *"Many STIs have no symptoms"* — NHS
 - *"Most ovarian cysts are small and don't cause symptoms"* — Office on Women's Health
+- *"Half of women with bacterial vaginosis do not have any symptoms"* — NHS
+- *"Some people with adenomyosis have no symptoms"* — NHS
 
 Where a condition is often silent, absence of a symptom genuinely does not argue
 against it, and inventing a row that said otherwise would be the exact failure
@@ -57,7 +71,7 @@ the protocol exists to prevent.
 
 **Consequence for Phase 2.** `should_stop` rule 2 — "all conditions above the
 floor share one action" — is the workhorse of the controller, and it depends on
-conditions dropping below the floor. With five that cannot, the differential will
+conditions dropping below the floor. With eight that cannot, the differential will
 stay wide and the controller will lean on `max_questions`. Since PID carries an
 `URGENT_SAME_DAY` baseline and cannot be eliminated, it will also hold urgency up.
 
@@ -75,6 +89,7 @@ Recorded as ADRs, because each is hard to reverse and surprising without context
 | [0003](adr/0003-evidence-csv-is-generated-from-approved-batches.md) | `evidence.csv` is generated from approved batches |
 | [0004](adr/0004-severe-pelvic-pain-is-urgent-not-emergency.md) | Severe pelvic pain is urgent, not emergency |
 | [0005](adr/0005-plausibility-is-an-independent-logistic.md) | Plausibility is an independent logistic, not a softmax |
+| [0006](adr/0006-a-condition-may-cite-one-source-if-it-says-why.md) | A condition may cite one source, if it says why |
 
 The vocabulary is in [`CONTEXT.md`](../CONTEXT.md); the code in
 [`docs/CODE_GUIDE.md`](CODE_GUIDE.md).
@@ -133,20 +148,36 @@ reaches 0.818 and clears `stop_confidence` of 0.65 **on its own**, so the
 controller could stop after a single answer. Left as authored and pinned by a
 test — it should be set by the evaluation set, not by argument.
 
-**Four conditions are blocked.** Adenomyosis (NHS only), hyperprolactinaemia
-(MedlinePlus only), endometrial polyp and pregnancy-related bleeding (no
-dedicated page on any usable source) all fail the two-source rule. Adenomyosis
-is the real loss — NHS names it repeatedly alongside endometriosis as a cause of
-heavy and painful periods.
+**One condition rests on a single source.** Adenomyosis is authored under the
+documented exception in ADR 0006 — NHS covers it across three documents, but no
+second source exists. If NHS is wrong about something in it, nothing catches it.
+
+**Two conditions remain blocked.** Hyperprolactinaemia (MedlinePlus only) and
+endometrial polyp (no dedicated page anywhere usable). Five more are sourceable
+but unauthored: primary ovarian insufficiency, inherited bleeding disorder,
+hypothyroidism, ectopic pregnancy and miscarriage. Authoring stopped
+deliberately, to run the controller before enriching further.
+
+**Two conditions cannot be told apart.** Adenomyosis and endometriosis both
+present with severe cyclical pain and heavy bleeding, and no feature separates
+them. Fibroids claims heavy bleeding too. The differential will routinely carry
+all three.
+
+**Discharge separates in one direction only.** `abnormal_discharge` is a boolean,
+so it cannot distinguish thrush's "cottage cheese, does not usually smell" from
+bacterial vaginosis's "strong fishy smell" — detail a user could easily report.
+`vulval_itching` raises thrush but, because two sources contradict each other on
+whether bacterial vaginosis itches, its absence lowers nothing.
 
 **Cancers are deliberately unmodelled.** Sources name womb and ovarian cancer as
 causes of these presentations. Modelling them would invite the system to suggest
 cancer to a worried user. They are served by red flags instead.
 
-**Source coverage is uneven.** 29 rows each from NHS and the Office on Women's
-Health, 13 from MedlinePlus, 8 from NICHD, **1 from CDC**. CDC is close to
+**Source coverage is uneven.** 37 rows from NHS, 30 from the Office on Women's
+Health, 13 from MedlinePlus, 8 from NICHD, **1 from CDC**. CDC is effectively
 unused, and endometriosis rests far more on MedlinePlus than its two-source
-citation suggests.
+citation suggests. NHS being the largest contributor is notable given it is the
+only `citable_only` source — its text can be quoted but never enter the corpus.
 
 **Two features strain.** `pain_opening_bowels_or_urinating` covers two questions
 in one and has been stretched twice; splitting it would touch four batches.

@@ -13,7 +13,10 @@
 {"escalation_sentences": 1, "sections": 17, "slug": "menstruation", "source_id": "medlineplus", "text_hash": "a0026185e2e3aa78bf62285ed4c8298832e158ed1805f402eb87ca1dc7227c19"}
 {"escalation_sentences": 2, "sections": 5, "slug": "ovarian_cyst", "source_id": "medlineplus", "text_hash": "9ecddf3c94d7a8376347bb410262e51527781c3badf376ead9f3f36588d73c49"}
 {"escalation_sentences": 1, "sections": 17, "slug": "pcos", "source_id": "medlineplus", "text_hash": "1db6bed317047008daff3fa4d40da22c8c8cc2e0c2e459197ee0d515c3c0b32b"}
+{"escalation_sentences": 1, "sections": 15, "slug": "thrush", "source_id": "medlineplus", "text_hash": "7683fbda2969caf3531ce78362ed669bf5ef0bd23de186087b4ead65ec39c734"}
 {"escalation_sentences": 3, "sections": 15, "slug": "urinary_tract_infection", "source_id": "medlineplus", "text_hash": "950ede04757f747c66acbc189c99b872057ec3619256d12134faac2f92909286"}
+{"escalation_sentences": 1, "sections": 9, "slug": "adenomyosis", "source_id": "nhs", "text_hash": "ed167d8cff6e6196cad03c7a89f85586211141e7814f699adbcf64214aeff6f9"}
+{"escalation_sentences": 0, "sections": 12, "slug": "bacterial_vaginosis", "source_id": "nhs", "text_hash": "a5cf4a0f77f717c92383d12ece0d625ded3cd51130d32a6d54a22554e33ee550"}
 {"escalation_sentences": 2, "sections": 8, "slug": "bleeding_between_periods", "source_id": "nhs", "text_hash": "da0185240c00d7e80dfc8c09db13e61b7931eb6f920bfe3588fcf5d2ba8cc4b2"}
 {"escalation_sentences": 0, "sections": 17, "slug": "endometriosis", "source_id": "nhs", "text_hash": "0c399e63de57f08b9d39e7b17881b8415e0270496bdbe85c5d44b0a78d5f5e6d"}
 {"escalation_sentences": 2, "sections": 8, "slug": "fibroids", "source_id": "nhs", "text_hash": "5aa0b3abbe61bc7d1d8a44f4e4fc91c632abb0f6cbb1b26c39d637785e5bcb48"}
@@ -27,6 +30,7 @@
 {"escalation_sentences": 1, "sections": 8, "slug": "period_pain", "source_id": "nhs", "text_hash": "bb9d5b214e0398e535660890f6ff4c6add97ec62725bca9a956ea7fb027fa817"}
 {"escalation_sentences": 0, "sections": 8, "slug": "sexually_transmitted_infection", "source_id": "nhs", "text_hash": "eefef508b65f72f742846d06c9541d7e1b17b2bd9e5bd393b86f6971fd2fdf37"}
 {"escalation_sentences": 1, "sections": 5, "slug": "stopped_or_missed_periods", "source_id": "nhs", "text_hash": "e73521b34f752711fd5d4368cce99ae1937364c8fea0a8d8644460e7e252447f"}
+{"escalation_sentences": 0, "sections": 14, "slug": "thrush", "source_id": "nhs", "text_hash": "936359694ece7a1a8b6992ac8a1e93cbde129797913cf0e1a854875c67accaea"}
 {"escalation_sentences": 3, "sections": 16, "slug": "urinary_tract_infection", "source_id": "nhs", "text_hash": "ad45c19d27e1e34f528908a2d0bacabcc0c14e051ac6b9fb288acc7b4095ca0c"}
 {"escalation_sentences": 0, "sections": 1, "slug": "endometriosis", "source_id": "nichd", "text_hash": "2881e03523ffba8db20bf5189f00dc6a8dd7324432bcae6db87d3501b9c457a6"}
 {"escalation_sentences": 0, "sections": 1, "slug": "fibroids", "source_id": "nichd", "text_hash": "315f8f55d7088c857a01476a37e895495a1a5e77bc5c0f359682e08f3647a36d"}
@@ -38,6 +42,7 @@
 {"escalation_sentences": 0, "sections": 3, "slug": "pcos_causes", "source_id": "nichd", "text_hash": "38f763f76c12efa7746fcbc48950c028b38025d3851027f3a63cbd31732fca17"}
 {"escalation_sentences": 0, "sections": 2, "slug": "pcos_symptoms", "source_id": "nichd", "text_hash": "68a6727dff6a1f94bdb5e4b605ddd18663de3bacea07f3a778fd04cc653ac034"}
 {"escalation_sentences": 3, "sections": 2, "slug": "pcos_treatments", "source_id": "nichd", "text_hash": "f532033f99e75a08fada5bbeb85019ed1221d0632a60edca41dedff5cb578c52"}
+{"escalation_sentences": 3, "sections": 15, "slug": "bacterial_vaginosis", "source_id": "womenshealth", "text_hash": "a1d834f69a7b9aa31870f07ad7c176d4650ae96e4e1afe8f6c38171202fb5dd8"}
 {"escalation_sentences": 5, "sections": 17, "slug": "endometriosis", "source_id": "womenshealth", "text_hash": "6a4cba6b575952ac52fa1b2066d4a678115559412e4b0d3b73d755d645e14cef"}
 {"escalation_sentences": 0, "sections": 14, "slug": "fibroids", "source_id": "womenshealth", "text_hash": "f22b611895a82414b38f66acc0b24db6078965c329ad17768806dca2814c9cd5"}
 {"escalation_sentences": 1, "sections": 4, "slug": "menstruation", "source_id": "womenshealth", "text_hash": "32be2dc58eac4ba6a016682ac0be6a51c8e8d121449a406172a22137645bcdac"}
@@ -45,4 +50,5 @@
 {"escalation_sentences": 1, "sections": 18, "slug": "pcos", "source_id": "womenshealth", "text_hash": "18ef467a26fdcaf5163b4aba1f1b3d8583ad41cb77c43e49522df75b66baeefa"}
 {"escalation_sentences": 3, "sections": 14, "slug": "pelvic_inflammatory_disease", "source_id": "womenshealth", "text_hash": "50e12df8ca350e5bc9eaa4aac71d5213fcbc18a642f066bf6f9caf13d7fa21de"}
 {"escalation_sentences": 2, "sections": 19, "slug": "sexually_transmitted_infection", "source_id": "womenshealth", "text_hash": "cd3934eff531ec799b9138d0c138af874009703b5bb36e5b94fdbf24088f6571"}
+{"escalation_sentences": 7, "sections": 19, "slug": "thrush", "source_id": "womenshealth", "text_hash": "88a845085f4d3f63c0cc8f9db9ca516c0d9bbd9d65492be815e510733c52d54e"}
 {"escalation_sentences": 5, "sections": 15, "slug": "urinary_tract_infection", "source_id": "womenshealth", "text_hash": "0baf1b9f8cae7ab2253d5679e96511c00574608e5aea5b6618370d1b8c263db1"}

@@ -12,7 +12,11 @@
 # unreliable, and a wrong identifier is worse than an absent one because it looks
 # authoritative. Every code here was resolved by `make icd` against the WHO ICD
 # API, release 2026-01, which is pinned so codes cannot shift between runs. A
-# condition the API could not match confidently keeps TODO_VERIFY.
+# condition the API could not match confidently keeps TODO_VERIFY. Three
+# sentinel values, and the distinction matters:
+#   TODO_VERIFY     not yet looked up; `make icd` will propose for it
+#   UNRESOLVED      looked up, no correct entry exists; will not be re-proposed
+#   NOT_APPLICABLE  there is no code for this, and never will be
 #
 # `baseline_action` is what the condition implies on its own, before any evidence
 # moves it. Most sit at ROUTINE_APPOINTMENT, escalation coming only from
@@ -168,6 +172,101 @@ conditions:
       Treated as one condition rather than one per organism: the triage action
       is the same for all of them, and this system decides urgency, not which
       organism.
+
+  # ---------------------------------------------------------------------------
+  # The benign causes of discharge — added 2026-08-04.
+  #
+  # abnormal_discharge previously pointed only at PID, which carries an urgent
+  # baseline, and STI. Both serious. The commonest causes of discharge are these
+  # two and neither was modelled, so the feature systematically over-triaged.
+  # Same reasoning that justified adding urinary_tract_infection.
+  # ---------------------------------------------------------------------------
+  - id: thrush
+    label: Vaginal thrush (yeast infection)
+    icd11: 1F23.10
+    baseline_action: SELF_CARE
+    source_ids: [medlineplus, womenshealth, nhs]
+    # ICD-11 indexes this as 'vulvovaginal candidosis'; neither 'thrush' nor
+    # 'yeast infection' matches, and the label had to be searched on its
+    # clinical name rather than its common one.
+    search_term: vulvovaginal candidosis
+    note: >-
+      ONLY THE SECOND CONDITION WITH A SELF_CARE BASELINE, after
+      normal_variation — and unlike that one, this is an actual illness.
+
+      Justified because NHS treats it as self-manageable: thrush is treated with
+      pharmacy antifungals without needing an appointment. That makes it the
+      first route to SELF_CARE for a user who genuinely has something wrong,
+      rather than for a user who has nothing wrong. Worth watching in
+      evaluation: a SELF_CARE baseline on a real condition is exactly where
+      under-triage would show up if the reasoning is off.
+
+  - id: bacterial_vaginosis
+    label: Bacterial vaginosis
+    # REVERTED to TODO_VERIFY on 2026-08-04 after a bad match was applied.
+    #
+    # `make icd` proposed MF3A "Vaginal discharge" with a confidence of 1.00 and
+    # it was applied without the proposal being read carefully. MF3A is a
+    # SYMPTOM code, not this disease — the search matched on the word "vaginal".
+    #
+    # Searching "bacterial vaginosis" and "vaginosis" both return the same
+    # symptom code, so the MMS linearisation may not carry a distinct entry for
+    # it. Left unfilled rather than guessed: a wrong identifier looks
+    # authoritative, which is worse than an absent one.
+    #
+    # THE GENERAL LESSON, worth keeping: the API's confidence score measures
+    # string similarity, not conceptual correctness. A score of 1.00 on the
+    # wrong concept is exactly what it looks like. Read every proposal before
+    # running --apply.
+    #
+    # UNRESOLVED, not TODO_VERIFY: the difference matters. TODO_VERIFY means
+    # "not yet looked up"; UNRESOLVED means "looked up, and the linearisation
+    # has no correct entry". `make icd` only proposes for TODO_VERIFY, so this
+    # will not be re-proposed and the bad match cannot creep back in.
+    icd11: UNRESOLVED
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, nhs]
+    note: >-
+      Routine rather than self-care because, unlike thrush, it needs prescribed
+      antibiotics. The pairing matters more than either condition alone: thrush
+      and bacterial vaginosis are the two benign explanations for discharge, and
+      distinguishing them from each other is less important here than
+      distinguishing both from PID.
+
+  # ---------------------------------------------------------------------------
+  # The one documented exception to the two-source rule.
+  # ---------------------------------------------------------------------------
+  - id: adenomyosis
+    label: Adenomyosis
+    icd11: GA11
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [nhs]
+    single_source_reason: >-
+      No second usable source exists. MedlinePlus mentions adenomyosis only in
+      link lists pointing at Mayo Clinic, which is copyrighted; NICHD, CDC, the
+      Office on Women's Health and WHO have no page at all. NICE CKS covers it
+      but its licence is not satisfiable outside the UK.
+
+      Authored anyway because omitting it is the larger error. NHS names
+      adenomyosis alongside endometriosis as a cause of heavy and painful
+      periods on three separate pages, so it is a differential our own sources
+      insist on — and a differential missing a condition the sources keep naming
+      will attribute its symptoms to whatever else is available, which here
+      means endometriosis.
+
+      The rule's purpose is that no condition rests on a single DOCUMENT. NHS
+      covers this across a dedicated page plus the heavy-periods and period-pain
+      pages, which meets that purpose while failing the letter of the rule. See
+      docs/adr/0006.
+
+      CONSEQUENCE TO STATE WHEREVER COVERAGE IS REPORTED: this is the only
+      condition in the knowledge base with no corroborating source. If NHS is
+      wrong about something here, nothing catches it.
+    note: >-
+      NHS distinguishes it from endometriosis explicitly — "Endometriosis is a
+      different condition where tissue similar to the lining of the womb grows
+      in other places, such as the ovaries or fallopian tubes" — which is rare
+      and useful, since the two present almost identically.
 
   # ---------------------------------------------------------------------------
   # Not a disease. Included because without it SELF_CARE is unreachable.

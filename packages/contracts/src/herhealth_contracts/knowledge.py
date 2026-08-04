@@ -282,8 +282,21 @@ class Condition(_KnowledgeModel):
     #: The action this condition implies on its own, before evidence moves it.
     baseline_action: ActionCode
 
-    #: At least two, so no condition rests on a single document.
-    source_ids: tuple[Identifier, ...] = Field(min_length=2)
+    #: Normally at least two, so no condition rests on a single document.
+    #: One is permitted only with ``single_source_reason`` filled in — see the
+    #: validator below and docs/adr/0006.
+    source_ids: tuple[Identifier, ...] = Field(min_length=1)
+
+    #: Why this condition is authored from one source. Empty for everything
+    #: else, and required when ``source_ids`` has only one entry.
+    #:
+    #: The two-source rule exists so no condition rests on a single DOCUMENT.
+    #: A source covering a condition across several documents meets that
+    #: purpose while failing the letter of the rule, and refusing to model a
+    #: real differential on a technicality is its own kind of error. So the
+    #: exception exists — but it must be argued for in the data, where a
+    #: reviewer will see it, rather than granted by quietly weakening the rule.
+    single_source_reason: str = ""
 
     #: What to search external terminologies for, when our label does not match
     #: theirs. Empty means the label is the query.
@@ -302,6 +315,29 @@ class Condition(_KnowledgeModel):
     def _unique_sources(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         _reject_duplicates(list(value), "source_id")
         return value
+
+    @model_validator(mode="after")
+    def _one_source_needs_a_reason(self) -> Self:
+        """A single-source condition must say why, in the file.
+
+        This is the two-source rule with a documented escape hatch rather than
+        no rule at all. The escape hatch is deliberately awkward: it cannot be
+        taken by omission, only by writing an argument that a reviewer reads.
+        """
+        if len(self.source_ids) < 2 and not self.single_source_reason.strip():
+            raise ValueError(
+                f"{self.id!r} cites only one source. Either add a second, or set "
+                "single_source_reason explaining why one is acceptable here — a "
+                "condition resting on a single document is what the rule exists "
+                "to prevent"
+            )
+        if len(self.source_ids) >= 2 and self.single_source_reason.strip():
+            raise ValueError(
+                f"{self.id!r} has {len(self.source_ids)} sources but also a "
+                "single_source_reason; remove the reason so it is not mistaken "
+                "for a standing exemption"
+            )
+        return self
 
 
 class ConditionsFile(_KnowledgeModel):

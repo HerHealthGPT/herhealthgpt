@@ -334,3 +334,45 @@ documents:
     slug: sexually_transmitted_infection
     url: https://www.nhs.uk/conditions/sexually-transmitted-infections-stis/
     licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # ---------------------------------------------------------------------------
+  # Thrush and bacterial vaginosis — added 2026-08-04.
+  #
+  # The commonest BENIGN causes of abnormal discharge. Until now that feature
+  # pointed only at PID (urgent baseline) and STI, both serious, so discharge
+  # systematically over-triaged. Same argument that justified adding UTI.
+  # ---------------------------------------------------------------------------
+  - source_id: medlineplus
+    slug: thrush
+    url: https://medlineplus.gov/yeastinfections.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: thrush
+    url: https://womenshealth.gov/a-z-topics/vaginal-yeast-infections
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: thrush
+    url: https://www.nhs.uk/conditions/thrush-in-men-and-women/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: womenshealth
+    slug: bacterial_vaginosis
+    url: https://womenshealth.gov/a-z-topics/bacterial-vaginosis
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: bacterial_vaginosis
+    url: https://www.nhs.uk/conditions/bacterial-vaginosis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # Adenomyosis — NHS is the only usable source. Authored under the documented
+  # single-source exception; see docs/adr/0006 and the condition's
+  # single_source_reason.
+  - source_id: nhs
+    slug: adenomyosis
+    url: https://www.nhs.uk/conditions/adenomyosis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.

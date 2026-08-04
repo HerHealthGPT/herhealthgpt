@@ -424,3 +424,63 @@ def test_models_are_frozen() -> None:
     row = EvidenceRow(**evidence_row())
     with pytest.raises(ValidationError):
         row.strength = EvidenceStrength.RULES_OUT  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------
+# The single-source exception (ADR 0006)
+# --------------------------------------------------------------------------
+
+
+def test_one_source_without_a_reason_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="cites only one source"):
+        Condition(
+            id="adenomyosis",
+            label="Adenomyosis",
+            baseline_action="ROUTINE_APPOINTMENT",
+            source_ids=["nhs"],
+        )
+
+
+def test_one_source_with_a_reason_is_accepted() -> None:
+    condition = Condition(
+        id="adenomyosis",
+        label="Adenomyosis",
+        baseline_action="ROUTINE_APPOINTMENT",
+        source_ids=["nhs"],
+        single_source_reason="No second usable source exists; NHS covers it across three pages.",
+    )
+    assert condition.single_source_reason
+
+
+def test_a_reason_alongside_two_sources_is_rejected() -> None:
+    """So the field cannot become a standing exemption nobody notices."""
+    with pytest.raises(ValidationError, match="standing exemption"):
+        Condition(
+            id="pcos",
+            label="PCOS",
+            baseline_action="ROUTINE_APPOINTMENT",
+            source_ids=["medlineplus", "nichd"],
+            single_source_reason="unnecessary",
+        )
+
+
+def test_whitespace_is_not_a_reason() -> None:
+    with pytest.raises(ValidationError, match="cites only one source"):
+        Condition(
+            id="adenomyosis",
+            label="Adenomyosis",
+            baseline_action="ROUTINE_APPOINTMENT",
+            source_ids=["nhs"],
+            single_source_reason="   ",
+        )
+
+
+def test_zero_sources_is_still_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Condition(
+            id="ghost",
+            label="Ghost",
+            baseline_action="ROUTINE_APPOINTMENT",
+            source_ids=[],
+            single_source_reason="trying to cite nothing at all",
+        )

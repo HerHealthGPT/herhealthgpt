@@ -249,6 +249,26 @@ features:
     probe:
       en: Have you noticed any unusual vaginal discharge?
 
+  - id: vulval_itching
+    label: Itching or soreness around the vulva
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Do you have itching or soreness around the vulva or vagina?
+    note: >-
+      Added 2026-08-04 to separate the two benign causes of discharge from each
+      other. abnormal_discharge is a yes/no, so it cannot distinguish thrush
+      ("like cottage cheese, does not usually smell") from bacterial vaginosis
+      ("a strong fishy smell") — but itching can: the Office on Women's Health
+      calls "extreme itchiness" the most common symptom of thrush.
+
+      It also matters for what it does NOT do. NHS says bacterial vaginosis
+      "does not usually cause any soreness or itching", which would be an
+      explicit argues_against row — except the Office on Women's Health lists
+      itching among BV symptoms. The two sources contradict each other outright,
+      so no row was written either way. See build/conflicts.jsonl.
+
   - id: urinary_symptoms
     label: Urinary symptoms
     kind: categorical
