@@ -95,7 +95,7 @@ rows:
     value: gain
     strength: weak_support
     source_id: medlineplus
-    source_quote: Obesity , weight gain, or trouble losing weight.
+    source_quote: Obesity, weight gain, or trouble losing weight.
     note: >-
       IMPERFECT MAPPING, deliberately weak. The source names obesity, which is a
       state rather than a change, alongside weight gain, which is a change. Our
@@ -108,7 +108,7 @@ rows:
     strength: weak_support
     source_id: medlineplus
     source_quote: >-
-      Infertility . PCOS is one of the most common causes of infertility. But
+      Infertility. PCOS is one of the most common causes of infertility. But
       many women with PCOS can still get pregnant.
     note: >-
       Weak despite strong language, because the same sentence qualifies it:

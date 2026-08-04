@@ -23,7 +23,7 @@ rows:
     value: with_periods
     strength: strong_support
     source_id: medlineplus
-    source_quote: Pelvic pain , which often happens during your period
+    source_quote: Pelvic pain, which often happens during your period
     note: >-
       Named as THE main symptom: the source introduces it with "The main
       symptoms of endometriosis are:". Corroborated by the Office on Women's
@@ -64,11 +64,17 @@ rows:
       is different from pain felt at the entrance to the vagina when penetration
       begins.
     note: >-
-      One of the most discriminating features in the differential — neither PCOS
-      nor fibroids is characterised by it. The source goes out of its way to
-      distinguish deep from entrance pain, which is characteristic framing
-      rather than a bare list entry. This row also retires a feature that was
-      previously dead weight.
+      Strong because the source goes out of its way to distinguish deep from
+      entrance pain, which is characteristic framing rather than a bare list
+      entry. The NHS endometriosis page corroborates: "pain during or after
+      sex".
+
+      CORRECTED 2026-08-04. This note previously claimed the feature was "one of
+      the most discriminating in the differential — neither PCOS nor fibroids is
+      characterised by it". That was WRONG: the NHS fibroids page lists "pain or
+      discomfort during sex" among fibroid symptoms. The row itself stands, but
+      the feature separates endometriosis from fibroids far less than claimed,
+      and uterine_fibroids now carries its own row for it.
 
   - condition_id: endometriosis
     feature_id: pain_opening_bowels_or_urinating
@@ -106,7 +112,7 @@ rows:
     value: "yes"
     strength: weak_support
     source_id: womenshealth
-    source_quote: Infertility , or not being able to get pregnant.
+    source_quote: Infertility, or not being able to get pregnant.
     note: >-
       Listed among the symptoms, but weak: infertility is non-specific and
       appears under PCOS too, so it separates the differential very little.

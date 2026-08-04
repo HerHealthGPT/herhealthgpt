@@ -48,8 +48,46 @@ log_odds:
   rules_out: -4.0
 
 # ---------------------------------------------------------------------------
-# Thresholds, on the normalised plausibility scale (0.0 to 1.0)
+# Thresholds, on the plausibility scale (0.0 to 1.0)
 # ---------------------------------------------------------------------------
+#
+# HOW THESE RELATE TO THE WEIGHTS ABOVE.
+#
+# The weights are log-odds and accumulate additively. Plausibility is an
+# INDEPENDENT LOGISTIC of a condition's own score — not a softmax across
+# conditions:
+#
+#     plausibility = 1 / (1 + exp(-log_odds))
+#
+# Conditions therefore do not compete for a fixed total, and all of them may be
+# implausible at once. That is the point: a softmax normalises to 1 whatever it
+# is given, so a user with an unmodelled condition would still see the least-bad
+# condition emerge with high plausibility. Given normal_variation carries a
+# SELF_CARE baseline, that would be under-triage manufactured by the arithmetic.
+# See docs/adr/0005 and packages/contracts/src/herhealth_contracts/scoring.py.
+#
+# In the units the controller actually adds:
+#
+#     plausibility_floor         0.05  =  -2.94 log-odds
+#     stop_confidence            0.65  =  +0.62 log-odds
+#     self_care_stop_confidence  0.85  =  +1.73 log-odds
+#     no evidence at all          0.5  =   0.00 log-odds
+#
+# Weights.plausibility_floor_log_odds and friends expose these, so a threshold
+# can be checked against the weights rather than eyeballed.
+#
+# KNOWN TUNING PROBLEM, recorded rather than quietly fixed. Converting these
+# revealed that the bars are low relative to the weights:
+#
+#     one weak_support  (+0.6)  ->  0.646   just under the 0.65 routine bar
+#     one strong_support(+1.5)  ->  0.818   clears it comfortably
+#
+# So a SINGLE strong row can satisfy stop_confidence and stop the controller
+# asking. That is probably too eager — it risks concluding before reaching a
+# feature that would have changed the action. Raising stop_confidence toward
+# 0.90 (+2.20, roughly two rows) is the obvious candidate, but the number should
+# be set by the evaluation set rather than by argument. Flagged in the phase 1
+# summary as the first tuning experiment.
 
 # Below this, a condition is no longer live: it stops driving question
 # selection and stops counting toward "do all live conditions share an action".

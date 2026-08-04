@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     clean_parser.add_argument("--raw-dir", type=Path, default=paths.RAW_DIR)
     clean_parser.add_argument("--out-dir", type=Path, default=paths.CLEAN_DIR)
     clean_parser.add_argument("--date", default=utc_today(), help="which dated snapshot to clean")
+    clean_parser.add_argument("--content-lock", type=Path, default=paths.CONTENT_LOCK_FILE)
     clean_parser.set_defaults(func=commands.run_clean)
 
     build_parser_ = subparsers.add_parser("build", help="build the retrieval corpus")

@@ -43,6 +43,14 @@ _Avoid_: diagnosis, disease, illness, outcome
 The set of conditions still live in a given consultation.
 _Avoid_: candidate list, hypotheses, shortlist
 
+**PMOS**:
+Polyendocrine metabolic ovarian syndrome, formerly and still widely called
+polycystic ovary syndrome. NHS and NICHD use the new name; MedlinePlus and the
+Office on Women's Health still use the old one, so both appear in cited quotes.
+The condition id remains `pcos` because ids are internal keys and renaming one
+would rewrite every evidence row and break the benchmark's labels.
+_Avoid_: renaming the id; treating PMOS and PCOS as two conditions
+
 **Evidence Row**:
 One cell of the sparse grid, saying that a particular feature value supports or
 argues against a particular condition. Carries the sentence it restates.
@@ -55,8 +63,10 @@ Deliberately not a probability. `neutral` is expressed by omitting the row.
 _Avoid_: weight, score, confidence, likelihood, probability
 
 **Plausibility**:
-How strongly the accumulated answers point at a condition. An ordering over the
-differential, not a probability of the user having anything.
+How strongly the accumulated answers point at a condition, on 0–1. Computed from
+that condition's own accumulated evidence alone, so conditions do not compete and
+all of them may be implausible at once. Not a probability of the user having
+anything.
 _Avoid_: probability, confidence, likelihood, certainty
 
 ### Deciding
@@ -132,10 +142,17 @@ A label derived without clinician adjudication. Everything this system produces
 or is evaluated against is silver, and is reported as such.
 _Avoid_: ground truth, gold label, validated label
 
+## Resolved
+
+**How the two units relate.** Evidence accumulates as log-odds; thresholds are
+authored on 0–1. The conversion is an independent logistic per condition, and it
+lives in `packages/contracts/src/herhealth_contracts/scoring.py`. Settled
+2026-08-04 — see `docs/adr/0005`.
+
 ## Open question
 
-**Plausibility is described in two units.** Evidence strengths accumulate as
-log-odds, but the stopping thresholds (`plausibility_floor`, `stop_confidence`,
-`stop_margin`) are expressed on a 0–1 scale. The conversion between them is not
-yet defined anywhere. It must be settled when the reasoning core is built, and
-the thresholds may need restating once it is.
+**The thresholds are probably too low.** Expressing them in log-odds showed that
+one `strong_support` row reaches 0.818 and clears `stop_confidence` of 0.65 on
+its own, so the controller could stop after a single answer. The number should
+be set by the evaluation set rather than by argument, so it is left as authored
+and flagged as the first tuning experiment.

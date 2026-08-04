@@ -40,6 +40,10 @@ INGEST_TARGETS_FILE: Final[Path] = DATA_SERVICE_DIR / "ingest_targets.yaml"
 #: is generated from these by `make evidence`.
 EVIDENCE_BATCH_DIR: Final[Path] = DATA_SERVICE_DIR / "evidence_batches"
 
+#: What the sources SAY, hashed from extracted text. Tracked. This is the
+#: drift signal; the ingest lock is provenance of exact bytes.
+CONTENT_LOCK_FILE: Final[Path] = DATA_SERVICE_DIR / "content.lock.jsonl"
+
 #: What was fetched, with hashes. Tracked — the only record of raw/ in git.
 INGEST_LOCK_FILE: Final[Path] = DATA_SERVICE_DIR / "ingest.lock.jsonl"
 

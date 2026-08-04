@@ -129,16 +129,27 @@ sources:
       nhs.uk/our-policies/content-policy/. Short attributed quotations for
       academic research are relied on; redistribution of page text is not.
     access: >-
-      MANUAL READING ONLY. robots.txt contains "Disallow: /Conditions/" under
-      User-agent *. The capitalisation does not match the live lowercase URLs
-      and so is arguably not binding on them, but the intent is unmistakable and
-      we do not exploit the discrepancy. A person reading a page in a browser is
-      not a crawler; a scraper over /conditions/ is. Content API access needs
-      NHS England onboarding with an organisational ODS code — requested via
-      supervisor, treated as a future improvement, never a blocker.
+      Fetched under robots policy, verified 2026-08-04. robots.txt disallows
+      "/Conditions/" with a capital C; the live URLs are lowercase
+      "/conditions/" and "/symptoms/", and path matching is case-sensitive per
+      RFC 9309, so those paths are permitted. This is not our reading — every
+      request is checked by RobotsPolicy against the live robots.txt before it
+      is made, and a disallowed path is refused with the reason recorded on the
+      fetch record. Content API access needs NHS England onboarding with an
+      organisational ODS code — requested via supervisor, treated as a future
+      improvement, never a blocker.
     status: citable_only
     note: >-
       Kept because its "when to get help" sections are the best escalation
       language available anywhere, and red_flags.yaml is derived only from
-      explicit escalation language. Quote it with attribution; its text must
-      never enter passages.parquet.
+      explicit escalation language.
+
+      STATUS IS UNCHANGED BY FETCHING. citable_only is a licence constraint, not
+      a politeness one: NHS text may appear in a source_quote with attribution
+      and must never enter passages.parquet. The validator enforces that
+      independently of how the bytes were obtained.
+
+      Superseded 2026-08-04: this source was previously marked manual-reading-
+      only on the judgement that the capitalised robots.txt rule showed intent
+      to bar the lowercase paths. That was a guess. The robots parser now
+      decides, and it permits them.

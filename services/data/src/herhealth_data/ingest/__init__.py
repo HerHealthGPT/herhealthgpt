@@ -29,9 +29,11 @@ from herhealth_data.ingest.config import (
     DuplicateTargetError,
     FetchPlan,
     Target,
+    Transport,
     load_plan,
 )
-from herhealth_data.ingest.fetch import Transport, fetch_all, http_get, utc_today
+from herhealth_data.ingest.fetch import fetch_all, http_get, utc_today
+from herhealth_data.ingest.robots import RobotsPolicy, robots_url_for
 from herhealth_data.ingest.store import (
     FetchOutcome,
     FetchRecord,
@@ -49,6 +51,7 @@ __all__ = [
     "FetchPlan",
     "FetchRecord",
     "RawStore",
+    "RobotsPolicy",
     "StoredDocument",
     "Target",
     "Transport",
@@ -57,6 +60,7 @@ __all__ = [
     "http_get",
     "load_plan",
     "read_lock",
+    "robots_url_for",
     "utc_today",
     "write_lock",
 ]

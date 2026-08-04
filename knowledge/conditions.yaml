@@ -24,8 +24,14 @@
 # Validated against herhealth_contracts.knowledge.ConditionsFile.
 
 conditions:
+  # The id stays `pcos` deliberately. Ids are internal keys and changing one
+  # would rewrite every evidence row and break the benchmark's labels; the
+  # label is what users and markers actually see, so that is what carries the
+  # current name. See CONTEXT.md.
   - id: pcos
-    label: Polycystic ovary syndrome (PCOS)
+    label: >-
+      Polyendocrine metabolic ovarian syndrome (PMOS), formerly polycystic
+      ovary syndrome (PCOS)
     icd11: TODO_VERIFY
     baseline_action: ROUTINE_APPOINTMENT
     source_ids: [medlineplus, nichd]
@@ -51,6 +57,33 @@ conditions:
       page is a single paragraph — so this condition rests far more heavily on
       MedlinePlus than the other two. The two-source rule is satisfied in form
       but is thin in substance here. CDC has no endometriosis page at all.
+
+  # ---------------------------------------------------------------------------
+  # Not a disease. Included because without it SELF_CARE is unreachable.
+  # ---------------------------------------------------------------------------
+  - id: normal_variation
+    label: Normal menstrual variation
+    icd11: NOT_APPLICABLE
+    baseline_action: SELF_CARE
+    source_ids: [medlineplus, womenshealth]
+    note: >-
+      The only condition whose baseline is SELF_CARE, and the reason that action
+      is reachable at all. Without it every path through the differential ends
+      at a doctor, and the system routes a healthy user to care every time —
+      which would show up in evaluation as near-total over-triage on normal
+      cases, indistinguishable from a fault in the elimination logic.
+
+      Grounded rather than assumed. MedlinePlus gives the ranges: "Most
+      menstrual cycles last about 28 days, but cycles can be shorter or longer
+      and still be normal" and "A period usually lasts three to seven days and
+      can be light or heavy". The Office on Women's Health states the two-way
+      version in one sentence: "Regular menstrual periods in the years between
+      puberty and menopause are usually a sign that your body is working
+      normally. Irregular or heavy, painful periods are not normal."
+
+      icd11 is NOT_APPLICABLE rather than TODO_VERIFY: there is no code for not
+      being ill, so leaving TODO_VERIFY would imply a lookup that will never
+      resolve.
 
   - id: uterine_fibroids
     label: Uterine fibroids

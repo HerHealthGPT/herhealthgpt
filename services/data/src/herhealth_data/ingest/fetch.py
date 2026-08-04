@@ -21,26 +21,26 @@ from __future__ import annotations
 import ssl
 import urllib.error
 import urllib.request
-from collections.abc import Callable
 from datetime import UTC, datetime
 from functools import cache
 from typing import Final
 
 import certifi
 
-from herhealth_data.ingest.config import USER_AGENT, FetchPlan, Target
+from herhealth_data.ingest.config import USER_AGENT, FetchPlan, Target, Transport
+from herhealth_data.ingest.robots import RobotsPolicy
 from herhealth_data.ingest.store import FetchOutcome, FetchRecord, RawStore, content_hash
 
-__all__ = ["REQUEST_TIMEOUT_SECONDS", "Transport", "fetch_all", "http_get", "utc_today"]
+__all__ = [
+    "REQUEST_TIMEOUT_SECONDS",
+    "RobotsPolicy",
+    "Transport",
+    "fetch_all",
+    "http_get",
+    "utc_today",
+]
 
 REQUEST_TIMEOUT_SECONDS: Final[float] = 40.0
-
-#: ``(url, user_agent) -> (http_status, body)``.
-#:
-#: Every consumer takes one of these rather than calling :func:`http_get`
-#: directly. That indirection is the reason the test suite is offline.
-Transport = Callable[[str, str], tuple[int, bytes]]
-
 
 def utc_today() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%d")
@@ -87,6 +87,7 @@ def fetch_all(
     transport: Transport,
     *,
     dry_run: bool = True,
+    robots: RobotsPolicy | None = None,
 ) -> list[FetchRecord]:
     """Process every target in the plan.
 
@@ -95,7 +96,8 @@ def fetch_all(
     report that hides them.
     """
     records = [
-        _fetch_one(plan, target, store, transport, dry_run=dry_run) for target in plan.targets
+        _fetch_one(plan, target, store, transport, dry_run=dry_run, robots=robots)
+        for target in plan.targets
     ]
     if not dry_run:
         store.write_manifests(records)
@@ -109,6 +111,7 @@ def _fetch_one(
     transport: Transport,
     *,
     dry_run: bool,
+    robots: RobotsPolicy | None = None,
 ) -> FetchRecord:
     record = FetchRecord(
         source_id=target.source_id,
@@ -126,7 +129,13 @@ def _fetch_one(
             detail=f"licence guard: url contains {fragment!r}",
         )
 
-    # 2. Immutability: never overwrite what is already there.
+    # 2. robots.txt, also before any request for the document itself.
+    if robots is not None:
+        refusal = robots.reason_if_disallowed(target.url, plan.user_agent_for(target))
+        if refusal is not None:
+            return record.with_(outcome=FetchOutcome.EXCLUDED, detail=refusal)
+
+    # 3. Immutability: never overwrite what is already there.
     if store.has(target):
         body = store.read(target)
         return record.with_(
@@ -136,11 +145,11 @@ def _fetch_one(
             detail="raw content is immutable; existing file left untouched",
         )
 
-    # 3. Nothing fetches by accident.
+    # 4. Nothing fetches by accident.
     if dry_run:
         return record
 
-    # 4. Fetch, and write only a usable response.
+    # 5. Fetch, and write only a usable response.
     status, body = transport(target.url, plan.user_agent_for(target))
     if status != 200 or not body:
         return record.with_(

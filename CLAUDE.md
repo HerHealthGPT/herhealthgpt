@@ -187,7 +187,7 @@ nothing unusable can be cited by accident.
 | MedlinePlus | Topic pages + topics XML, no key | Public domain **except** A.D.A.M. encyclopedia | **available** |
 | NICHD | Pages, no key | US federal, public domain *(unverified)* | **available** |
 | CDC | Pages, Socrata token optional | US federal, public domain *(unverified)* | **available** |
-| NHS website | Public pages, **manual reading only** | Crown copyright, no reuse grant | **citable_only** |
+| NHS website | Public pages, fetched under robots policy | Crown copyright, no reuse grant | **citable_only** |
 
 **MedlinePlus has a split licence and it matters.** Health topic summaries are
 public domain. The A.D.A.M. Medical Encyclopedia (`medlineplus.gov/ency/*`) and
@@ -197,12 +197,20 @@ other health IT system."* That clause names systems like this one. **The
 ingestion client must exclude `/ency/` by path.** Attribution required:
 *"Courtesy of MedlinePlus from the National Library of Medicine."*
 
-**NHS is manual reading only.** The content policy makes no reuse grant beyond
-"© Crown copyright" — no Open Government Licence. `robots.txt` carries
-`Disallow: /Conditions/`; the capitalisation does not match the live lowercase
-URLs, but we do not exploit that discrepancy. A person reading in a browser is
-not a crawler. Quote with attribution into `source_quote`; NHS text must never
-enter `passages.parquet`.
+**NHS is `citable_only`, and that is a licence constraint rather than a fetching
+one.** The content policy makes no reuse grant beyond "© Crown copyright" — no
+Open Government Licence. So NHS text may be quoted with attribution into
+`source_quote`, and must **never** enter `passages.parquet`. The validator
+enforces this regardless of how the bytes were obtained.
+
+**Fetching is governed by a robots parser, not by judgement.** `RobotsPolicy`
+checks every URL against the origin's live `robots.txt` before any request, and
+refuses a disallowed path with the reason recorded on the fetch record.
+`nhs.uk/robots.txt` disallows `/Conditions/` with a capital C while the live
+URLs are lowercase `/conditions/` and `/symptoms/`; matching is case-sensitive
+per RFC 9309, so those are permitted and are fetched. Superseding an earlier
+decision that treated the capitalised rule as barring them — that was a guess,
+and the parser now decides.
 
 **CDC and NICHD licences are unverified** — cdc.gov returned 403 to automated
 requests and the NICHD copyright pages 404'd. Both are near-certainly public

@@ -39,6 +39,8 @@ from pydantic import (
     model_validator,
 )
 
+from herhealth_contracts.scoring import log_odds_for
+
 __all__ = [
     "ActionCode",
     "ActionDefinition",
@@ -489,6 +491,26 @@ class Weights(_KnowledgeModel):
 
     note: str = ""
 
+    # -- thresholds in the units the controller accumulates -----------------
+    #
+    # The thresholds above are authored on 0-1 because that is how a person
+    # reasons about them. The controller adds log-odds. These properties are the
+    # bridge, and they are what makes a threshold checkable against the evidence
+    # weights: `rules_out` at -4.0 clears `plausibility_floor_log_odds` of
+    # -2.94, which is exactly the claim weights.yaml makes for it.
+
+    @property
+    def plausibility_floor_log_odds(self) -> float:
+        return log_odds_for(self.plausibility_floor)
+
+    @property
+    def stop_confidence_log_odds(self) -> float:
+        return log_odds_for(self.stop_confidence)
+
+    @property
+    def self_care_stop_confidence_log_odds(self) -> float:
+        return log_odds_for(self.self_care_stop_confidence)
+
     @field_validator("log_odds")
     @classmethod
     def _all_five_present(cls, value: LogOdds) -> LogOdds:
@@ -499,6 +521,24 @@ class Weights(_KnowledgeModel):
         if value[EvidenceStrength.NEUTRAL] != 0.0:
             raise ValueError("neutral must map to 0.0; it is the absence of evidence")
         return value
+
+    @model_validator(mode="after")
+    def _rules_out_must_actually_rule_out(self) -> Self:
+        """The claim weights.yaml makes for `rules_out`, enforced.
+
+        "Large enough that a single rules_out row drops a condition below
+        plausibility_floor regardless of accumulated support." That is only true
+        if the weight clears the floor on its own, so check it rather than trust
+        the comment.
+        """
+        rules_out = self.log_odds.get(EvidenceStrength.RULES_OUT)
+        if rules_out is not None and rules_out > self.plausibility_floor_log_odds:
+            raise ValueError(
+                f"rules_out ({rules_out:+g}) does not on its own reach the "
+                f"plausibility floor ({self.plausibility_floor_log_odds:+.2f} log-odds), "
+                "so it would not rule anything out"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_ordering(self) -> Self:

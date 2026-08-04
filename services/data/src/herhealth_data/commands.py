@@ -18,6 +18,7 @@ from herhealth_data.ingest import (
     FetchOutcome,
     FetchRecord,
     RawStore,
+    RobotsPolicy,
     fetch_all,
     http_get,
     load_plan,
@@ -56,7 +57,9 @@ def run_fetch(args: argparse.Namespace) -> int:
     store = RawStore(args.raw_dir, args.date)
     dry_run = not args.yes
 
-    records = fetch_all(plan, store, http_get, dry_run=dry_run)
+    records = fetch_all(
+        plan, store, http_get, dry_run=dry_run, robots=RobotsPolicy(http_get)
+    )
     _report_fetch(records)
 
     if dry_run:
@@ -199,7 +202,7 @@ def run_clean(args: argparse.Namespace) -> int:
     `ingest` extra, and `make validate` must work without that installed.
     """
     try:
-        from herhealth_data.ingest.clean import clean_store, summarise
+        from herhealth_data.ingest.clean import clean_store, summarise, write_content_lock
     except ImportError:
         print("error: the clean step needs the ingest extra.")
         print("  uv sync --extra ingest")
@@ -213,6 +216,11 @@ def run_clean(args: argparse.Namespace) -> int:
     documents = clean_store(store, args.out_dir)
     print(f"cleaned {len(documents)} document(s) into {args.out_dir}\n")
     print(summarise(documents))
+
+    write_content_lock(documents, args.content_lock, args.date)
+    print(f"\ncontent lock written: {args.content_lock}")
+    print("A changed text_hash there means the words moved — unlike the raw-byte")
+    print("hash, which changes on markup churn every single fetch.")
 
     candidates = sum(len(d.escalation_sentences) for d in documents)
     print(f"\n{candidates} escalation sentence(s) found — candidates for red_flags.yaml.")

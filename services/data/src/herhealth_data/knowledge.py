@@ -192,7 +192,60 @@ def check_knowledge_base(base: KnowledgeBase) -> list[Problem]:
     problems += _check_red_flags(base)
     problems += _check_conditions(base)
     problems += _check_probe_languages(base)
+    problems += _check_quotes_are_matchable(base)
     problems += _check_nothing_is_dead_weight(base)
+    return problems
+
+
+#: Characters that make a quote unfindable in its source. A reviewer confirming
+#: provenance searches the page for the quote; any of these means the search
+#: fails even though the words are right.
+UNMATCHABLE: Final[dict[str, str]] = {
+    "�": "U+FFFD replacement character, meaning a decode failed upstream",
+    " ": "non-breaking space, which looks identical to a space but is not",
+    "​": "zero-width space",
+    "­": "soft hyphen",
+    "&amp;": "an unescaped HTML entity",
+    "&#": "a numeric HTML entity",
+}
+
+
+def _check_quotes_are_matchable(base: KnowledgeBase) -> list[Problem]:
+    """A source_quote must be findable in the source, character for character.
+
+    The cleaner strips these already; this is the backstop for a row authored by
+    hand or pasted from a browser, where an invisible character is invisible.
+    """
+    problems: list[Problem] = []
+
+    def inspect(quote: str, file: str, where: str) -> None:
+        for needle, why in UNMATCHABLE.items():
+            if needle in quote:
+                problems.append(
+                    Problem(
+                        Severity.ERROR,
+                        file,
+                        where,
+                        f"source_quote contains {why}; it would not be found in the "
+                        "source, so provenance could not be confirmed",
+                    )
+                )
+        if quote != " ".join(quote.split()):
+            problems.append(
+                Problem(
+                    Severity.ERROR,
+                    file,
+                    where,
+                    "source_quote has irregular whitespace (repeated, leading or "
+                    "trailing), so it would not match the source text",
+                )
+            )
+
+    for row in base.evidence:
+        where = f"{row.condition_id}/{row.feature_id}={row.value}"
+        inspect(row.source_quote, "evidence.csv", where)
+    for rule in base.red_flags:
+        inspect(rule.source_quote, "red_flags.yaml", rule.id)
     return problems
 
 

@@ -1,0 +1,173 @@
+# Batch 03 — uterine fibroids (bulk effects, anaemia, age) and PCOS additions.
+#
+# DRAFT. Not approved, so `make evidence` validates these rows but excludes them
+# from knowledge/evidence.csv.
+#
+# Clears five of the seven outstanding validator warnings:
+# abdominal_swelling_or_pressure, anaemia_symptoms, scalp_hair_thinning,
+# age_band, and (partly) urinary_symptoms.
+#
+# Contains the fibroid ELIMINATION row, which matters as much as any supporting
+# row: without it fibroids never drop out of the differential.
+
+batch: 03
+covers: [uterine_fibroids, pcos]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  # -------------------------------------------------------------------------
+  # Fibroids — bulk effects. These are what distinguish fibroids from
+  # endometriosis and PCOS: a fibroid is a mass, and it presses on things.
+  # -------------------------------------------------------------------------
+
+  - condition_id: uterine_fibroids
+    feature_id: abdominal_swelling_or_pressure
+    value: "yes"
+    strength: strong_support
+    source_id: nichd
+    source_quote: >-
+      Feeling "full" in the lower abdomen (belly)—this is sometimes called
+      pelvic pressure
+    note: >-
+      A bulk effect, and the most discriminating fibroid feature: neither PCOS
+      nor endometriosis is characterised by a sensation of fullness or pressure.
+      Corroborated by the Office on Women's Health, which lists both "Feeling of
+      fullness in the pelvic area" and "Enlargement of the lower abdomen".
+
+  - condition_id: uterine_fibroids
+    feature_id: urinary_symptoms
+    value: frequency
+    strength: strong_support
+    source_id: nichd
+    source_quote: >-
+      Frequent urination (caused by a fibroid pressing on the bladder)
+    note: >-
+      The source states the mechanism, not just the association — a fibroid
+      pressing on the bladder — which is characteristic framing rather than a
+      bare list entry. Note this is FREQUENCY, not difficulty passing urine;
+      difficulty is a red flag and is handled separately.
+
+  - condition_id: uterine_fibroids
+    feature_id: anaemia_symptoms
+    value: "yes"
+    strength: strong_support
+    source_id: nichd
+    source_quote: Anemia (when you don't have enough red blood cells)
+    note: >-
+      Named directly as a symptom of fibroids, and the Office on Women's Health
+      ties it explicitly to the bleeding: "Heavy bleeding (which can be heavy
+      enough to cause anemia)". This is what turns heavy bleeding from a
+      description into a question about whether it is having an effect.
+
+  - condition_id: uterine_fibroids
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: weak_support
+    source_id: nichd
+    source_quote: >-
+      Reproductive problems, such as infertility, multiple miscarriages, and
+      early onset of labor during pregnancy
+    note: >-
+      Weak, and deliberately so: the Office on Women's Health calls fibroid
+      infertility "very rare". Infertility also appears under PCOS and
+      endometriosis, so it separates the differential very little.
+
+  # -------------------------------------------------------------------------
+  # Fibroids — age, including the elimination row
+  # -------------------------------------------------------------------------
+
+  - condition_id: uterine_fibroids
+    feature_id: age_band
+    value: 30_to_39
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Age. Fibroids become more common as women age, especially during the 30s
+      and 40s through menopause. After menopause, fibroids usually shrink.
+    note: >-
+      A risk factor, not a presenting sign, so weak. Age is cheap to ask
+      (burden 1) and shifts several conditions at once, which is why it earns
+      its place despite being weak individually.
+
+  - condition_id: uterine_fibroids
+    feature_id: age_band
+    value: 40_to_44
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Age. Fibroids become more common as women age, especially during the 30s
+      and 40s through menopause. After menopause, fibroids usually shrink.
+
+  - condition_id: uterine_fibroids
+    feature_id: age_band
+    value: 55_plus
+    strength: argues_against
+    source_id: nhs
+    source_quote: >-
+      Fibroids mainly affect women who have not been through the menopause.
+    note: >-
+      THE ELIMINATION ROW for fibroids, and the NHS states it far more directly
+      than any other source — it is a statement about who the condition affects,
+      not an inference from a symptom being absent, which the protocol forbids.
+      The same page lists "have not reached the menopause" among the causes, and
+      the Office on Women's Health corroborates: "After menopause, fibroids
+      usually shrink."
+
+      This is the ONLY elimination lever fibroids have. Because "Fibroids do not
+      always cause symptoms", the absence of any given symptom argues against
+      fibroids far less than it would for a condition that is always
+      symptomatic. MAPPING CAVEAT: 55_plus is a proxy for post-menopausal, and
+      some women reach menopause earlier — the row will miss them.
+
+  # -------------------------------------------------------------------------
+  # PCOS — androgenic sign and age
+  # -------------------------------------------------------------------------
+
+  - condition_id: pcos
+    feature_id: scalp_hair_thinning
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Signs that you have high levels of androgens: Extra hair growth on your
+      face, chin, and body (hirsutism) Acne Thinning of scalp hair
+    note: >-
+      Strong because the source lists it UNDER the androgen-excess heading, and
+      high androgen levels are one of the three characteristic features of PCOS.
+      That is characteristic framing, not a bare symptom list. Retires a feature
+      that had no source until the Office on Women's Health was added.
+
+  - condition_id: uterine_fibroids
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: pain or discomfort during sex
+    note: >-
+      ADDED TO CORRECT AN ERROR. Batch 02 asserted that pain during sex
+      distinguished endometriosis because "neither PCOS nor fibroids is
+      characterised by it". The NHS fibroids page lists it plainly among fibroid
+      symptoms, so that was wrong and the grid has to say so.
+
+      Weak rather than strong: the NHS lists it without emphasis and the page
+      says "Fibroids do not always cause symptoms", whereas the Office on
+      Women's Health frames it as characteristic for endometriosis. The feature
+      still separates the two, but by degree rather than absolutely.
+
+  - condition_id: pcos
+    feature_id: cycle_length
+    value: under_21_days
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Irregular menstrual cycle. Women with PCOS may miss periods or have fewer
+      periods (fewer than eight in a year). Or, their periods may come every 21
+      days or more often.
+    note: >-
+      PCOS already has a row for over_35_days. This is not a contradiction — the
+      source names BOTH patterns, because the defining problem is absent
+      ovulation rather than a particular cycle length. Worth knowing when
+      reading the grid: for PCOS, cycle length is informative at both extremes
+      and uninformative in the middle.

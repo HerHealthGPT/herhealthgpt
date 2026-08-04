@@ -13,14 +13,30 @@ someone's memory eventually gets broken:
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
 import yaml
 
-__all__ = ["USER_AGENT", "DuplicateTargetError", "FetchPlan", "Target", "load_plan"]
+__all__ = [
+    "USER_AGENT",
+    "DuplicateTargetError",
+    "FetchPlan",
+    "Target",
+    "Transport",
+    "load_plan",
+]
+
+#: ``(url, user_agent) -> (http_status, body)``.
+#:
+#: Every consumer takes one of these rather than calling the real fetcher
+#: directly. That indirection is why the test suite is offline: no test
+#: supplies the real implementation. Declared here, in the module with no
+#: dependencies of its own, so both fetch and robots can use it without a
+#: cycle.
+Transport = Callable[[str, str], tuple[int, bytes]]
 
 #: Identifies us honestly. An academic project should not pretend to be a
 #: browser. Sources whose edge rejects this get a per-source override in the
