@@ -84,15 +84,18 @@ eval:
 	$(UV) run python -m herhealth_data.cli eval --knowledge $(KNOWLEDGE_DIR) --cases $(CASES_DIR)
 
 lint:
-	$(UV) run ruff check packages/contracts services/data
+	$(UV) run ruff check packages/contracts services/data services/backend
 	$(UV) run mypy --config-file packages/contracts/pyproject.toml packages/contracts/src
 
 fmt:
-	$(UV) run ruff format packages/contracts services/data
-	$(UV) run ruff check --fix packages/contracts services/data
+	$(UV) run ruff format packages/contracts services/data services/backend
+	$(UV) run ruff check --fix packages/contracts services/data services/backend
 
+# --extra ingest because the clean-step tests import BeautifulSoup. `make
+# validate` deliberately works WITHOUT the extra; the test suite does not, and
+# CI must install it or test_clean.py fails at collection.
 test:
-	$(UV) run pytest packages/contracts/tests services/data/tests -q
+	$(UV) run --extra ingest pytest packages/contracts/tests services/data/tests services/backend/tests -q
 
 clean-build:
 	rm -rf build/

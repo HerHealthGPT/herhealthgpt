@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from ingest_factories import make_plan, make_target
 
-from conftest import make_plan, make_target
 from herhealth_data import paths
 from herhealth_data.ingest import USER_AGENT, DuplicateTargetError, Target, load_plan
 

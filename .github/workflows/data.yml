@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "services/data/**"
+      - "services/backend/**"
       - "packages/contracts/**"
       - "knowledge/**"
       - "pyproject.toml"
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - "services/data/**"
+      - "services/backend/**"
       - "packages/contracts/**"
       - "knowledge/**"
       - "pyproject.toml"
@@ -34,8 +36,10 @@ jobs:
 
       # --locked fails rather than re-resolving. CI runs the same pins a
       # teammate does, or it goes red.
+      # --extra ingest: the clean-step tests import BeautifulSoup. Without it
+      # test_clean.py fails at collection, which is how this was first found.
       - name: Install from lockfile
-        run: uv sync --locked
+        run: uv sync --locked --extra ingest
 
       - name: Lint
         run: make lint

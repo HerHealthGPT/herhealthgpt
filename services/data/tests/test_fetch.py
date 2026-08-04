@@ -8,8 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from ingest_factories import forbidden, make_plan, make_target, recording, responds
 
-from conftest import forbidden, make_plan, make_target, recording, responds
 from herhealth_data.ingest import FetchOutcome, RawStore, fetch_all
 
 # --------------------------------------------------------------------------

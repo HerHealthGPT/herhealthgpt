@@ -9,7 +9,16 @@ from __future__ import annotations
 
 import pytest
 
-from herhealth_data.ingest.clean import (
+# BeautifulSoup lives in the optional `ingest` extra. Without this line, running
+# the suite without it fails at COLLECTION — the whole run aborts, including the
+# tests that have nothing to do with cleaning. That is how CI first broke.
+#
+# Skipping is the safety net, not the intent: `make test` and CI both install
+# the extra, so these must actually run there. A silent skip in CI would be
+# worse than the collection error it replaces.
+pytest.importorskip("bs4", reason="the ingest extra is not installed")
+
+from herhealth_data.ingest.clean import (  # noqa: E402
     CleanDocument,
     SectionType,
     classify_heading,
