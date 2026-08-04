@@ -1,0 +1,182 @@
+# Batch 05 — pelvic inflammatory disease.
+#
+# APPROVED 2026-08-04 — nine rows. A tenth was drafted and DELETED at review:
+# it mapped the Office on Women's Health quote "Pain in the upper right abdomen"
+# onto our lower_back_pain feature. Those are not the same thing, so the quote
+# did not support the row as written, and the protocol deletes such rows rather
+# than softening them. See the note at the end for the constructive fix.
+#
+# The most consequential batch so far, because PID carries the URGENT_SAME_DAY
+# baseline. Every row here can raise urgency, not just narrow a differential.
+#
+# It also finally activates two features that have been dead weight since they
+# were written: `fever` and `abnormal_discharge`. Neither of the phase 1 three
+# causes them, which is exactly what makes them informative — they point away
+# from endometriosis and fibroids and toward infection.
+#
+# NOTE: no elimination row, and one row deleted at review. See closing comments.
+
+batch: 05
+covers: [pelvic_inflammatory_disease]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  # -------------------------------------------------------------------------
+  # Infection signs — what separates PID from the phase 1 three
+  # -------------------------------------------------------------------------
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: fever
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: Fever (100.4 F or higher)
+    note: >-
+      Named directly among the signs, with a threshold. Strong because none of
+      PCOS, endometriosis or fibroids causes fever, so this feature does almost
+      all its work here — it is the clearest infective signal in the set.
+      The source states the temperature; we do not store it, because our feature
+      is a yes/no and inventing a numeric threshold we cannot ask about would be
+      false precision.
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: abnormal_discharge
+    value: "yes"
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      vaginal discharge that looks, smells or feels unusual for you
+    note: >-
+      Corroborated by the Office on Women's Health ("Vaginal discharge that may
+      smell foul") and by CDC, which lists "a smelly discharge" among the
+      symptoms that warrant prompt care. Three sources, and again a feature no
+      phase 1 condition claims.
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: weak_support
+    source_id: cdc
+    source_quote: >-
+      Promptly see a doctor if you have any genital symptoms such as an unusual
+      sore, a smelly discharge, burning when peeing, or bleeding between periods
+    note: >-
+      Weak: "burning when peeing" appears in a list of triggers for seeking care
+      rather than as a characteristic sign, and it is at least as suggestive of
+      a urinary tract infection, which is now its own condition.
+
+  # -------------------------------------------------------------------------
+  # Pain and its onset
+  # -------------------------------------------------------------------------
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: strong_support
+    source_id: nhs
+    source_quote: pain felt deep inside when you have sex
+    note: >-
+      Note the wording — "deep inside" — which matches how the Office on Women's
+      Health distinguishes deep from entrance pain for endometriosis.
+
+      WORTH WATCHING: this feature now has rows for endometriosis, fibroids and
+      PID. A feature that supports three of nine conditions separates very
+      little, and its earlier billing as highly discriminating is now clearly
+      wrong. It still earns its place — it raises all three above the rest — but
+      next_question should not expect much from it.
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: pelvic_pain_severity
+    value: severe
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      PID can come on fast, with extreme pain and fever, especially if it is
+      caused by gonorrhea.
+    note: >-
+      Weak because the source qualifies it — "especially if it is caused by
+      gonorrhea" — so extreme pain describes one presentation rather than the
+      condition.
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: pain_onset
+    value: sudden
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      PID can come on fast, with extreme pain and fever, especially if it is
+      caused by gonorrhea.
+    note: >-
+      Same sentence as the row above, supporting a second cell. NHS gives the
+      other half of the picture — "Your symptoms may start quickly over a few
+      days, or develop slowly and get worse over time" — which is why this is
+      weak: both onsets occur, so sudden onset raises PID a little without
+      gradual onset arguing against it.
+
+  # -------------------------------------------------------------------------
+  # Bleeding pattern
+  # -------------------------------------------------------------------------
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: bleeding_between_periods
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: bleeding between periods or after sex
+    note: >-
+      Corroborated by CDC. Weak because this feature now appears under
+      endometriosis, fibroids and PID; it narrows the differential barely at all.
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: bleeding_heaviness
+    value: heavy
+    strength: weak_support
+    source_id: nhs
+    source_quote: heavy or painful periods that are unusual for you
+    note: >-
+      The qualifier matters: "unusual for you" makes this a change from the
+      user's own baseline rather than an absolute level. Our feature captures
+      the level only, so the row loses the comparison the source draws. Weak
+      accordingly.
+
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: cycle_regularity
+    value: irregular
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Irregular menstrual periods
+    note: >-
+      Listed without emphasis. Weak, and note it pulls the same direction as
+      PCOS and perimenopause — irregularity is the least discriminating finding
+      in the entire knowledge base.
+
+# WHY THERE IS NO ELIMINATION ROW
+#
+# Both sources say plainly that PID is often silent. NHS: "Not everyone with
+# pelvic inflammatory disease (PID) will have symptoms." Office on Women's
+# Health: "Many women do not know they have PID because they do not have any
+# signs or symptoms."
+#
+# So the absence of any given symptom argues against PID very little, and the
+# protocol forbids inferring an argues_against row from absence in a symptom
+# list. PID therefore joins uterine_fibroids as a condition with no elimination
+# lever — it can be raised but barely lowered.
+#
+# That matters for phase 2. With a URGENT_SAME_DAY baseline and no way down, PID
+# will tend to persist in the differential and hold urgency up. Whether that is
+# correct caution or a source of over-triage is a question for the evaluation
+# set, not for argument here.
+
+# THE DELETED ROW, AND WHAT WOULD MAKE IT VALID
+#
+# A row was drafted mapping "Pain in the upper right abdomen (this is rare)"
+# onto lower_back_pain. Deleted: the quote describes a different body region,
+# and the source itself calls it rare.
+#
+# The constructive fix is a right_upper_quadrant_pain feature. It would let this
+# row be written honestly, AND let the NHS 999 bullet "have pain under your ribs
+# on the right side and in your right shoulder" be encoded in full — at present
+# only the shoulder half is captured, by shoulder_tip_pain, so that escalation
+# rule fires on less than the source states.
