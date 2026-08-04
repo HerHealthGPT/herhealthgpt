@@ -1,0 +1,310 @@
+# conditions.yaml — everything the system may consider as an explanation.
+#
+# ============================================================================
+# CONSIDERING A CONDITION IS NOT ASSERTING ONE.
+#
+# The system's output is an urgency action and cited information, never a
+# conclusion about what a user has. A condition appearing here means "this may
+# be worth asking about", not "this may be what you have".
+# ============================================================================
+#
+# `icd11` is never written by hand — codes recalled from a language model are
+# unreliable, and a wrong identifier is worse than an absent one because it looks
+# authoritative. Every code here was resolved by `make icd` against the WHO ICD
+# API, release 2026-01, which is pinned so codes cannot shift between runs. A
+# condition the API could not match confidently keeps TODO_VERIFY. Three
+# sentinel values, and the distinction matters:
+#   TODO_VERIFY     not yet looked up; `make icd` will propose for it
+#   UNRESOLVED      looked up, no correct entry exists; will not be re-proposed
+#   NOT_APPLICABLE  there is no code for this, and never will be
+#
+# `baseline_action` is what the condition implies on its own, before any evidence
+# moves it. Most sit at ROUTINE_APPOINTMENT, escalation coming only from
+# red_flags.yaml. Two exceptions, both deliberate:
+#   pelvic_inflammatory_disease  URGENT_SAME_DAY — NHS routes the mere suspicion
+#                                of it to urgent care
+#   normal_variation             SELF_CARE — the only route to that action
+#
+# `source_ids` resolve to sources.yaml and must number at least two, so no
+# condition rests on a single document. Sources marked `citable_only` (NHS) may
+# be cited here; only `available` sources may enter the passage corpus.
+#
+# Validated against herhealth_contracts.knowledge.ConditionsFile.
+
+conditions:
+  # The id stays `pcos` deliberately. Ids are internal keys and changing one
+  # would rewrite every evidence row and break the benchmark's labels; the
+  # label is what users and markers actually see, so that is what carries the
+  # current name. See CONTEXT.md.
+  - id: pcos
+    label: >-
+      Polyendocrine metabolic ovarian syndrome (PMOS), formerly polycystic
+      ovary syndrome (PCOS)
+    icd11: 5A80.1
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nichd]
+    # ICD-11 still indexes the old name, so searching our label finds nothing.
+    # Recorded rather than fuzzy-matched: the authorities genuinely disagree.
+    search_term: Polycystic ovary syndrome
+    note: >-
+      MedlinePlus: "Polycystic ovary syndrome (PCOS) is the name for set of
+      symptoms that are related to an imbalance of hormones. PCOS affects the
+      ovaries, as well as many other parts of the body." The same page states
+      people with PCOS "usually have at least two of these problems: Not
+      ovulating... High levels of androgens... Cysts in one or both ovaries",
+      which is what the evidence rows key on. NICHD supplies symptom, cause and
+      treatment pages under conditioninfo/.
+
+  - id: endometriosis
+    label: Endometriosis
+    icd11: GA10.Z
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nichd]
+    note: >-
+      MedlinePlus: "Endometriosis is a disease in which tissue like the lining
+      of the uterus grows in other places in your body." It names the main
+      symptom as "Pelvic pain, which often happens during your period".
+      CAVEAT: NICHD has no conditioninfo section for endometriosis — its topic
+      page is a single paragraph — so this condition rests far more heavily on
+      MedlinePlus than the other two. The two-source rule is satisfied in form
+      but is thin in substance here. CDC has no endometriosis page at all.
+
+  # ---------------------------------------------------------------------------
+  # The first condition whose baseline is not routine.
+  # ---------------------------------------------------------------------------
+  - id: pelvic_inflammatory_disease
+    label: Pelvic inflammatory disease (PID)
+    icd11: GA05.Z
+    baseline_action: URGENT_SAME_DAY
+    source_ids: [womenshealth, cdc, nhs]
+    note: >-
+      BASELINE IS URGENT, WHICH IS NEW. Every other condition here sits at
+      ROUTINE_APPOINTMENT or below, and escalation comes only from red_flags.
+      PID is different because the NHS routes the mere suspicion of it to urgent
+      care: "Ask for an urgent GP appointment or get help from NHS 111 if: you
+      think you have symptoms of pelvic inflammatory disease (PID)". So the
+      condition being live in the differential is itself enough.
+
+      That makes it the most important addition to the differential so far. It
+      is THE urgent alternative to the phase 1 three: fever, unusual discharge
+      and pelvic pain together point here rather than at endometriosis or
+      fibroids, and those three features already exist and currently do very
+      little work.
+
+      CDC states the escalation trigger plainly too: "Promptly see a doctor if
+      you have any genital symptoms such as an unusual sore, a smelly discharge,
+      burning when peeing, or bleeding between periods." Three sources, all
+      already fetched.
+
+  - id: perimenopause
+    label: Perimenopause and menopause
+    icd11: GA30.Z
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nhs]
+    note: >-
+      Included for the reason CLAUDE.md gives: without it the system
+      over-suspects PCOS in women over 45, because irregular periods, weight
+      change, low mood and thinning hair all appear under both. Age is what
+      separates them, and age_band already exists.
+
+      A natural life stage rather than a disease, so the baseline is a judgement
+      call. NHS calls it "a natural part of life" but still routes symptoms to a
+      GP — "Contact your GP if you think you have symptoms of menopause or
+      perimenopause and want to know what your options are" — so
+      ROUTINE_APPOINTMENT rather than SELF_CARE. Only normal_variation sits at
+      SELF_CARE.
+
+      NHS defines the boundary usefully: "Perimenopause happens when your
+      periods become irregular and menopause is when your periods stop
+      altogether", and "usually affects women between the ages of 45 and 55".
+
+  # ---------------------------------------------------------------------------
+  # The benign and infective alternatives — added 2026-08-04.
+  #
+  # None of these was in the original fourteen. They were added after auditing
+  # what our own sources name as differentials: NHS lists all three as causes of
+  # pelvic pain. Without them several existing features point at the wrong
+  # condition, which is a worse failure than not modelling them at all.
+  # ---------------------------------------------------------------------------
+  - id: ovarian_cyst
+    label: Ovarian cyst
+    icd11: GA18.6
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, womenshealth, nhs]
+    note: >-
+      Baseline is routine because most cysts are harmless: NHS says they are
+      "very common and do not usually cause any symptoms" and that "Most ovarian
+      cysts occur naturally and go away in a few months without needing any
+      treatment." The dangerous cases — torsion and rupture — are handled by red
+      flags, not by the baseline.
+
+      Its real value is explaining `pain_onset: sudden`, which until now had
+      nothing to point at. NHS: "An ovarian cyst usually only causes symptoms if
+      it splits (ruptures), is very large or twists and then blocks the blood
+      supply to the ovaries", with pain that "can range from a dull, heavy
+      sensation to a sudden, severe and sharp pain."
+
+  - id: urinary_tract_infection
+    label: Urinary tract infection (UTI)
+    icd11: GC08.Z
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, womenshealth, nhs]
+    note: >-
+      The commonest benign cause of pelvic pain with urinary symptoms, and NHS
+      names it first among the common causes of pelvic pain. Without it,
+      `urinary_symptoms` pushes toward fibroids when the answer is usually far
+      simpler — a differential that omits the common explanation will
+      systematically over-suspect the rare one.
+
+  - id: sexually_transmitted_infection
+    label: Sexually transmitted infection (STI)
+    icd11: 1A9Z
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, nhs, medlineplus]
+    note: >-
+      Included because it is the CAUSE of pelvic inflammatory disease — NHS:
+      "Pelvic inflammatory disease (PID) is usually caused by sexually
+      transmitted infections (STIs) like chlamydia and gonorrhoea" — and because
+      it is what `abnormal_discharge` should point at before anything else.
+
+      Baseline routine rather than urgent: NHS routes to a GP or sexual health
+      clinic. It escalates only through PID, which carries the urgent baseline.
+      Treated as one condition rather than one per organism: the triage action
+      is the same for all of them, and this system decides urgency, not which
+      organism.
+
+  # ---------------------------------------------------------------------------
+  # The benign causes of discharge — added 2026-08-04.
+  #
+  # abnormal_discharge previously pointed only at PID, which carries an urgent
+  # baseline, and STI. Both serious. The commonest causes of discharge are these
+  # two and neither was modelled, so the feature systematically over-triaged.
+  # Same reasoning that justified adding urinary_tract_infection.
+  # ---------------------------------------------------------------------------
+  - id: thrush
+    label: Vaginal thrush (yeast infection)
+    icd11: 1F23.10
+    baseline_action: SELF_CARE
+    source_ids: [medlineplus, womenshealth, nhs]
+    # ICD-11 indexes this as 'vulvovaginal candidosis'; neither 'thrush' nor
+    # 'yeast infection' matches, and the label had to be searched on its
+    # clinical name rather than its common one.
+    search_term: vulvovaginal candidosis
+    note: >-
+      ONLY THE SECOND CONDITION WITH A SELF_CARE BASELINE, after
+      normal_variation — and unlike that one, this is an actual illness.
+
+      Justified because NHS treats it as self-manageable: thrush is treated with
+      pharmacy antifungals without needing an appointment. That makes it the
+      first route to SELF_CARE for a user who genuinely has something wrong,
+      rather than for a user who has nothing wrong. Worth watching in
+      evaluation: a SELF_CARE baseline on a real condition is exactly where
+      under-triage would show up if the reasoning is off.
+
+  - id: bacterial_vaginosis
+    label: Bacterial vaginosis
+    # REVERTED to TODO_VERIFY on 2026-08-04 after a bad match was applied.
+    #
+    # `make icd` proposed MF3A "Vaginal discharge" with a confidence of 1.00 and
+    # it was applied without the proposal being read carefully. MF3A is a
+    # SYMPTOM code, not this disease — the search matched on the word "vaginal".
+    #
+    # Searching "bacterial vaginosis" and "vaginosis" both return the same
+    # symptom code, so the MMS linearisation may not carry a distinct entry for
+    # it. Left unfilled rather than guessed: a wrong identifier looks
+    # authoritative, which is worse than an absent one.
+    #
+    # THE GENERAL LESSON, worth keeping: the API's confidence score measures
+    # string similarity, not conceptual correctness. A score of 1.00 on the
+    # wrong concept is exactly what it looks like. Read every proposal before
+    # running --apply.
+    #
+    # UNRESOLVED, not TODO_VERIFY: the difference matters. TODO_VERIFY means
+    # "not yet looked up"; UNRESOLVED means "looked up, and the linearisation
+    # has no correct entry". `make icd` only proposes for TODO_VERIFY, so this
+    # will not be re-proposed and the bad match cannot creep back in.
+    icd11: UNRESOLVED
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, nhs]
+    note: >-
+      Routine rather than self-care because, unlike thrush, it needs prescribed
+      antibiotics. The pairing matters more than either condition alone: thrush
+      and bacterial vaginosis are the two benign explanations for discharge, and
+      distinguishing them from each other is less important here than
+      distinguishing both from PID.
+
+  # ---------------------------------------------------------------------------
+  # The one documented exception to the two-source rule.
+  # ---------------------------------------------------------------------------
+  - id: adenomyosis
+    label: Adenomyosis
+    icd11: GA11
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [nhs]
+    single_source_reason: >-
+      No second usable source exists. MedlinePlus mentions adenomyosis only in
+      link lists pointing at Mayo Clinic, which is copyrighted; NICHD, CDC, the
+      Office on Women's Health and WHO have no page at all. NICE CKS covers it
+      but its licence is not satisfiable outside the UK.
+
+      Authored anyway because omitting it is the larger error. NHS names
+      adenomyosis alongside endometriosis as a cause of heavy and painful
+      periods on three separate pages, so it is a differential our own sources
+      insist on — and a differential missing a condition the sources keep naming
+      will attribute its symptoms to whatever else is available, which here
+      means endometriosis.
+
+      The rule's purpose is that no condition rests on a single DOCUMENT. NHS
+      covers this across a dedicated page plus the heavy-periods and period-pain
+      pages, which meets that purpose while failing the letter of the rule. See
+      docs/adr/0006.
+
+      CONSEQUENCE TO STATE WHEREVER COVERAGE IS REPORTED: this is the only
+      condition in the knowledge base with no corroborating source. If NHS is
+      wrong about something here, nothing catches it.
+    note: >-
+      NHS distinguishes it from endometriosis explicitly — "Endometriosis is a
+      different condition where tissue similar to the lining of the womb grows
+      in other places, such as the ovaries or fallopian tubes" — which is rare
+      and useful, since the two present almost identically.
+
+  # ---------------------------------------------------------------------------
+  # Not a disease. Included because without it SELF_CARE is unreachable.
+  # ---------------------------------------------------------------------------
+  - id: normal_variation
+    label: Normal menstrual variation
+    icd11: NOT_APPLICABLE
+    baseline_action: SELF_CARE
+    source_ids: [medlineplus, womenshealth]
+    note: >-
+      The only condition whose baseline is SELF_CARE, and the reason that action
+      is reachable at all. Without it every path through the differential ends
+      at a doctor, and the system routes a healthy user to care every time —
+      which would show up in evaluation as near-total over-triage on normal
+      cases, indistinguishable from a fault in the elimination logic.
+
+      Grounded rather than assumed. MedlinePlus gives the ranges: "Most
+      menstrual cycles last about 28 days, but cycles can be shorter or longer
+      and still be normal" and "A period usually lasts three to seven days and
+      can be light or heavy". The Office on Women's Health states the two-way
+      version in one sentence: "Regular menstrual periods in the years between
+      puberty and menopause are usually a sign that your body is working
+      normally. Irregular or heavy, painful periods are not normal."
+
+      icd11 is NOT_APPLICABLE rather than TODO_VERIFY: there is no code for not
+      being ill, so leaving TODO_VERIFY would imply a lookup that will never
+      resolve.
+
+  - id: uterine_fibroids
+    label: Uterine fibroids
+    icd11: 2E86.0
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [medlineplus, nichd]
+    note: >-
+      MedlinePlus: "Many women with fibroids have no symptoms. If you do, the
+      type of symptoms may be due to location, size, and number of fibroids",
+      listing "Heavy or painful periods or bleeding between periods" and
+      "Feeling 'full' in the lower abdomen (belly)". The asymptomatic majority
+      matters for elimination: absence of symptoms argues against far less
+      strongly here than it would for a condition that is always symptomatic.
+      NICHD supplies symptom, cause and treatment pages under conditioninfo/.

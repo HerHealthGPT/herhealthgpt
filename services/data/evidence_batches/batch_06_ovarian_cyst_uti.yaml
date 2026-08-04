@@ -1,0 +1,158 @@
+# Batch 06 — ovarian cyst and urinary tract infection.
+#
+# APPROVED 2026-08-04 — each quote read, and every one machine-verified against
+# its cited source by `make verify-quotes`.
+#
+# These two are the benign alternatives the differential was missing, and each
+# rescues a feature that was pointing at the wrong condition:
+#
+#   pain_onset: sudden      had nothing to explain it. Ovarian cyst rupture and
+#                           torsion are THE sudden-severe-pain differential.
+#   urinary_symptoms        pushed toward fibroids. A UTI is far commoner.
+#   blood_in_urine_or_stool existed only to key a red flag; now it has evidence.
+#
+# NHS quotes here contain U+2013 EN DASH, not a hyphen and not an em dash.
+# Reproduced exactly — a quote that differs by one character cannot be found in
+# the source, and provenance could not then be confirmed.
+
+batch: 06
+covers: [ovarian_cyst, urinary_tract_infection]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  # -------------------------------------------------------------------------
+  # Ovarian cyst — the sudden-onset differential
+  # -------------------------------------------------------------------------
+
+  - condition_id: ovarian_cyst
+    feature_id: pain_onset
+    value: sudden
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: If a cyst ruptures, it can cause sudden, severe pain.
+    note: >-
+      THE ROW THIS CONDITION WAS ADDED FOR. Sudden onset previously had nothing
+      in the differential to explain it: neither PCOS, endometriosis nor
+      fibroids comes on suddenly. Strong because the source states the mechanism
+      — rupture — rather than listing a symptom.
+
+  - condition_id: ovarian_cyst
+    feature_id: pelvic_pain_severity
+    value: severe
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      pelvic pain – this can range from a dull, heavy sensation to a sudden,
+      severe and sharp pain
+    note: >-
+      Corroborated by the Office on Women's Health: "If a cyst ruptures, it can
+      cause sudden, severe pain." Note the source describes a RANGE, so severity
+      alone raises this condition without mild pain arguing against it.
+
+  - condition_id: ovarian_cyst
+    feature_id: abdominal_swelling_or_pressure
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      If a cyst does cause symptoms, you may have pressure, bloating, swelling,
+      or pain in the lower abdomen on the side of the cyst.
+    note: >-
+      A mass effect, as with fibroids — which is why this feature now supports
+      both and separates them less than it did. The distinguishing detail the
+      source gives, "on the side of the cyst", has no feature; laterality is not
+      something this system asks about.
+
+  - condition_id: ovarian_cyst
+    feature_id: bloating_or_digestive_symptoms
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: bloating and a swollen tummy
+    note: >-
+      Weak: bloating is common and non-specific, and the same NHS page lists it
+      only among symptoms that appear when a cyst is large or has ruptured.
+
+  - condition_id: ovarian_cyst
+    feature_id: feeling_sick_or_vomiting
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      If a cyst causes twisting of an ovary, you may have pain along with nausea
+      and vomiting.
+    note: >-
+      Weak as evidence, but clinically the important sentence on the page: pain
+      with nausea and vomiting is the torsion picture. It is already covered as
+      an escalation by pelvic_pain_with_nausea_or_vomiting, which is where the
+      urgency comes from; this row only raises the condition.
+
+  - condition_id: ovarian_cyst
+    feature_id: lower_back_pain
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Dull ache in the lower back and thighs
+    note: >-
+      The source lists this under "Less common symptoms", so weak. First row to
+      use this feature, which was added in the last batch and had no evidence.
+
+  # -------------------------------------------------------------------------
+  # Urinary tract infection — the common explanation
+  # -------------------------------------------------------------------------
+
+  - condition_id: urinary_tract_infection
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: strong_support
+    source_id: nhs
+    source_quote: pain or a burning sensation when peeing (dysuria)
+    note: >-
+      Listed first among UTI symptoms and corroborated by the Office on Women's
+      Health ("Pain or burning when urinating"). Strong.
+
+      Note this feature covers bowels AND urination in one question, so a yes
+      answer does not distinguish which. That imprecision now matters more than
+      it did, because endometriosis claims the same feature for cyclical bowel
+      and bladder pain. Splitting the feature is worth considering.
+
+  - condition_id: urinary_tract_infection
+    feature_id: urinary_symptoms
+    value: frequency
+    strength: strong_support
+    source_id: nhs
+    source_quote: needing to pee more often than usual
+    note: >-
+      This is the row that stops urinary frequency pointing at fibroids by
+      default. Both conditions claim it, but a UTI is far commoner, and a
+      differential that omits the common explanation systematically over-suspects
+      the rare one.
+
+  - condition_id: urinary_tract_infection
+    feature_id: blood_in_urine_or_stool
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Blood in the urine. This is more common in younger women. If you see blood
+      in your urine, tell a doctor or nurse right away.
+    note: >-
+      First evidence row for this feature, which until now existed only to key a
+      red-flag clause. Weak because the source names it as a symptom without
+      emphasis; NHS lists it under urgent advice rather than among the ordinary
+      symptoms, which is a stronger claim about urgency than about diagnosis.
+
+  - condition_id: urinary_tract_infection
+    feature_id: fever
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Having a fever, which may mean the infection has reached your kidneys
+    note: >-
+      Weak, and deliberately below the PID fever row, which is strong. The
+      source frames fever as a sign the infection has SPREAD rather than as a
+      sign of a UTI itself. Fever now supports both conditions and remains one
+      of the few features that separates infection from the phase 1 three.

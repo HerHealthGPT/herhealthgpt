@@ -103,21 +103,38 @@ features:
     allowed_values: [light, moderate, heavy, soaking_hourly]
     burden: 2
     probe:
-      en: How heavy is your bleeding at its worst — light, moderate, heavy, or
+      en: How heavy is your bleeding at its worst — light, moderate, heavy (for
+        example, passing large clots or bleeding through your clothes), or
         soaking through protection every hour?
     note: >-
       "soaking_hourly" is deliberately its own level rather than the top of
       "heavy". It is the value escalation rules key on, and collapsing it into
       "heavy" would lose the distinction that matters most.
 
-  - id: large_clots
-    label: Passing large clots
-    kind: boolean
-    allowed_values: ["yes", "no"]
-    burden: 2
-    probe:
-      en: Are you passing large blood clots?
-    note: Probe avoids coin-size comparisons, which do not travel between countries.
+      The clot and clothes-soaking examples come from the NHS definition of
+      heavy periods: "need to change your pad or tampon every 1 to 2 hours",
+      "pass blood clots larger than about 2.5cm", "bleed through to your
+      clothes or bedding". They live in the PROBE rather than in a feature of
+      their own, because they describe how to judge heaviness rather than being
+      findings a source ties to any condition. The 2.5cm figure is deliberately
+      omitted from the wording — coin comparisons do not travel, and a
+      centimetre judgement is not one a user can reliably make.
+
+# DELETED 2026-08-04: large_clots.
+#
+# No source ties clots to any condition. The only mention in 43 fetched
+# documents is the NHS definition of heavy periods — "pass blood clots larger
+# than about 2.5cm (the size of a 10p coin)" — which describes what heavy
+# bleeding IS, not what causes it. Reaching "clots support fibroids" needs two
+# inferential steps, and the protocol forbids inferring rows.
+#
+# A feature no evidence row and no red-flag clause can use is a question whose
+# answer can never change the outcome. Deleted rather than kept hopefully.
+#
+# The information is not lost: the clot threshold now appears in the
+# bleeding_heaviness probe below, where it helps a user judge their own answer.
+# That is a better home for it — it was always a way of describing heaviness
+# rather than a finding in its own right.
 
   - id: bleeding_between_periods
     label: Bleeding between periods
@@ -232,17 +249,195 @@ features:
     probe:
       en: Have you noticed any unusual vaginal discharge?
 
+  - id: vulval_itching
+    label: Itching or soreness around the vulva
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Do you have itching or soreness around the vulva or vagina?
+    note: >-
+      Added 2026-08-04 to separate the two benign causes of discharge from each
+      other. abnormal_discharge is a yes/no, so it cannot distinguish thrush
+      ("like cottage cheese, does not usually smell") from bacterial vaginosis
+      ("a strong fishy smell") — but itching can: the Office on Women's Health
+      calls "extreme itchiness" the most common symptom of thrush.
+
+      It also matters for what it does NOT do. NHS says bacterial vaginosis
+      "does not usually cause any soreness or itching", which would be an
+      explicit argues_against row — except the Office on Women's Health lists
+      itching among BV symptoms. The two sources contradict each other outright,
+      so no row was written either way. See build/conflicts.jsonl.
+
   - id: urinary_symptoms
     label: Urinary symptoms
     kind: categorical
-    allowed_values: [none, frequency, difficulty_passing_urine]
+    allowed_values: [none, frequency, incontinence, difficulty_passing_urine]
     burden: 2
     probe:
-      en: Any problems passing urine — needing to go much more often, or difficulty
-        passing it at all?
+      en: Any problems passing urine — needing to go much more often, leaking, or
+        difficulty passing it at all?
     note: >-
-      Two different things in one question. Frequency suggests pressure from a
-      mass; difficulty passing urine does not wait.
+      Three different things in one question, in increasing urgency. Frequency
+      suggests pressure from a mass; incontinence likewise but is separately
+      named by NHS for fibroids ("not being able to control when you pee") and
+      for perimenopause; difficulty passing urine does not wait and keys a red
+      flag.
+
+      `incontinence` added 2026-08-04. Adding a value is safe — no existing row
+      referenced it — but note that a value which no evidence row uses is dead
+      weight in the same way an unused feature is.
+
+  # -------------------------------------------------------------------------
+  # Systemic and constitutional
+  #
+  # Added 2026-08-04 after auditing the fetched corpus for symptoms our sources
+  # name but no feature covered. Each of these is named by at least two sources,
+  # which is why they were chosen over other candidates.
+  # -------------------------------------------------------------------------
+
+  - id: acanthosis_nigricans
+    label: Dark velvety patches of skin
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Have you noticed dark, velvety patches of skin, especially on your neck,
+        armpits or groin?
+    note: >-
+      Named by CDC, MedlinePlus and NICHD, all of which tie it to insulin
+      resistance in PCOS. Visually distinctive and easy for a user to recognise
+      once described, which is why the probe describes it rather than naming it.
+
+  - id: extreme_tiredness
+    label: Extreme tiredness
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Have you been extremely or unusually tired?
+    note: >-
+      OVERLAPS anaemia_symptoms, deliberately and with care. That feature asks
+      about tiredness WITH breathlessness and dizziness — the picture of blood
+      loss. This one is fatigue on its own, which the NHS lists for
+      endometriosis ("extreme tiredness (fatigue)") and for PMOS ("feeling very
+      tired") without any bleeding context.
+
+      The two are correlated, so a user may answer yes to both and the
+      controller would count fatigue twice. Flagged for phase 2: correlated
+      features are a known weakness of naive log-odds accumulation, and this is
+      the clearest instance in the set.
+
+  - id: bloating_or_digestive_symptoms
+    label: Bloating or digestive problems
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Do you get bloating, constipation, diarrhoea or other tummy problems,
+        especially around your period?
+    note: >-
+      Named by NHS, MedlinePlus and the Office on Women's Health. The tie to the
+      menstrual cycle is what makes it point at endometriosis rather than at a
+      bowel condition, which is why the probe asks about the timing.
+
+  - id: lower_back_pain
+    label: Lower back pain
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you get pain in your lower back?
+    note: >-
+      NHS lists it for fibroids; the Office on Women's Health describes
+      "Chronic (long-term) pain in the lower back and pelvis" for endometriosis.
+      Cheap to ask and non-sensitive, so burden 1.
+
+  - id: low_mood_or_anxiety
+    label: Low mood or anxiety
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 3
+    probe:
+      en: Have you been feeling low, anxious or depressed?
+    note: >-
+      Named by NHS (for both PMOS and endometriosis), MedlinePlus and NICHD.
+      Burden 3 because it is personal, so next_question should reach it late and
+      only when it would change the action. It is a poor discriminator on its
+      own — it appears under several conditions — but it matters for the
+      informational half of what this system does.
+
+  # -------------------------------------------------------------------------
+  # Emergency signs
+  #
+  # Every feature below exists to key a specific NHS escalation bullet from
+  # nhs.uk/symptoms/pelvic-pain/ (reviewed 24 November 2025). None identifies a
+  # phase 1 condition; all of them change the action, which is the point. A
+  # feature that only ever appears in a red-flag clause is still earning its
+  # place — red flags run before any of the differential reasoning.
+  # -------------------------------------------------------------------------
+
+  - id: shoulder_tip_pain
+    label: Pain at the tip of the shoulder
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you have pain right at the tip of your shoulder?
+    note: >-
+      Odd-sounding and trivial to ask, and it is the classic referred sign of
+      bleeding into the abdomen. NHS lists it under "Call 999 or go to A&E".
+      Cheap question, largest possible change in action.
+
+  - id: right_upper_quadrant_pain
+    label: Pain under the ribs on the right side
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Do you have pain under your ribs on the right side?
+    note: >-
+      Added so the NHS PID escalation bullet can be encoded as written: "have
+      pain under your ribs on the right side and in your right shoulder". That
+      is a conjunction, and until now only the shoulder half existed, so the
+      bullet had no rule at all.
+
+      Distinct from shoulder_tip_pain, which keys its own rule from the pelvic
+      pain page where the shoulder is the entire trigger. Two sources, two
+      bullets, two rules — combining them would make each fire on something its
+      source does not say.
+
+  - id: difficulty_breathing
+    label: Difficulty breathing
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Are you having any difficulty breathing?
+
+  - id: sudden_confusion
+    label: Sudden confusion
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Have you suddenly become confused or disoriented?
+
+  - id: feeling_sick_or_vomiting
+    label: Nausea or vomiting
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 1
+    probe:
+      en: Have you been feeling sick, or been vomiting?
+
+  - id: blood_in_urine_or_stool
+    label: Blood when passing urine or opening bowels
+    kind: boolean
+    allowed_values: ["yes", "no"]
+    burden: 2
+    probe:
+      en: Have you noticed blood when you pass urine or open your bowels?
 
   # -------------------------------------------------------------------------
   # Androgenic and metabolic

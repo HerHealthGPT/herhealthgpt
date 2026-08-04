@@ -39,6 +39,8 @@ from pydantic import (
     model_validator,
 )
 
+from herhealth_contracts.scoring import log_odds_for
+
 __all__ = [
     "ActionCode",
     "ActionDefinition",
@@ -280,8 +282,31 @@ class Condition(_KnowledgeModel):
     #: The action this condition implies on its own, before evidence moves it.
     baseline_action: ActionCode
 
-    #: At least two, so no condition rests on a single document.
-    source_ids: tuple[Identifier, ...] = Field(min_length=2)
+    #: Normally at least two, so no condition rests on a single document.
+    #: One is permitted only with ``single_source_reason`` filled in — see the
+    #: validator below and docs/adr/0006.
+    source_ids: tuple[Identifier, ...] = Field(min_length=1)
+
+    #: Why this condition is authored from one source. Empty for everything
+    #: else, and required when ``source_ids`` has only one entry.
+    #:
+    #: The two-source rule exists so no condition rests on a single DOCUMENT.
+    #: A source covering a condition across several documents meets that
+    #: purpose while failing the letter of the rule, and refusing to model a
+    #: real differential on a technicality is its own kind of error. So the
+    #: exception exists — but it must be argued for in the data, where a
+    #: reviewer will see it, rather than granted by quietly weakening the rule.
+    single_source_reason: str = ""
+
+    #: What to search external terminologies for, when our label does not match
+    #: theirs. Empty means the label is the query.
+    #:
+    #: Exists because naming drifts: NHS and NICHD now call PCOS "polyendocrine
+    #: metabolic ovarian syndrome", while ICD-11 still indexes "polycystic ovary
+    #: syndrome". Recording the search term explicitly is honest about the
+    #: mismatch; fuzzy-matching around it would hide a real disagreement between
+    #: authorities.
+    search_term: str = ""
 
     note: str = ""
 
@@ -290,6 +315,29 @@ class Condition(_KnowledgeModel):
     def _unique_sources(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         _reject_duplicates(list(value), "source_id")
         return value
+
+    @model_validator(mode="after")
+    def _one_source_needs_a_reason(self) -> Self:
+        """A single-source condition must say why, in the file.
+
+        This is the two-source rule with a documented escape hatch rather than
+        no rule at all. The escape hatch is deliberately awkward: it cannot be
+        taken by omission, only by writing an argument that a reviewer reads.
+        """
+        if len(self.source_ids) < 2 and not self.single_source_reason.strip():
+            raise ValueError(
+                f"{self.id!r} cites only one source. Either add a second, or set "
+                "single_source_reason explaining why one is acceptable here — a "
+                "condition resting on a single document is what the rule exists "
+                "to prevent"
+            )
+        if len(self.source_ids) >= 2 and self.single_source_reason.strip():
+            raise ValueError(
+                f"{self.id!r} has {len(self.source_ids)} sources but also a "
+                "single_source_reason; remove the reason so it is not mistaken "
+                "for a standing exemption"
+            )
+        return self
 
 
 class ConditionsFile(_KnowledgeModel):
@@ -489,6 +537,26 @@ class Weights(_KnowledgeModel):
 
     note: str = ""
 
+    # -- thresholds in the units the controller accumulates -----------------
+    #
+    # The thresholds above are authored on 0-1 because that is how a person
+    # reasons about them. The controller adds log-odds. These properties are the
+    # bridge, and they are what makes a threshold checkable against the evidence
+    # weights: `rules_out` at -4.0 clears `plausibility_floor_log_odds` of
+    # -2.94, which is exactly the claim weights.yaml makes for it.
+
+    @property
+    def plausibility_floor_log_odds(self) -> float:
+        return log_odds_for(self.plausibility_floor)
+
+    @property
+    def stop_confidence_log_odds(self) -> float:
+        return log_odds_for(self.stop_confidence)
+
+    @property
+    def self_care_stop_confidence_log_odds(self) -> float:
+        return log_odds_for(self.self_care_stop_confidence)
+
     @field_validator("log_odds")
     @classmethod
     def _all_five_present(cls, value: LogOdds) -> LogOdds:
@@ -499,6 +567,24 @@ class Weights(_KnowledgeModel):
         if value[EvidenceStrength.NEUTRAL] != 0.0:
             raise ValueError("neutral must map to 0.0; it is the absence of evidence")
         return value
+
+    @model_validator(mode="after")
+    def _rules_out_must_actually_rule_out(self) -> Self:
+        """The claim weights.yaml makes for `rules_out`, enforced.
+
+        "Large enough that a single rules_out row drops a condition below
+        plausibility_floor regardless of accumulated support." That is only true
+        if the weight clears the floor on its own, so check it rather than trust
+        the comment.
+        """
+        rules_out = self.log_odds.get(EvidenceStrength.RULES_OUT)
+        if rules_out is not None and rules_out > self.plausibility_floor_log_odds:
+            raise ValueError(
+                f"rules_out ({rules_out:+g}) does not on its own reach the "
+                f"plausibility floor ({self.plausibility_floor_log_odds:+.2f} log-odds), "
+                "so it would not rule anything out"
+            )
+        return self
 
     @model_validator(mode="after")
     def _check_ordering(self) -> Self:

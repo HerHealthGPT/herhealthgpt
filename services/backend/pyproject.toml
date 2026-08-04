@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "herhealth-backend"
+version = "0.1.0"
+description = "Triage, tracker, directory, visit prep, retrieval, safety and orchestration."
+requires-python = ">=3.12"
+dependencies = [
+    "herhealth-contracts",
+]
+
+# FastAPI, the model client and retrieval arrive with the API layer. The triage
+# core deliberately has no dependency beyond the contracts package: it must be
+# runnable from a test or a CLI with no server, no GPU and no network, because
+# that is what makes the evaluation harness possible.
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[tool.uv.sources]
+herhealth-contracts = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/herhealth_backend"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["herhealth_backend", "conftest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,199 @@
+# Batch 07 — perimenopause, and what little can be said about STI.
+#
+# APPROVED 2026-08-04, including the bleeding_after_menopause row and keeping STI
+# as a standalone condition — both were flagged at review and both were kept.
+#
+# Perimenopause is the last condition that meaningfully changes the
+# differential: it is what stops PCOS being over-suspected in women over 45,
+# because irregular periods, weight change, low mood and thinning hair all
+# appear under both and only age separates them.
+#
+# It also retires three orphan features in one go: extreme_tiredness,
+# low_mood_or_anxiety and the incontinence value of urinary_symptoms.
+#
+# STI gets one row. See the closing note — that is a finding, not an oversight.
+
+batch: 07
+covers: [perimenopause, sexually_transmitted_infection]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  # -------------------------------------------------------------------------
+  # Perimenopause — age is the whole point
+  # -------------------------------------------------------------------------
+
+  - condition_id: perimenopause
+    feature_id: age_band
+    value: 45_to_54
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      Menopause and perimenopause are a natural part of life. This happens when
+      your periods change and eventually stop due to lower hormone levels. It
+      usually affects women between 45 and 55 but it can happen earlier.
+    note: >-
+      THE ROW THIS CONDITION EXISTS FOR. Our 45_to_54 band sits almost exactly
+      on the source's 45-55 range. Strong, and the only strong age row in the
+      knowledge base — for every other condition age is a risk factor, but here
+      it is close to definitional.
+
+      Note the qualifier "but it can happen earlier": age does not rule
+      perimenopause out, which is why there is no argues_against row for the
+      younger bands.
+
+  - condition_id: perimenopause
+    feature_id: cycle_regularity
+    value: irregular
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      During perimenopause, your periods may become irregular, lighter or
+      heavier.
+    note: >-
+      The source names irregularity as what perimenopause does to periods, which
+      is what makes it strong rather than merely listed. Note it pulls the same
+      direction as PCOS and PID — irregularity remains the least discriminating
+      finding in the knowledge base, and age is what separates these three.
+
+  - condition_id: perimenopause
+    feature_id: cycle_regularity
+    value: absent
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      Perimenopause ends when you reach menopause. Menopause is when you have
+      not had a period for 12 months.
+    note: >-
+      Absent periods ARE menopause by the source's own definition — a stronger
+      statement than a symptom listing, which is why this is strong support.
+
+      CORRECTED at review: the quote first drafted here was transcribed from the
+      page as read in a browser, not from the fetched document, and did not
+      appear in the corpus. `make verify-quotes` caught it. The claim is
+      unchanged; the citation is now real.
+
+  - condition_id: perimenopause
+    feature_id: bleeding_after_menopause
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      If you have not had a period for more than 12 months and you get any
+      vaginal bleeding (postmenopausal bleeding), this needs to be checked.
+    note: >-
+      READ THIS ONE CAREFULLY BEFORE APPROVING.
+
+      The source is not saying postmenopausal bleeding indicates menopause. It
+      is saying it needs investigating — and the same page adds that it "is not
+      usually serious but can be a sign of cancer".
+
+      The row is defensible only on the sentence's premise: it presupposes the
+      person has not bled for 12 months, which is the source's own definition of
+      menopause. So the feature establishes the life stage, not the pathology.
+      Weak accordingly.
+
+      What this row does NOT do is capture why the symptom matters. NHS files
+      postmenopausal bleeding under "See a GP if", which is routine, so it
+      cannot be a red flag — our schema permits only escalating rules. And the
+      condition it actually points toward, womb cancer, is deliberately not
+      modelled. If you would rather this feature carried no row at all, say so;
+      the honest alternative is deleting it and accepting the gap.
+
+  # -------------------------------------------------------------------------
+  # Perimenopause — the symptoms that overlap PCOS, which is the danger
+  # -------------------------------------------------------------------------
+
+  - condition_id: perimenopause
+    feature_id: low_mood_or_anxiety
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: You may have mood swings, low mood or depression.
+    note: >-
+      Corroborated by MedlinePlus ("Mood changes, which can make you feel moody,
+      anxious, or more irritable"). Weak: non-specific, and it appears under
+      PCOS and endometriosis too. Retires an orphan feature.
+
+  - condition_id: perimenopause
+    feature_id: extreme_tiredness
+    value: "yes"
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      Trouble sleeping, such as trouble falling asleep or getting back to sleep
+      when you wake up. Over time, a lack of sleep can lead to fatigue and
+      memory problems.
+    note: >-
+      Weak, and the mapping is indirect: the source describes fatigue as a
+      consequence of disturbed sleep rather than a symptom in its own right.
+      Included because it retires an orphan feature and because tiredness in a
+      woman over 45 genuinely belongs in this differential — but a reviewer
+      could reasonably reject it as too many steps from the text.
+
+  - condition_id: perimenopause
+    feature_id: scalp_hair_thinning
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: hair thinning or hair loss
+    note: >-
+      IMPORTANT OVERLAP. This feature is strong support for PCOS, where the
+      source ties it to androgen excess. Here it is weak — listed among "other
+      symptoms" without emphasis.
+
+      That asymmetry is exactly what should happen: thinning hair raises PCOS
+      much more than perimenopause, and age then separates them. It is the
+      clearest example in the knowledge base of the same finding meaning
+      different things at different ages.
+
+  - condition_id: perimenopause
+    feature_id: urinary_symptoms
+    value: incontinence
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      feeling the need to pee more or not being able to control when you pee
+      (urinary incontinence)
+    note: >-
+      First and only row using the incontinence value, which was added when the
+      feature gained it. Weak: listed under "other symptoms".
+
+  # -------------------------------------------------------------------------
+  # Sexually transmitted infection — one row, and that is the finding
+  # -------------------------------------------------------------------------
+
+  - condition_id: sexually_transmitted_infection
+    feature_id: abnormal_discharge
+    value: "yes"
+    strength: strong_support
+    source_id: nhs
+    source_quote: an unusual discharge from your vagina, penis or anus
+    note: >-
+      Listed first among STI symptoms. Strong, and it gives abnormal_discharge
+      something to point at besides PID — which matters, because STI is the
+      usual CAUSE of PID rather than an alternative to it.
+
+# WHY STI HAS ONLY ONE ROW
+#
+# Not an oversight. The NHS lists four STI symptoms: unusual discharge, "lumps
+# or skin growths around your genitals or bottom", "blisters, sores or warts
+# around your genitals or anus", and warts in the mouth or throat. Only the
+# first maps to any feature we have.
+#
+# The other three are genital lesions, and this system has no feature for them
+# because it triages menstrual and pelvic-pain presentations. Adding one would
+# mean asking every user about genital lesions to serve a single condition,
+# which fails the burden test badly.
+#
+# Both sources also say STIs are frequently silent — NHS: "Many STIs have no
+# symptoms. This means you can have an STI without knowing it" — so there is no
+# elimination row either. STI joins fibroids and PID as a condition that can be
+# raised but not lowered.
+#
+# WORTH RECONSIDERING: on this evidence, STI may not earn its place as a
+# standalone condition. It contributes one row that PID already claims, and it
+# cannot be eliminated. Its real role is as the cause of PID, which the PID
+# condition note already records. Deleting it and keeping that note would lose
+# almost nothing — flagged for your decision rather than settled here.

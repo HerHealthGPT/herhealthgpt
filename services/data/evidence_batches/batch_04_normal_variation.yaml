@@ -1,0 +1,161 @@
+# Batch 04 — normal_variation.
+#
+# APPROVED 2026-08-04 — each quote read and confirmed to support its row.
+#
+# This batch is shaped differently from the others: six of ten rows are
+# argues_against, because "normal" is defined by the absence of abnormality
+# rather than by a symptom list. That is also why it is the easiest condition to
+# ground — sources state normal ranges explicitly and numerically, which they
+# rarely do for diseases.
+#
+# Without these rows SELF_CARE is unreachable and every consultation ends at a
+# doctor.
+
+batch: 04
+covers: [normal_variation]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  # -------------------------------------------------------------------------
+  # Cycle regularity — the anchor
+  # -------------------------------------------------------------------------
+
+  - condition_id: normal_variation
+    feature_id: cycle_regularity
+    value: regular
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Regular menstrual periods in the years between puberty and menopause are
+      usually a sign that your body is working normally.
+    note: >-
+      The clearest positive statement of normality in any source: regularity is
+      framed as a SIGN OF NORMAL FUNCTION, not merely as the absence of a
+      problem. This is the row that makes SELF_CARE reachable.
+
+  - condition_id: normal_variation
+    feature_id: cycle_regularity
+    value: irregular
+    strength: argues_against
+    source_id: womenshealth
+    source_quote: Irregular or heavy, painful periods are not normal.
+    note: >-
+      SOURCE CONFLICT, flagged rather than resolved silently. The Office on
+      Women's Health says plainly that irregular periods "are not normal". The
+      NHS irregular periods page opens with the opposite framing: "Irregular
+      periods are not usually a sign of a problem."
+
+      Resolved toward the more cautious reading — argues_against normal_variation
+      — for two reasons. First, the protocol resolves conflict toward higher
+      urgency, and treating irregularity as normal is the lower-urgency reading.
+      Second, the NHS page itself contradicts its own opening line further down,
+      listing "your periods are irregular" under "See a GP if:". Both sources
+      therefore agree on the ACTION even though their prose disagrees, which is
+      exactly why cross-language and cross-source comparison is done on action
+      codes rather than on text.
+
+  # -------------------------------------------------------------------------
+  # Cycle length — NHS states the normal boundary numerically, and it happens
+  # to fall exactly on our bucket edges.
+  # -------------------------------------------------------------------------
+
+  - condition_id: normal_variation
+    feature_id: cycle_length
+    value: 21_to_35_days
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      A woman's periods are irregular if the gap between them is less than 21
+      days or more than 35 days.
+    note: >-
+      Stated as a definition of abnormality, so the complement is a definition
+      of normality. The boundaries land exactly on our bucket edges, which means
+      no approximation is involved in this row — rare, and worth noting.
+
+  - condition_id: normal_variation
+    feature_id: cycle_length
+    value: under_21_days
+    strength: argues_against
+    source_id: nhs
+    source_quote: >-
+      A woman's periods are irregular if the gap between them is less than 21
+      days or more than 35 days.
+
+  - condition_id: normal_variation
+    feature_id: cycle_length
+    value: over_35_days
+    strength: argues_against
+    source_id: nhs
+    source_quote: >-
+      A woman's periods are irregular if the gap between them is less than 21
+      days or more than 35 days.
+
+  # -------------------------------------------------------------------------
+  # Period duration and heaviness
+  # -------------------------------------------------------------------------
+
+  - condition_id: normal_variation
+    feature_id: period_duration
+    value: 3_to_7_days
+    strength: strong_support
+    source_id: medlineplus
+    source_quote: >-
+      A period usually lasts three to seven days and can be light or heavy.
+    note: >-
+      Note the second clause: the source explicitly says a normal period "can be
+      light or heavy", so heaviness alone does not argue against normality.
+      Only the extreme does — see the soaking_hourly row below.
+
+  - condition_id: normal_variation
+    feature_id: period_duration
+    value: over_7_days
+    strength: argues_against
+    source_id: medlineplus
+    source_quote: >-
+      Prolonged menstrual bleeding occurs when periods regularly last longer
+      than 8 days.
+    note: >-
+      MAPPING CAVEAT. The source's threshold is 8 days; our bucket boundary is
+      7. A period of exactly 8 days falls in our over_7_days bucket but is not
+      yet "prolonged" by this source, so the row fires slightly early. Erring
+      toward abnormality is the safe direction, and the NHS irregular periods
+      page corroborates with a 7-day line: "your periods last longer than 7
+      days" appears under "See a GP if:".
+
+  - condition_id: normal_variation
+    feature_id: bleeding_heaviness
+    value: soaking_hourly
+    strength: argues_against
+    source_id: womenshealth
+    source_quote: Irregular or heavy, painful periods are not normal.
+    note: >-
+      Applied only at the top of the scale, not to "heavy", because MedlinePlus
+      states a normal period "can be light or heavy". Soaking through protection
+      every hour is the level NHS uses to define heavy periods and the level its
+      escalation rules key on, so that is where the line is drawn.
+
+  - condition_id: normal_variation
+    feature_id: pelvic_pain_severity
+    value: severe
+    strength: argues_against
+    source_id: womenshealth
+    source_quote: Irregular or heavy, painful periods are not normal.
+
+  # -------------------------------------------------------------------------
+  # What IS normal
+  # -------------------------------------------------------------------------
+
+  - condition_id: normal_variation
+    feature_id: pelvic_pain_severity
+    value: mild
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: Cramping pain in the lower abdomen (belly) or pelvis
+    note: >-
+      Listed by the source among the symptoms of normal menstruation, so mild
+      pain is not in itself a reason to suspect anything. Weak, because the
+      source does not quantify "cramping" and our mild level is a judgement by
+      the user. Important for elimination all the same: without it, any pain at
+      all would push away from SELF_CARE.

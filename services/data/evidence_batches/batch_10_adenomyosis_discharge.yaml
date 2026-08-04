@@ -1,0 +1,169 @@
+# Batch 10 — adenomyosis, thrush and bacterial vaginosis.
+#
+# APPROVED 2026-08-04, including the deliberate omission of the bacterial
+# vaginosis itching row. See the closing note.
+#
+# Two jobs. Adenomyosis is the single-source exception (ADR 0006) and the
+# nearest thing endometriosis has to a twin. Thrush and bacterial vaginosis are
+# the benign causes of discharge, which until now pointed only at PID and STI.
+#
+# ONE ROW WAS NOT WRITTEN because two sources contradict each other. See the
+# closing note — the omission is the interesting part of this batch.
+
+batch: 10
+covers: [adenomyosis, thrush, bacterial_vaginosis]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  # -------------------------------------------------------------------------
+  # Adenomyosis — presents almost exactly like endometriosis
+  # -------------------------------------------------------------------------
+
+  - condition_id: adenomyosis
+    feature_id: pelvic_pain_severity
+    value: severe
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      painful periods – the pain may be severe and stop you from doing your
+      usual activities
+    note: >-
+      An exact match to our severe level, which is defined as pain that stops
+      normal activities. Rare precision, and the reason this is strong.
+
+  - condition_id: adenomyosis
+    feature_id: pelvic_pain_timing
+    value: with_periods
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      painful periods – the pain may be severe and stop you from doing your
+      usual activities
+    note: >-
+      Same sentence, second cell. The source groups this under "Some symptoms of
+      adenomyosis affect your periods", so the tie to menstruation is the
+      source's own framing rather than ours.
+
+  - condition_id: adenomyosis
+    feature_id: bleeding_heaviness
+    value: heavy
+    strength: strong_support
+    source_id: nhs
+    source_quote: heavy bleeding during your period
+    note: >-
+      Named plainly among the period symptoms. Note this makes adenomyosis
+      nearly indistinguishable from endometriosis and fibroids on bleeding
+      alone — all three claim heavy periods, which is exactly why NHS names them
+      together as causes.
+
+  - condition_id: adenomyosis
+    feature_id: abdominal_swelling_or_pressure
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      bloating, heaviness or fullness in your tummy (abdomen)
+    note: >-
+      Weak. Listed under symptoms that "can happen any time in your menstrual
+      cycle", and the same feature already supports fibroids, ovarian cyst and
+      UTI.
+
+  - condition_id: adenomyosis
+    feature_id: bloating_or_digestive_symptoms
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      bloating, heaviness or fullness in your tummy (abdomen)
+    note: >-
+      Same sentence, second cell. Weak — bloating is among the least specific
+      findings in the knowledge base.
+
+  # -------------------------------------------------------------------------
+  # Thrush — the self-care baseline, and the itching that identifies it
+  # -------------------------------------------------------------------------
+
+  - condition_id: thrush
+    feature_id: vulval_itching
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      The most common symptom of a vaginal yeast infection is extreme itchiness
+      in and around the vagina.
+    note: >-
+      THE ROW THAT MAKES THRUSH IDENTIFIABLE. The source calls it THE most
+      common symptom, which is characteristic framing rather than a list entry.
+
+      Since abnormal_discharge is a yes/no and cannot tell cottage-cheese
+      discharge from fishy discharge, itching is the only feature that separates
+      thrush from bacterial vaginosis. Corroborated by NHS: "itching and
+      irritation around the vulva and vagina".
+
+  - condition_id: thrush
+    feature_id: abnormal_discharge
+    value: "yes"
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      white vaginal discharge (often like cottage cheese), which does not
+      usually smell
+    note: >-
+      Listed first. The descriptive detail — "like cottage cheese", "does not
+      usually smell" — is exactly what our boolean feature throws away. A user
+      can tell these apart; the current schema cannot. Worth revisiting if
+      discharge conditions matter more later.
+
+  - condition_id: thrush
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: soreness and stinging during sex or when you pee
+    note: >-
+      Weak. This feature now supports endometriosis, fibroids, PID and thrush —
+      it has become one of the least discriminating in the set, which is a long
+      way from how it was first described.
+
+  # -------------------------------------------------------------------------
+  # Bacterial vaginosis — one row only, deliberately
+  # -------------------------------------------------------------------------
+
+  - condition_id: bacterial_vaginosis
+    feature_id: abnormal_discharge
+    value: "yes"
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      an unusual vaginal discharge that has a strong fishy smell, particularly
+      after sex
+    note: >-
+      Listed first and described distinctively. Corroborated by the Office on
+      Women's Health ("Some women report a strong fish-like odor").
+
+      Note both sources also say BV is frequently silent — NHS: "Half of women
+      with bacterial vaginosis do not have any symptoms" — so absence of
+      discharge argues against it very little.
+
+# THE ROW THAT WAS NOT WRITTEN
+#
+# NHS states plainly: "Bacterial vaginosis does not usually cause any soreness
+# or itching." That is explicit exclusion language, and it would have made a
+# rare and valuable argues_against row — vulval_itching would then separate
+# thrush from bacterial vaginosis in both directions.
+#
+# But the Office on Women's Health lists "Itching around the outside of the
+# vagina" among BV symptoms. The two sources contradict each other outright.
+#
+# NOT resolved by taking the higher-precedence source, because the safer reading
+# decides it here. Writing the argues_against row would eliminate bacterial
+# vaginosis whenever itching is reported, pushing the differential toward
+# thrush — which carries a SELF_CARE baseline. Eliminating a condition that
+# needs antibiotics in favour of one that does not is under-triage, and
+# under-triage is the dominant failure mode.
+#
+# So the row is omitted and the conflict recorded in build/conflicts.jsonl.
+# The cost is that thrush and bacterial vaginosis separate in one direction
+# only: itching raises thrush, but its absence does not lower it.

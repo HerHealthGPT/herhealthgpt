@@ -1,0 +1,154 @@
+# Batch 09 — filling out the three thinnest conditions.
+#
+# APPROVED 2026-08-04. No new sources — every quote comes from documents already
+# in raw/, found by auditing which cited sources a condition had never quoted.
+#
+# No new sources and no new fetching. Every quote here comes from documents
+# already in raw/, found by auditing which cited sources a condition had never
+# actually quoted:
+#
+#   sexually_transmitted_infection   1 row   (worst in the knowledge base)
+#   urinary_tract_infection          4 rows
+#   ovarian_cyst                     6 rows
+#
+# TWO DEAD ENDS FOUND, recorded so nobody repeats the search: the audit flagged
+# medlineplus as cited-but-unused for both urinary_tract_infection and
+# ovarian_cyst, but those MedlinePlus pages are link hubs with almost no symptom
+# prose. The unused citation is real; the material is not there. Both conditions
+# are enriched from NHS instead.
+
+batch: 09
+covers: [sexually_transmitted_infection, urinary_tract_infection, ovarian_cyst]
+
+approved: true
+reviewed_on: 2026-08-04
+
+rows:
+  # -------------------------------------------------------------------------
+  # STI — from the MedlinePlus chlamydia page, which is far richer than the
+  # general STI pages. medlineplus was added to this condition's source_ids.
+  # -------------------------------------------------------------------------
+
+  - condition_id: sexually_transmitted_infection
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: strong_support
+    source_id: medlineplus
+    source_quote: A burning sensation when urinating
+    note: >-
+      Listed as one of only two symptoms in women, which is what makes it strong
+      on a page that otherwise stresses how often chlamydia is silent.
+      Corroborated by CDC ("burning when peeing").
+
+      Note it pulls the same way as urinary_tract_infection, which is correct
+      and clinically real — the Office on Women's Health says STI symptoms "may
+      be mistaken for something else, such as a urinary tract infection".
+
+  - condition_id: sexually_transmitted_infection
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Problems getting pregnant or permanent infertility
+    note: >-
+      Weak, and note what the source is actually saying: this is listed under
+      what untreated STIs can LEAD TO, not among presenting symptoms. It is a
+      complication, so it raises the condition only faintly.
+
+  # -------------------------------------------------------------------------
+  # UTI
+  # -------------------------------------------------------------------------
+
+  - condition_id: urinary_tract_infection
+    feature_id: lower_back_pain
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      lower tummy pain or pain in your back, just under the ribs
+    note: >-
+      Weak, and the mapping is partial: the source names two sites and our
+      feature covers one. The same sentence appears in the NHS urgent-advice box,
+      where it signals possible kidney infection — so back pain with a UTI is a
+      more serious finding than this weak row conveys. The urgency belongs in a
+      red flag, not in the weight.
+
+  - condition_id: urinary_tract_infection
+    feature_id: abdominal_swelling_or_pressure
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Pressure in your lower abdomen
+    note: >-
+      Weak. Pressure now supports fibroids, ovarian cyst and UTI, so it has
+      become one of the less discriminating features — worth knowing when
+      reading the grid.
+
+  # -------------------------------------------------------------------------
+  # Ovarian cyst — the NHS symptom list, only partly mined in batch 06
+  # -------------------------------------------------------------------------
+
+  - condition_id: ovarian_cyst
+    feature_id: urinary_symptoms
+    value: frequency
+    strength: weak_support
+    source_id: nhs
+    source_quote: a frequent need to urinate
+    note: >-
+      A pressure effect from a large cyst, like the fibroid row. Weak: this
+      feature now supports fibroids, UTI and ovarian cyst, and a UTI is far
+      commoner than either.
+
+  - condition_id: ovarian_cyst
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: difficulty emptying your bowels
+    note: >-
+      MAPPING NOTE. The source describes DIFFICULTY, our feature asks about
+      PAIN. They are not the same, and this is the second time this feature has
+      strained — it already covers bowels and urination in one question.
+
+      Kept because the pressure-on-bowel picture is genuinely part of how a
+      large cyst presents, and weak support reflects the imperfect fit. Splitting
+      this feature is now clearly worth doing; flagged rather than done here,
+      since it would touch rows in four batches.
+
+  - condition_id: ovarian_cyst
+    feature_id: bleeding_heaviness
+    value: heavy
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      heavy periods, irregular periods or lighter periods than normal
+    note: >-
+      Weak, and note how unhelpful the source sentence is for a differential:
+      it names heavy, irregular AND lighter periods, so almost any bleeding
+      pattern fits. A finding that matches every value of a feature carries
+      almost no information, which is exactly why it is weak.
+
+  - condition_id: ovarian_cyst
+    feature_id: cycle_regularity
+    value: irregular
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      heavy periods, irregular periods or lighter periods than normal
+    note: >-
+      Same sentence, second cell. See the note above — irregularity is already
+      the least discriminating finding in the knowledge base, supporting PCOS,
+      PID, perimenopause and now ovarian cyst.
+
+  - condition_id: ovarian_cyst
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      difficulty getting pregnant – although fertility is usually unaffected by
+      ovarian cysts
+    note: >-
+      The qualifier is quoted deliberately: the source lists the symptom and
+      immediately undercuts it. A row that quoted only the first half would
+      misrepresent the sentence. Weak is generous.

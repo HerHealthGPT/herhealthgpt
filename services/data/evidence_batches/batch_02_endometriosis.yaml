@@ -1,0 +1,169 @@
+# Batch 02 — endometriosis.
+#
+# APPROVED 2026-08-03 — each quote was read and confirmed to support its row.
+#
+# Mostly sourced from the Office on Women's Health, which was added as the
+# fourth source precisely because MedlinePlus alone left this condition thin.
+# Two features that were dead weight before this batch — pain_with_sex and
+# difficulty_conceiving — are now supported.
+
+batch: 02
+covers: [endometriosis]
+
+approved: true
+reviewed_on: 2026-08-03
+
+rows:
+  # -------------------------------------------------------------------------
+  # Pain — the defining axis. "Pain. This is the most common symptom."
+  # -------------------------------------------------------------------------
+
+  - condition_id: endometriosis
+    feature_id: pelvic_pain_timing
+    value: with_periods
+    strength: strong_support
+    source_id: medlineplus
+    source_quote: Pelvic pain, which often happens during your period
+    note: >-
+      Named as THE main symptom: the source introduces it with "The main
+      symptoms of endometriosis are:". Corroborated by the Office on Women's
+      Health, which says "Pain. This is the most common symptom."
+
+  - condition_id: endometriosis
+    feature_id: pelvic_pain_severity
+    value: severe
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Very painful menstrual cramps. The pain may get worse over time.
+    note: >-
+      Weak rather than strong because "very painful" is not a severity scale and
+      our severe level means "stops you doing normal activities". The row covers
+      part of what the source says; the progression over time has no feature.
+
+  - condition_id: endometriosis
+    feature_id: pelvic_pain_timing
+    value: constant
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Chronic (long-term) pain in the lower back and pelvis
+    note: >-
+      Endometriosis pain is not confined to periods, which is part of what
+      separates it from ordinary period pain. Weak because "chronic" describes
+      duration rather than the constant-through-the-cycle pattern our value
+      names.
+
+  - condition_id: endometriosis
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Pain during or after sex. This is usually described as a "deep" pain and
+      is different from pain felt at the entrance to the vagina when penetration
+      begins.
+    note: >-
+      Strong because the source goes out of its way to distinguish deep from
+      entrance pain, which is characteristic framing rather than a bare list
+      entry. The NHS endometriosis page corroborates: "pain during or after
+      sex".
+
+      CORRECTED 2026-08-04. This note previously claimed the feature was "one of
+      the most discriminating in the differential — neither PCOS nor fibroids is
+      characterised by it". That was WRONG: the NHS fibroids page lists "pain or
+      discomfort during sex" among fibroid symptoms. The row itself stands, but
+      the feature separates endometriosis from fibroids far less than claimed,
+      and uterine_fibroids now carries its own row for it.
+
+  - condition_id: endometriosis
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Painful bowel movements or pain when urinating during menstrual periods.
+      In rare cases, you may also find blood in your stool or urine.
+    note: >-
+      Cyclical bowel and bladder pain is distinctive: the timing tie to
+      menstruation is what makes it point at endometriosis rather than at a
+      bowel or urinary condition.
+
+  # -------------------------------------------------------------------------
+  # Bleeding and fertility
+  # -------------------------------------------------------------------------
+
+  - condition_id: endometriosis
+    feature_id: bleeding_between_periods
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Bleeding or spotting between menstrual periods. This can be caused by
+      something other than endometriosis. If it happens often, you should see
+      your doctor.
+    note: >-
+      Weak because the source itself qualifies it in the same breath — "This can
+      be caused by something other than endometriosis." Treating it as strong
+      support would read more into the sentence than it says.
+
+  - condition_id: endometriosis
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Infertility, or not being able to get pregnant.
+    note: >-
+      Listed among the symptoms, but weak: infertility is non-specific and
+      appears under PCOS too, so it separates the differential very little.
+      Retires a previously dead-weight feature.
+
+  # -------------------------------------------------------------------------
+  # Cycle pattern — listed by the source as risk factors, not symptoms
+  # -------------------------------------------------------------------------
+
+  - condition_id: endometriosis
+    feature_id: period_duration
+    value: over_7_days
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Menstrual periods that last more than seven days
+    note: >-
+      Exact mapping onto our over_7_days bucket, which is rare and worth noting.
+      Weak because the source lists it under "You might be more likely to get
+      endometriosis if you have" — a risk factor, not a presenting sign.
+
+  - condition_id: endometriosis
+    feature_id: cycle_length
+    value: under_21_days
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Short menstrual cycles (27 days or fewer)
+    note: >-
+      IMPERFECT MAPPING. The source's threshold is 27 days; our buckets break at
+      21 and 35. under_21_days sits inside "27 days or fewer" so the row is
+      true, but it misses cycles of 21-27 days, which the source would also
+      count. Fixing this properly means changing the feature's buckets, which
+      would invalidate other rows — flagged rather than silently fudged.
+
+  # -------------------------------------------------------------------------
+  # The elimination row
+  # -------------------------------------------------------------------------
+
+  - condition_id: endometriosis
+    feature_id: pelvic_pain_severity
+    value: none
+    strength: argues_against
+    source_id: womenshealth
+    source_quote: >-
+      Pain. This is the most common symptom. Women with endometriosis may have
+      many different kinds of pain.
+    note: >-
+      THE ELIMINATION ROW for endometriosis. The source frames pain as THE most
+      common symptom, not merely one entry in a list — characteristic framing,
+      which is what the protocol requires before an argues_against row may be
+      written. Without it, endometriosis never drops out of the differential.
+      Note this is weaker grounds than the PCOS elimination row: "most common"
+      is a statement about frequency, not a diagnostic criterion. If you think
+      that is too thin, drop this row and accept that endometriosis will need a
+      positive finding elsewhere to be eliminated.
