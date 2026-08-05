@@ -6,10 +6,13 @@ status: accepted
 
 The stopping controller was written against a synthetic three-condition fixture.
 `herhealth-triage` ran it against the real knowledge base — 37 features, 12
-conditions, 89 evidence rows, 14 red flags — for the first time. Four findings,
-recorded here rather than fixed, because each is a policy decision that needs
-the evaluation set to settle and because fixing them quietly would hide the
-reason the numbers later moved.
+conditions, 89 evidence rows, 14 red flags — for the first time. Four findings.
+
+Three are recorded rather than fixed, because each is a policy decision that
+needs the evaluation set to settle and fixing them quietly would hide the reason
+the numbers later moved. The red-flag half of finding 4 **is** fixed: it was a
+correctness bug, not a threshold, and the tie-break it needed was already
+written down.
 
 Reproduce any of it with `make triage-all`.
 
@@ -65,9 +68,10 @@ reported but not gated, and this is what that distinction was for. Two levers �
 more eliminating rows, and a floor above 0.50 so untouched conditions fall out —
 and both change the safety profile, so both wait for the evaluation set.
 
-## 4. Rule 4 can under-triage, and rule 1 can under-escalate
+## 4. Rule 4 can under-triage, and rule 1 could under-escalate
 
-Two inconsistencies in the ordering, both found by tests.
+Two inconsistencies in the ordering, both found by tests. The second is fixed;
+the first is not, because it is a policy question rather than a bug in isolation.
 
 **Rule 4 returns the top condition's action, not the most urgent live one.**
 Rules 3 and 5 both take `most_urgent` over the differential; rule 4 takes
@@ -80,25 +84,63 @@ it is latent, and raising `stop_confidence` or adding evidence will wake it.
 Pinned by `test_an_unresolved_differential_never_concludes_below_its_worst_member`,
 marked `xfail(strict=True)` so it fails loudly when fixed.
 
-**Rule 1 fires on the first matching rule, not the most severe one.**
+**Rule 1 fired on the first matching rule, not the most severe one. FIXED.**
 `sudden_severe_pain.yaml` describes sudden onset of severe pelvic pain, which
 matches `sudden_severe_pelvic_pain` (EMERGENCY). It came back `URGENT_SAME_DAY`,
 because the controller asked `pelvic_pain_severity`, matched the single-clause
 `severe_pelvic_pain` rule on that answer alone, and stopped — never asking
-`pain_onset`, the one question that would have escalated further.
+`pain_onset`, the one question that would have escalated further. A red flag was
+pre-empting a *more severe* red flag that was one question away.
 
-So a red flag can pre-empt a *more severe* red flag that was one question away.
-Two candidate fixes, neither free:
+Unlike the other three, this needed no measurement to settle: it is a
+correctness bug, and the tie-break was already written down — *whenever a design
+choice trades false alarms against missed escalations, choose false alarms.*
 
-- Before concluding on a rule, ask any unasked clause belonging to a strictly
-  more severe rule that shares an already-matched feature. Costs a question,
-  only on cases that are already escalating.
-- Match rules by severity rather than file order. Cheaper, but only helps when
-  both rules already match, which is not this case.
+Both halves are fixed. See "Escalation probing" below.
 
-The first is the conservative one and is therefore the likely choice. It is not
-made here because it changes the question budget on the exact cases where
-latency matters most.
+## Escalation probing — how finding 4's red-flag half was fixed
+
+Two changes in `engine.py`:
+
+**Matching takes the most severe rule, not the first in file order.** When
+several rules match the same answers, the escalation must not depend on how the
+YAML happened to be arranged.
+
+**A fired rule does not conclude while a more severe one is one answer away.**
+Before returning `RED_FLAG`, the controller asks about any rule that is strictly
+more severe and has **exactly one** outstanding clause on a feature not yet put
+to the user, provided at least one of its other clauses already matches.
+
+Each condition earns its place:
+
+| Condition | Why |
+|---|---|
+| Exactly one outstanding clause | Keeps the bound structural — every probe either fires the rule or kills it, so the screen terminates. Chasing rules two answers out would not |
+| Feature not yet asked | A feature already answered, *including answered `unknown`*, can never satisfy the clause. Continuing would ask a question whose answer is already in |
+| At least one clause already matching | Scopes probing to escalations of the presentation in hand. Without it, any unrelated single-clause emergency rule would be pulled in the moment anything fired |
+
+Probes are ranked by how many more severe rules the answer would settle, then by
+burden, then by id. Preferring coverage is what keeps the screen short: one
+question can close several rules at once.
+
+**There is no probe budget, and that is deliberate.** The bound comes from the
+knowledge base rather than from a number someone has to guess right. A budget
+low enough to protect patience would silently drop the last few emergency rules,
+which is the failure this change exists to remove.
+
+**The cost is real and is pinned by a test.** Once severe pelvic pain is known,
+six EMERGENCY rules are each one answer from firing, so
+`sudden_severe_pain.yaml` now takes ten questions rather than four — six of them
+the escalation screen. That runs past `max_questions`, on purpose: the question
+budget is a judgement about patience, and emergency screening is not subject to
+it. Every one of the six is a burden-1 or burden-2 yes/no question that is a
+single answer away from an emergency.
+
+It is still worth watching. The screen interacts with finding 2: three of the
+first four questions in that case were spent on features the ranking preferred
+for no good reason, and better question selection would shorten the whole
+consultation rather than just the screen. Average questions asked is a reported
+metric, and this is what it is for.
 
 ## Consequences
 

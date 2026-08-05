@@ -23,7 +23,9 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel
 
+from herhealth_contracts.evaluation import EvaluationSet
 from herhealth_contracts.knowledge import (
+    UNKNOWN_VALUE,
     Actions,
     ConditionsFile,
     EvidenceRow,
@@ -34,7 +36,7 @@ from herhealth_contracts.knowledge import (
     Weights,
 )
 
-__all__ = ["KNOWLEDGE_FILENAMES", "load_knowledge_base"]
+__all__ = ["KNOWLEDGE_FILENAMES", "load_evaluation_set", "load_knowledge_base"]
 
 KNOWLEDGE_FILENAMES: tuple[str, ...] = (
     "features.yaml",
@@ -102,3 +104,90 @@ def load_knowledge_base(directory: Path) -> KnowledgeBase:
         weights=weights,
         actions=actions,
     )
+
+
+def load_evaluation_set(directory: Path, base: KnowledgeBase | None = None) -> EvaluationSet:
+    """Load every ``*.yaml`` under ``directory`` into one evaluation set.
+
+    Several files rather than one, so annotation batches stay reviewable in
+    isolation — the same reason evidence rows are authored in batches.
+
+    Pass ``base`` to check the annotations against the feature vocabulary. That
+    check is not optional in practice: a feature id that does not exist, or a
+    value outside ``allowed_values``, would be applied by the controller, match
+    no evidence row, move no score and read exactly like an honest ``unknown``.
+    A case meant to escalate would come back routine and the metrics would
+    report it as a model failure rather than a typo.
+    """
+    files = sorted(p for p in directory.glob("*.yaml") if p.name != "README.md")
+    cases: list[object] = []
+    variants: list[object] = []
+
+    for path in files:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if payload is None:
+            continue
+        if not isinstance(payload, dict):
+            raise ValueError(f"{path.name} did not parse to a mapping")
+        cases.extend(_coerce_case_features(payload.get("cases") or [], path))
+        variants.extend(payload.get("variants") or [])
+
+    evaluation_set = EvaluationSet.model_validate({"cases": cases, "variants": variants})
+
+    if base is not None:
+        _check_features_exist(evaluation_set, base)
+    return evaluation_set
+
+
+def _coerce_case_features(cases: list[object], path: Path) -> list[object]:
+    """Turn YAML's booleans back into the tokens the knowledge base uses.
+
+    ``fever: yes`` parses as ``True`` under YAML 1.1, not the string ``"yes"``,
+    and roughly half the features in the knowledge base are yes/no. Without
+    this, the commonest line an annotator will write fails with a message about
+    string types that says nothing about what to do.
+
+    Every other non-string is refused rather than stringified: an ordinal
+    written as ``30`` becoming ``"30"`` would be a silent wrong answer, not a
+    near miss, and it would score as a triage failure rather than a typo.
+    """
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        features = case.get("features")
+        if not isinstance(features, dict):
+            continue
+        for feature_id, value in list(features.items()):
+            if isinstance(value, bool):
+                features[feature_id] = "yes" if value else "no"
+            elif not isinstance(value, str):
+                raise ValueError(
+                    f"{path.name}: {case.get('id', '?')}.{feature_id} is "
+                    f"{type(value).__name__} ({value!r}); quote it"
+                )
+    return cases
+
+
+def _check_features_exist(evaluation_set: EvaluationSet, base: KnowledgeBase) -> None:
+    features = base.features_by_id
+    problems: list[str] = []
+
+    for case in evaluation_set.cases:
+        for feature_id, value in case.features.items():
+            feature = features.get(feature_id)
+            if feature is None:
+                problems.append(f"{case.id}: no such feature {feature_id!r}")
+            elif feature.allowed_values and value not in (
+                *feature.allowed_values,
+                UNKNOWN_VALUE,
+            ):
+                problems.append(
+                    f"{case.id}: {feature_id}={value!r} is not one of "
+                    f"{', '.join(sorted(feature.allowed_values))}"
+                )
+        expected = case.label.expected_red_flag_id
+        if expected and expected not in {rule.id for rule in base.red_flags}:
+            problems.append(f"{case.id}: no such red flag {expected!r}")
+
+    if problems:
+        raise ValueError("; ".join(problems))

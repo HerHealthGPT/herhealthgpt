@@ -4,6 +4,14 @@ Nothing outside this package may be imported across a service boundary. If a
 service needs something from another service, it belongs here instead.
 """
 
+from herhealth_contracts.evaluation import (
+    CanonicalCase,
+    CaseLabel,
+    CaseVariant,
+    EvaluationSet,
+    Language,
+    RegisterStyle,
+)
 from herhealth_contracts.knowledge import (
     ActionCode,
     ActionDefinition,
@@ -25,7 +33,11 @@ from herhealth_contracts.knowledge import (
     SourceStatus,
     Weights,
 )
-from herhealth_contracts.loading import KNOWLEDGE_FILENAMES, load_knowledge_base
+from herhealth_contracts.loading import (
+    KNOWLEDGE_FILENAMES,
+    load_evaluation_set,
+    load_knowledge_base,
+)
 from herhealth_contracts.scoring import log_odds_for, plausibility
 
 __version__ = "0.1.0"
@@ -34,10 +46,14 @@ __all__ = [
     "ActionCode",
     "ActionDefinition",
     "Actions",
+    "CanonicalCase",
+    "CaseLabel",
+    "CaseVariant",
     "Clause",
     "ComparisonOp",
     "Condition",
     "ConditionsFile",
+    "EvaluationSet",
     "EvidenceRow",
     "EvidenceStrength",
     "Feature",
@@ -45,6 +61,9 @@ __all__ = [
     "FeaturesFile",
     "KNOWLEDGE_FILENAMES",
     "KnowledgeBase",
+    "Language",
+    "RegisterStyle",
+    "load_evaluation_set",
     "load_knowledge_base",
     "log_odds_for",
     "plausibility",

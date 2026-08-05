@@ -570,12 +570,18 @@ class Weights(_KnowledgeModel):
 
     @model_validator(mode="after")
     def _rules_out_must_actually_rule_out(self) -> Self:
-        """The claim weights.yaml makes for `rules_out`, enforced.
+        """`rules_out` must reach the floor from a standing start.
 
-        "Large enough that a single rules_out row drops a condition below
-        plausibility_floor regardless of accumulated support." That is only true
-        if the weight clears the floor on its own, so check it rather than trust
-        the comment.
+        Note carefully what this does NOT prove. Weights add, so clearing the
+        floor from zero says nothing about clearing it from a condition that has
+        already accumulated support — and it does not: a single
+        ``strong_support`` row (+1.5) is enough to survive a ``rules_out``.
+
+        ``weights.yaml`` used to claim elimination was unconditional and this
+        check was believed to enforce that. It never did; the two were different
+        statements. Both are now corrected. See docs/adr/0009 before authoring
+        the first ``rules_out`` row — there are none today, which is the only
+        reason this is currently harmless.
         """
         rules_out = self.log_odds.get(EvidenceStrength.RULES_OUT)
         if rules_out is not None and rules_out > self.plausibility_floor_log_odds:

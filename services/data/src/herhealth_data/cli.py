@@ -20,6 +20,7 @@ Exit codes: 0 succeeded, 1 ran but the data was wrong, 2 could not run.
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -87,6 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     icd_parser.set_defaults(func=commands.run_icd)
 
+    thresholds_parser = subparsers.add_parser(
+        "thresholds", help="show where each tunable threshold sits, and whether it is fragile"
+    )
+    thresholds_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
+    thresholds_parser.set_defaults(func=commands.run_thresholds)
+
     tables_parser = subparsers.add_parser(
         "tables", help="render the knowledge base as flat CSV and Markdown tables"
     )
@@ -115,7 +122,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _force_utf8_output() -> None:
+    """Windows consoles default to a codepage that cannot encode our own text.
+
+    Source quotes carry em-dashes and curly quotes, and the reports here use
+    arrows and multiplication signs. Under cp1252 or cp1256 those either render
+    as ``?`` or raise UnicodeEncodeError mid-report, which has now happened
+    twice. Verifying quotes against sources by eye is the review protocol, so
+    output that cannot render its own characters is not acceptable.
+
+    The same three lines exist in the backend CLIs. Duplicated rather than
+    shared: it is a terminal concern, not a contract, and moving it into
+    ``packages/contracts`` would put I/O behaviour in the schema package.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _force_utf8_output()
     args = build_parser().parse_args(argv)
     exit_code: int = args.func(args)
     return exit_code

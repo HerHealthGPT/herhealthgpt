@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate build eval triage triage-all lint fmt test clean-build
+.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt test clean-build
 
 # A demonstration case for `make triage`. Override to run another:
 #   make triage CASE=services/backend/cases/says_nothing.yaml
@@ -31,8 +31,9 @@ help:
 	@echo "icd        propose ICD-11 codes (needs WHO_ICD_* in infra/envs/data.env)"
 	@echo "verify-quotes  check every source_quote against its cited source"
 	@echo "validate   check knowledge/ against the contracts schemas"
+	@echo "thresholds show where each tunable number sits, and whether it is fragile"
 	@echo "build      fetch -> clean -> chunk -> build/passages.parquet (phase 4)"
-	@echo "eval       run the triage controller over the benchmark cases (phase 3)"
+	@echo "eval       run the benchmark cases through the triage controller"
 	@echo "triage     run one scripted consultation and print the trace (CASE=...)"
 	@echo "triage-all run every demonstration case in services/backend/cases/"
 	@echo "lint       ruff check + mypy strict on packages/contracts"
@@ -83,11 +84,19 @@ verify-quotes:
 validate:
 	$(UV) run python -m herhealth_data.cli validate --knowledge $(KNOWLEDGE_DIR)
 
+# Where each tunable threshold sits among the scores the evidence can actually
+# reach. Exits 1 if one is fragile — enforcing its requirement by accident
+# rather than by decision. Not in CI: that is a design debt, not a build break.
+thresholds:
+	$(UV) run python -m herhealth_data.cli thresholds --knowledge $(KNOWLEDGE_DIR)
+
 build:
 	$(UV) run python -m herhealth_data.cli build --knowledge $(KNOWLEDGE_DIR)
 
+# Runs the benchmark cases through the controller. No model, no network.
+# Exits 1 if a gated metric fails, so CI can depend on it.
 eval:
-	$(UV) run python -m herhealth_data.cli eval --knowledge $(KNOWLEDGE_DIR) --cases $(CASES_DIR)
+	$(UV) run herhealth-eval --knowledge $(KNOWLEDGE_DIR) --cases $(CASES_DIR)
 
 # Run one scripted consultation and print the whole trace. No model, no network,
 # no server — the same case gives the same trace on any machine.

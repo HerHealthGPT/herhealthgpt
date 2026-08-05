@@ -129,7 +129,9 @@ class Decision:
     #: an evaluation cannot diagnose an error without it.
     differential: tuple[tuple[str, float], ...] = ()
 
-    #: Set when the reason is RED_FLAG, so the response can cite the rule.
+    #: Set when the reason is RED_FLAG, so the response can cite the rule. Also
+    #: set on an ASK issued while a flag is already fired — the controller is
+    #: then probing for a worse rule, and the question is not an ordinary one.
     red_flag_id: str | None = None
 
     #: One line of why, for logs and for the scripted-dialogue CLI.

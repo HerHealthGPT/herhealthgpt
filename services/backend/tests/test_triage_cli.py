@@ -87,10 +87,35 @@ def test_every_case_reaches_a_conclusion(path: Path, real_engine: TriageEngine) 
 # --------------------------------------------------------------------------
 
 
-def test_sudden_severe_pain_fires_a_red_flag(real_engine: TriageEngine) -> None:
+def test_sudden_severe_pain_reaches_emergency(real_engine: TriageEngine) -> None:
+    """REGRESSION, and the reason the assertion is this specific.
+
+    This used to assert only "some red flag fired", which passed while the case
+    came back URGENT_SAME_DAY. Sudden onset of severe pelvic pain matches
+    `sudden_severe_pelvic_pain`, an EMERGENCY rule; the controller was matching
+    the one-clause `severe_pelvic_pain` rule on severity alone and concluding
+    before it ever asked about onset.
+    """
     decision = run("sudden_severe_pain", real_engine).final_decision
     assert decision.reason is StopReason.RED_FLAG
-    assert decision.red_flag_id is not None
+    assert decision.action is ActionCode.EMERGENCY
+    assert decision.red_flag_id == "sudden_severe_pelvic_pain"
+
+
+def test_reaching_emergency_costs_the_escalation_screen(
+    real_engine: TriageEngine,
+) -> None:
+    """The price of the fix, pinned so a change to it is visible.
+
+    Six EMERGENCY rules are each one answer from firing once severe pelvic pain
+    is known, so the screen runs past `max_questions`. That is deliberate — the
+    question budget is about patience, and emergency screening is not subject
+    to it — but it is a real cost and it should not drift silently.
+    """
+    transcript = run("sudden_severe_pain", real_engine)
+    assert transcript.questions_asked > real_engine.weights.max_questions
+    probes = [t for t in transcript.turns if t.answer and t.decision.red_flag_id]
+    assert len(probes) == 6
 
 
 def test_a_red_flag_cites_the_sentence_it_came_from(real_engine: TriageEngine) -> None:

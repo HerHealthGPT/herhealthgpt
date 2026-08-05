@@ -12,11 +12,31 @@ Supervisor: Dr. Rahatara Ferdousi. Mentors: Deloitte Innovation Hub, Egypt.
 > output is an urgency action code and a cited explanation — never a conclusion
 > about what a user has.
 
-**Status: Phase 1 — seed knowledge.** Scaffold, reproducible environment,
-contracts schemas, and the tunable constants are in place. `features.yaml` and
-`sources.yaml` are authored. `conditions.yaml`, `evidence.csv` and
-`red_flags.yaml` are next and are gated on real source text — see
-[Verification protocol](#verification-protocol).
+**Status: Phase 2 complete — knowledge base and triage controller.**
+All seven knowledge files are authored and validated: 37 features, 12
+conditions, 89 evidence rows, 14 red-flag rules, 5 sources, **103/103 quotes
+verified verbatim** against their cited source. The stopping controller and the
+evaluation harness are built and tested (380 tests).
+
+**Not built yet:** retrieval, model serving, API, frontend. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+### Start here
+
+| If you want to… | Read |
+|---|---|
+| Understand how the reasoning works, **with diagrams** | [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) |
+| Find your way around the repository | [`docs/REPO_MAP.md`](docs/REPO_MAP.md) |
+| Know what we are doing now and next | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
+| Read every module in detail | [`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md) |
+| Know why a decision was made | [`docs/adr/`](docs/adr/) |
+
+See a consultation run in 30 seconds:
+
+```bash
+make install
+make triage CASE=services/backend/cases/sudden_severe_pain.yaml
+```
 
 ---
 

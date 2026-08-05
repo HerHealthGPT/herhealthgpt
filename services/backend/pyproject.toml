@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 herhealth-triage = "herhealth_backend.triage.cli:main"
+herhealth-eval = "herhealth_backend.evaluation.cli:main"
 
 [project.optional-dependencies]
 api = [
