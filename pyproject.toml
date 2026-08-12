@@ -22,6 +22,9 @@ dependencies = [
 [project.optional-dependencies]
 ingest = ["herhealth-data[ingest]"]
 retrieval = ["herhealth-data[retrieval]"]
+# Re-exposed so `uv sync --extra api` from the root installs the backend's web
+# layer (FastAPI, SQLAlchemy, psycopg, Alembic) into the workspace environment.
+api = ["herhealth-backend[api]"]
 
 [tool.uv]
 package = false
@@ -49,4 +52,11 @@ dev = [
     # mypy runs strict on packages/contracts, which imports yaml. Without stubs
     # the loader is untyped there and strict mode refuses it.
     "types-PyYAML>=6.0",
+    # The backend's HTTP and database tests. testcontainers starts a real
+    # PostgreSQL in Docker for the session; httpx drives the app over ASGI;
+    # pytest-asyncio runs the async tests. None of it touches a network or a
+    # cloud account — the triage suite still runs with none of this installed.
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "testcontainers[postgres]>=4.0",
 ]

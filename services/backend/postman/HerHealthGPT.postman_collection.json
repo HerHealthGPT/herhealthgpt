@@ -1,0 +1,53 @@
+{
+  "info": {
+    "name": "HerHealthGPT backend",
+    "description": "Manual API testing for the HerHealthGPT backend.\n\nImport this collection and the `HerHealthGPT — local` environment, start the API with `make db-up && make migrate && make serve`, then send the requests. `baseUrl` comes from the environment so the same requests work against staging later.\n\nAs the Accounts endpoints land (register, verify, sign in, …) add them as folders here; the health check is the skeleton.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "description": "Liveness of the service and its database.",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Returns 200 with {\"status\":\"ok\"} when the service can reach PostgreSQL, and 503 with {\"status\":\"unavailable\"} when it cannot. The check performs a real database round-trip, so a 503 means the database, not just the process, is the problem."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('body reports ok', function () {",
+                  "    pm.expect(pm.response.json()).to.eql({ status: 'ok' });",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

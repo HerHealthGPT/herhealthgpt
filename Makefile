@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt test clean-build
+.PHONY: help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt test test-api db-up db-down migrate serve clean-build
 
 # A demonstration case for `make triage`. Override to run another:
 #   make triage CASE=services/backend/cases/says_nothing.yaml
@@ -37,13 +37,20 @@ help:
 	@echo "triage     run one scripted consultation and print the trace (CASE=...)"
 	@echo "triage-all run every demonstration case in services/backend/cases/"
 	@echo "lint       ruff check + mypy strict on packages/contracts"
-	@echo "test       pytest"
+	@echo "test       pytest (fast, offline: contracts, data, triage core)"
+	@echo "test-api   backend app tests — starts PostgreSQL in Docker (needs the api extra)"
+	@echo "db-up      start the local dev PostgreSQL (infra/compose.yml)"
+	@echo "migrate    apply migrations to the database in infra/envs/backend.env"
+	@echo "serve      run the backend API against that database (uvicorn --reload)"
 
 install:
 	$(UV) sync
 
 install-ingest:
 	$(UV) sync --extra ingest
+
+install-api:
+	$(UV) sync --extra api
 
 lock:
 	$(UV) lock
@@ -119,8 +126,36 @@ fmt:
 # --extra ingest because the clean-step tests import BeautifulSoup. `make
 # validate` deliberately works WITHOUT the extra; the test suite does not, and
 # CI must install it or test_clean.py fails at collection.
+#
+# tests/app is excluded here: it needs the api extra and a real PostgreSQL in
+# Docker. That suite is `make test-api`. Everything left runs offline with no
+# server and no database, which is the property the triage core must keep.
 test:
-	$(UV) run --extra ingest pytest packages/contracts/tests services/data/tests services/backend/tests -q
+	$(UV) run --extra ingest pytest packages/contracts/tests services/data/tests services/backend/tests --ignore=services/backend/tests/app -q
+
+# The backend's HTTP and database tests. Starts PostgreSQL in a container via
+# testcontainers, so Docker must be running. No AWS account, no credentials.
+test-api:
+	$(UV) run --extra api pytest services/backend/tests/app -q
+
+# Local dev loop: a real PostgreSQL to run the service against by hand. The test
+# suite ignores all of this and starts its own container.
+db-up:
+	docker compose -f infra/compose.yml up -d postgres
+
+db-down:
+	docker compose -f infra/compose.yml down
+
+# Applies migrations to HERHEALTH_DATABASE_URL (read from infra/envs/backend.env).
+# Run from services/backend so Alembic finds alembic.ini and migrations/.
+migrate:
+	set -a; . ./infra/envs/backend.env; set +a; cd services/backend && $(UV) run --extra api alembic upgrade head
+
+# Serves the API on 127.0.0.1:8000. Point Postman at http://localhost:8000/health.
+# Uses the package entry point (not the uvicorn CLI) so Windows gets a
+# psycopg-compatible event loop.
+serve:
+	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api python -m herhealth_backend.app
 
 clean-build:
 	rm -rf build/

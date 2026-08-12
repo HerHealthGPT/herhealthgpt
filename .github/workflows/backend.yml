@@ -1,0 +1,50 @@
+name: backend
+
+# The backend's HTTP and database tests, kept separate from the data workflow
+# because they need the api extra and a real PostgreSQL in Docker. Path-filtered:
+# a frontend or model change must not trigger it. The fast, offline suite
+# (contracts, data, triage core) still runs in data.yml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/backend/**"
+      - "packages/contracts/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
+      - ".github/workflows/backend.yml"
+  pull_request:
+    paths:
+      - "services/backend/**"
+      - "packages/contracts/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".python-version"
+      - ".github/workflows/backend.yml"
+
+jobs:
+  app:
+    # ubuntu-latest ships a running Docker daemon, which testcontainers needs to
+    # start PostgreSQL. No services: block — the container is managed by the tests.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails rather than re-resolving, so CI runs the same pins as a
+      # teammate. --extra api installs FastAPI, SQLAlchemy, psycopg and Alembic.
+      - name: Install from lockfile
+        run: uv sync --locked --extra api
+
+      - name: Lint
+        run: uv run ruff check services/backend
+
+      - name: Type-check the app layer
+        run: uv run mypy services/backend/src/herhealth_backend/app
+
+      - name: Test (starts PostgreSQL in Docker)
+        run: make test-api
