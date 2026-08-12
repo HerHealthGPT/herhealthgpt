@@ -21,6 +21,7 @@ dependencies = [
 # `--package` drops dev tooling.
 [project.optional-dependencies]
 ingest = ["herhealth-data[ingest]"]
+retrieval = ["herhealth-data[retrieval]"]
 
 [tool.uv]
 package = false

@@ -27,6 +27,9 @@ from pathlib import Path
 from herhealth_data import commands, paths
 from herhealth_data.ingest import utc_today
 
+# Imported for the default only; the model itself is loaded lazily at run time.
+from herhealth_data.retrieval.embed import DEFAULT_MODEL
+
 __all__ = ["build_parser", "main"]
 
 
@@ -87,6 +90,43 @@ def build_parser() -> argparse.ArgumentParser:
         "--apply", action="store_true", help="write confident codes into conditions.yaml"
     )
     icd_parser.set_defaults(func=commands.run_icd)
+
+    index_parser = subparsers.add_parser(
+        "index", help="embed build/clean/ into a searchable passage index"
+    )
+    index_parser.add_argument("--clean-dir", type=Path, default=paths.CLEAN_DIR)
+    index_parser.add_argument("--index-dir", type=Path, default=paths.INDEX_DIR)
+    index_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
+    index_parser.add_argument(
+        "--model", default=DEFAULT_MODEL, help="'hashing' for the offline stand-in"
+    )
+    index_parser.set_defaults(func=commands.run_index)
+
+    search_parser = subparsers.add_parser("search", help="query the passage index by hand")
+    search_parser.add_argument("query")
+    search_parser.add_argument("--index-dir", type=Path, default=paths.INDEX_DIR)
+    search_parser.add_argument("--model", default=None, help="defaults to the index's own model")
+    search_parser.add_argument("-k", type=int, default=8)
+    search_parser.set_defaults(func=commands.run_search)
+
+    propose_parser = subparsers.add_parser(
+        "propose", help="propose candidate evidence rows into a DRAFT batch"
+    )
+    propose_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
+    propose_parser.add_argument("--index-dir", type=Path, default=paths.INDEX_DIR)
+    propose_parser.add_argument("--model", default=None)
+    propose_parser.add_argument(
+        "--condition", action="append", default=[], help="restrict to a condition, repeatable"
+    )
+    propose_parser.add_argument("--per-gap", type=int, default=2)
+    propose_parser.add_argument("--min-score", type=float, default=0.30)
+    propose_parser.add_argument(
+        "--limit", type=int, default=10, help="the review gate caps a batch at 10 rows"
+    )
+    propose_parser.add_argument(
+        "--out", type=Path, default=paths.BUILD_DIR / "proposed_batch.yaml"
+    )
+    propose_parser.set_defaults(func=commands.run_propose)
 
     thresholds_parser = subparsers.add_parser(
         "thresholds", help="show where each tunable threshold sits, and whether it is fragile"

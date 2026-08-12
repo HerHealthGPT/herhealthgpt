@@ -139,6 +139,138 @@ def run_validate(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------
+# retrieval
+# --------------------------------------------------------------------------
+
+
+def _load_embedder(name: str):  # type: ignore[no-untyped-def]
+    """The hashing stand-in when asked for it, otherwise the real model.
+
+    Named explicitly rather than falling back silently: a run that quietly used
+    a bag-of-words embedder instead of bge-m3 would produce plausible-looking
+    proposals with no semantic matching behind them at all.
+    """
+    from herhealth_data.retrieval import HashingEmbedder, SentenceTransformerEmbedder
+
+    if name == "hashing":
+        print("using the hashing stand-in — lexical overlap only, NOT semantic")
+        return HashingEmbedder()
+    return SentenceTransformerEmbedder(name)
+
+
+def run_index(args: argparse.Namespace) -> int:
+    """Build the passage index from build/clean/.
+
+    Downloads model weights on first run unless --model hashing.
+    """
+    from herhealth_data.retrieval import build_index, load_passages
+
+    if not args.clean_dir.is_dir():
+        print(f"error: no cleaned documents at {args.clean_dir} — run `make clean` first")
+        return 2
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        for problem in problems:
+            print(problem)
+        return 2
+
+    # Quote-only sources are indexed — we may read and quote them. The flag
+    # travels with each passage so the SERVED corpus can exclude them later.
+    ingestable = {s.id: s.may_be_ingested for s in base.sources}
+    passages = load_passages(args.clean_dir, ingestable)
+    if not passages:
+        print(f"error: no passages found in {args.clean_dir}")
+        return 1
+
+    by_source = Counter(p.source_id for p in passages)
+    quote_only = sum(1 for p in passages if not p.may_be_ingested)
+    print(f"{len(passages)} passages from {len(by_source)} source(s)")
+    for source_id, count in sorted(by_source.items()):
+        mark = "" if any(p.may_be_ingested for p in passages if p.source_id == source_id) else "  (quote-only)"
+        print(f"  {source_id:<14} {count:>5}{mark}")
+    print(f"\n{quote_only} passage(s) are quote-only and must never enter the served corpus.")
+
+    embedder = _load_embedder(args.model)
+    print(f"\nembedding with {embedder.name} ({embedder.dimensions}d)...")
+    index = build_index(passages, embedder)
+    index.save(args.index_dir)
+    print(f"index written to {args.index_dir}")
+    return 0
+
+
+def run_search(args: argparse.Namespace) -> int:
+    """Query the index by hand. The quickest way to see whether it works."""
+    from herhealth_data.retrieval import PassageIndex
+
+    if not (args.index_dir / "manifest.json").is_file():
+        print(f"error: no index at {args.index_dir} — run `make index` first")
+        return 2
+
+    index = PassageIndex.load(args.index_dir)
+    embedder = _load_embedder(args.model or index.model_name)
+
+    hits = index.search(args.query, embedder, k=args.k)
+    if not hits:
+        print("no hits")
+        return 1
+
+    for hit in hits:
+        print(f"\n  {hit.score:.3f}  {hit.passage.citation}")
+        print(f"         {hit.passage.text}")
+    print()
+    return 0
+
+
+def run_propose(args: argparse.Namespace) -> int:
+    """Propose candidate evidence rows into a DRAFT batch for review.
+
+    Writes `approved: false` and a placeholder strength, so nothing can reach
+    evidence.csv without a person reading it.
+    """
+    from herhealth_data.retrieval import PassageIndex, propose_rows, write_batch
+
+    if not (args.index_dir / "manifest.json").is_file():
+        print(f"error: no index at {args.index_dir} — run `make index` first")
+        return 2
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        for problem in problems:
+            print(problem)
+        return 2
+
+    index = PassageIndex.load(args.index_dir)
+    embedder = _load_embedder(args.model or index.model_name)
+
+    proposals = propose_rows(
+        base,
+        index,
+        embedder,
+        condition_ids=args.condition or None,
+        per_gap=args.per_gap,
+        min_score=args.min_score,
+        limit=args.limit,
+    )
+
+    for proposal in proposals:
+        gap = proposal.gap
+        print(f"\n  {proposal.score:.3f}  {gap.condition.id} · {gap.feature.id}={gap.value}")
+        print(f"         {proposal.passage.citation}")
+        print(f"         {proposal.passage.text[:110]}")
+
+    if not proposals:
+        print("no candidates cleared the score threshold")
+        return 1
+
+    write_batch(proposals, args.out, model_name=embedder.name)
+    print(f"\n{len(proposals)} proposal(s) written to {args.out}")
+    print("DRAFT — approved: false, every strength is a placeholder.")
+    print("Review each row, set a real strength, then re-run `make evidence`.")
+    return 0
+
+
+# --------------------------------------------------------------------------
 # thresholds
 # --------------------------------------------------------------------------
 

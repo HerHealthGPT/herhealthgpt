@@ -4,9 +4,24 @@
 **Question it answers:** how does a sentence typed by a user become "see a GP
 this week", and how do we know that answer is not made up?
 
-Everything here is generated from the real files. Numbers current at
-2026-08-04: **37 features, 12 conditions, 89 evidence rows, 14 red-flag rules,
-5 sources, 103/103 quotes verified.**
+Everything here is taken from the real files. Numbers current at **2026-08-05**:
+37 features, 12 conditions, 89 evidence rows, 14 red-flag rules, 5 sources,
+**103/103 quotes verified verbatim**, 398 tests passing.
+
+| Section | |
+|---|---|
+| [1. One paragraph](#1-the-one-paragraph-version) | What it does |
+| [2. Why it is built this way](#2-why-it-is-built-this-way) | The benchmark findings that forced the design |
+| [3. The seven files](#3-the-seven-files) | What each one holds |
+| [**3a. The schema**](#3a-the-schema) | **Tables, fields, keys, invariants** |
+| [4. The graph](#4-the-graph--this-is-the-reason-like-a-doctor-part) | Questions ↔ conditions |
+| [5. A consultation](#5-how-a-consultation-runs) | End to end |
+| [6. The controller](#6-the-stopping-controller--six-rules-in-order) | Six stopping rules |
+| [6a. The numbers](#6a-the-numbers-explained) | Where every weight and threshold comes from |
+| [7. Red flags](#7-red-flags--14-rules-that-outrank-everything) | The 14 escalation rules |
+| [8. Verification](#8-how-we-know-the-rows-are-not-made-up) | How we know rows are not invented |
+| [9. Sources](#9-sources-and-why-only-these-five) | And why only these five |
+| [10. Limitations](#10-what-the-knowledge-base-cannot-do) | Stated plainly |
 
 ---
 
@@ -96,6 +111,163 @@ flowchart TB
 | `sources.yaml` | Provenance, licence, precedence | Only usable sources are listed at all |
 | `weights.yaml` | Ordinal → log-odds | **Every number chosen by us.** Not calibrated. Not citable |
 | `actions.yaml` | The four action codes | Severity strictly increasing |
+
+---
+
+## 3a. The schema
+
+Every field below is enforced by a Pydantic model in
+[`knowledge.py`](../packages/contracts/src/herhealth_contracts/knowledge.py).
+**The schemas are the definition; the YAML and CSV conform to them, not the
+other way round.** A typo in a file is a load failure, not a silently dropped
+value.
+
+```mermaid
+erDiagram
+    FEATURE ||--o{ EVIDENCE : "asked about in"
+    CONDITION ||--o{ EVIDENCE : "supported or opposed by"
+    SOURCE ||--o{ EVIDENCE : "backs"
+    SOURCE ||--o{ RED_FLAG : "backs"
+    SOURCE ||--o{ CONDITION : "cited by (>=2)"
+    RED_FLAG ||--|{ CLAUSE : "all must match"
+    FEATURE ||--o{ CLAUSE : "tested by"
+    ACTION ||--o{ CONDITION : "baseline"
+    ACTION ||--o{ RED_FLAG : "escalates to"
+
+    FEATURE {
+        Identifier id PK
+        string label
+        FeatureKind kind "boolean, categorical, ordinal, numeric"
+        tuple allowed_values "never contains unknown"
+        int burden "1 trivial to 5 sensitive"
+        map probe "language code to question text, en required"
+        string note
+    }
+
+    CONDITION {
+        Identifier id PK
+        string label
+        string icd11 "TODO_VERIFY until the WHO API resolves it"
+        ActionCode baseline_action FK
+        tuple source_ids FK "min 2, or a written reason"
+        string single_source_reason "required if only 1 source"
+        string search_term
+        string note
+    }
+
+    EVIDENCE {
+        Identifier condition_id FK
+        Identifier feature_id FK
+        FeatureValue value "must be in allowed_values"
+        EvidenceStrength strength "never neutral, omit the row instead"
+        Identifier source_id FK
+        string source_quote "VERBATIM from the source"
+        string note
+    }
+
+    RED_FLAG {
+        Identifier id PK
+        string label
+        ActionCode action FK "escalating codes only"
+        Identifier source_id FK
+        string source_quote "VERBATIM escalation language"
+        string note
+    }
+
+    CLAUSE {
+        Identifier feature_id FK
+        ComparisonOp op "equals, not_equals, in, gte, lte"
+        union value "string, tuple or number"
+    }
+
+    SOURCE {
+        Identifier id PK
+        string name
+        HttpUrl url
+        int precedence "lower wins a conflict"
+        string licence
+        string access
+        SourceStatus status "available, citable_only, restricted"
+        string note
+    }
+
+    ACTION {
+        ActionCode code PK
+        int severity "0..3, strictly increasing"
+        string description
+    }
+
+    WEIGHTS {
+        map log_odds "one value per EvidenceStrength"
+        float plausibility_floor
+        float stop_confidence
+        float self_care_stop_confidence
+        float stop_margin
+        int max_questions
+    }
+```
+
+`WEIGHTS` stands alone — it is a single record of tunable constants, not a table
+with rows, and nothing references it by key.
+
+### The primary key that carries the design
+
+`EVIDENCE` has **no surrogate id**. Its identity is the triple:
+
+```
+(condition_id, feature_id, value)
+```
+
+so "heavy bleeding supports fibroids" and "irregular cycles support fibroids"
+are different rows, and the same cell cannot be asserted twice with different
+strengths — the loader rejects duplicates outright. That is what makes the file
+a **grid** rather than a list of opinions.
+
+The grid is deliberately **sparse**: 37 features × 12 conditions is 444 possible
+cells, and only **89** carry meaning. A missing cell is `neutral`, which is safe;
+writing `neutral` explicitly is forbidden precisely so that "we found nothing"
+and "we decided it does not matter" cannot be confused.
+
+### Foreign keys, and what happens when one breaks
+
+Every reference below is checked by `make validate`, which reports **all**
+failures at once with file and row context rather than stopping at the first:
+
+| From | To | Rule |
+|---|---|---|
+| `evidence.condition_id` | `conditions.id` | must exist |
+| `evidence.feature_id` | `features.id` | must exist |
+| `evidence.value` | `features.allowed_values` | must be a legal value **for that feature** |
+| `evidence.source_id` | `sources.id` | must exist **and** be citable |
+| `red_flag.clause.feature_id` | `features.id` | must exist |
+| `red_flag.source_id` | `sources.id` | must exist and be citable |
+| `condition.source_ids` | `sources.id` | **at least two**, or a written `single_source_reason` |
+| `condition.baseline_action` | `actions.code` | must be one of the four |
+
+### Four invariants the schema makes unrepresentable
+
+Not "checked later" — these states cannot be constructed at all:
+
+1. **A red flag that de-escalates.** `action` is restricted to `URGENT_SAME_DAY`
+   and `EMERGENCY`, so a rule that lowers urgency is unconstructible.
+2. **An evidence row with strength `neutral`.** Rejected at load. A neutral row
+   is an omitted row.
+3. **A clinical row without provenance.** `source_quote` is required and must be
+   non-empty after stripping, so whitespace cannot masquerade as a citation.
+4. **A `SELF_CARE` bar at or below the routine bar.** `weights.yaml` will not
+   load unless `self_care_stop_confidence > stop_confidence`.
+
+There is also deliberately **no `reviewed_by_clinician` field**, nor anything
+resembling one — it could only ever hold a value this project is not in a
+position to assert.
+
+### Disjunction is not in the schema, on purpose
+
+A red-flag rule is a **conjunction only**: every clause in `all_of` must match.
+There is no `any_of`. An "or" is written as *two rules*, so each one keeps its
+own `source_quote` and stays traceable to the sentence it came from. Allowing a
+disjunction would let one quote justify a rule that fires on something the
+source never said.
 
 ---
 
