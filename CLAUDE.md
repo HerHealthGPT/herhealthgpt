@@ -332,3 +332,25 @@ agreement. Reported but not gated: over-triage, average questions asked.
 - **Never generate more than 10 clinical rows without showing them for review.**
 - Ask before any network call
 - Prefer boring, readable code. This is read by markers, not scaled to millions.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues on `HerHealthGPT/herhealthgpt`, via the `gh` CLI.
+See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, using their default names: `needs-triage`,
+`needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. Only `wontfix`
+exists on the repo today. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+**Multi-context.** `CONTEXT-MAP.md` at the root names two bounded contexts —
+**Triage** (`CONTEXT.md`) and **Accounts** (`services/backend/CONTEXT.md`) — and
+records the words that mean different things across the boundary. Read the map
+before naming anything. See `docs/agents/domain.md`.
