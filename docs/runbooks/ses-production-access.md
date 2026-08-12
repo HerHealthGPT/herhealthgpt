@@ -36,11 +36,12 @@ The generic procedure follows below; this is what was actually built.
 | SES identity | `herhealthgpt.org` — **Verified**, DKIM **SUCCESS**, MAIL FROM **SUCCESS** |
 | DKIM (Easy DKIM, RSA 2048) tokens | `3fhyv75rikngpetkjsuou6yuxccy7htj`, `yjw3adydou4udtrbywmzulsgvyxbpoiv`, `mnedte2xrkg5bxlbivm567ck32b6hwvi` |
 | Custom MAIL FROM | `bounce.herhealthgpt.org` (SPF-aligned) |
-| DMARC | `_dmarc.herhealthgpt.org` → `p=none` (⚠️ `rua` mailbox `dmarc-reports@herhealthgpt.org` not yet receiving — reports unreadable until it does) |
+| DMARC | `_dmarc.herhealthgpt.org` → `p=none`, aggregate reports (`rua`) sent to Postmark free monitoring (`re+xbfkhxkrm5b@dmarc.postmarkapp.com`) |
 | Sending identity | **From** `no-reply@herhealthgpt.org` ("HerHealthGPT"), **Reply-To** `support@herhealthgpt.org` |
 | Production-access request | **Granted 2026-08-12**, `TRANSACTIONAL`. Quota **50,000/24h, 14/sec**, enforcement `HEALTHY` |
 
-**Open items:** root-credential swap; DMARC `rua` mailbox; AWS decision (§7).
+**Open items:** none outstanding. (Root credentials swapped to a scoped IAM user;
+DMARC reports routed to Postmark; production access granted — §7.)
 
 ## Decide two things first
 
