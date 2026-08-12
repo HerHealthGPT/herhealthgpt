@@ -227,4 +227,5 @@ flowchart LR
 | [`ROADMAP.md`](ROADMAP.md) | What we are doing now and next |
 | [`CODE_GUIDE.md`](CODE_GUIDE.md) | Every module, in detail |
 | [`adr/`](adr/) | Why each significant decision was made |
+| [`runbooks/`](runbooks/) | Operational procedures — human-run, not code |
 | [`../CONTEXT.md`](../CONTEXT.md) | The vocabulary |
