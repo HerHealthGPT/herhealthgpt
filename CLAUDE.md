@@ -286,7 +286,7 @@ decides ask-or-conclude → the model phrases the question or the final answer.
 
 `should_stop` checks in order, first match wins:
 
-1. Red flag fired → escalate, no model call
+1. Red flag fired → escalate, unless the escalation screen has a probe to ask
 2. All conditions above `plausibility_floor` share one action → stop
 3. No unasked feature could change the action → stop
 4. Top plausibility above `stop_confidence` and `stop_margin` clear of second → stop
@@ -295,6 +295,28 @@ decides ask-or-conclude → the model phrases the question or the final answer.
 
 One question per turn, always. Stopping at `SELF_CARE` requires a strictly higher
 bar than stopping at `ROUTINE_APPOINTMENT`.
+
+**The escalation screen, which qualifies rule 1.** When several rules match the
+same answers, the **most severe** one is taken — never the first in file order. A
+fired rule then does not conclude while a strictly more severe rule is one answer
+away: before returning the escalation, the controller asks about any rule that
+has exactly one outstanding clause on a feature not yet put to the user, provided
+at least one of its other clauses already matches. Each condition is load-bearing
+— together they make the screen terminate, because every probe either fires its
+rule or kills it.
+
+Two consequences that look like violations of the rules above, and are not:
+
+- The model *is* called during the screen, to phrase the probe. Rule 1 means no
+  model involvement in the escalation **decision**, which remains code-only.
+- **The screen has no probe budget and deliberately runs past `max_questions`.**
+  That budget is a judgement about patience; emergency screening is not subject
+  to it. A budget low enough to protect patience would silently drop the last few
+  emergency rules, which is the failure the screen exists to remove.
+
+See [`docs/adr/0007`](docs/adr/0007-what-the-first-real-consultations-showed.md)
+for the derivation and the cost — once severe pelvic pain is known, six EMERGENCY
+rules sit one answer away, so that case takes ten questions rather than four.
 
 ---
 
