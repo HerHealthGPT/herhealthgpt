@@ -1,0 +1,17 @@
+name: sudden severe pelvic pain
+note: >-
+  The case red flags exist for. Two answers satisfy sudden_severe_pelvic_pain,
+  and the controller must reach EMERGENCY on them without consulting the
+  differential at all.
+
+  This is also the regression case for the escalation-probe fix. It used to come
+  back URGENT_SAME_DAY: the one-clause severe_pelvic_pain rule matched on
+  severity and concluded before pain_onset was ever asked. It now runs an
+  escalation screen — six EMERGENCY rules are each one answer from firing once
+  severe pelvic pain is known — and reaches pain_onset. Ten questions, six of
+  them the screen. See docs/adr/0007.
+answers:
+  pelvic_pain_severity: severe
+  pain_onset: sudden
+  age_band: 30_to_39
+  pregnancy_status: not_pregnant

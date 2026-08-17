@@ -9,6 +9,7 @@ description = "Triage, tracker, directory, visit prep, retrieval, safety and orc
 requires-python = ">=3.12"
 dependencies = [
     "herhealth-contracts",
+    "pyyaml>=6.0",  # the CLI reads case files
 ]
 
 # FastAPI, the model client and retrieval arrive with the API layer. The triage
@@ -16,10 +17,22 @@ dependencies = [
 # runnable from a test or a CLI with no server, no GPU and no network, because
 # that is what makes the evaluation harness possible.
 
+[project.scripts]
+herhealth-triage = "herhealth_backend.triage.cli:main"
+herhealth-eval = "herhealth_backend.evaluation.cli:main"
+
 [project.optional-dependencies]
+# The web/runtime layer. Kept an extra, not a base dependency, so the triage
+# core stays importable with none of it present — no server, no database driver,
+# no ORM — which is the property the evaluation harness relies on.
 api = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
+    "sqlalchemy[asyncio]>=2.0",
+    # psycopg 3 does both sync and async, so the app engine, Alembic and the
+    # test container's readiness check all share one driver.
+    "psycopg[binary]>=3.2",
+    "alembic>=1.13",
 ]
 
 [tool.uv.sources]
@@ -40,3 +53,6 @@ known-first-party = ["herhealth_backend", "conftest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The app tests are async; the triage tests are plain sync functions and are
+# unaffected. "auto" saves marking every async test by hand.
+asyncio_mode = "auto"

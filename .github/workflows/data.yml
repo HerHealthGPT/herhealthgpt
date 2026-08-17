@@ -49,3 +49,10 @@ jobs:
 
       - name: Validate knowledge
         run: make validate
+
+      # The demonstration cases are already asserted by the test suite. This
+      # step is for the log: it prints the full trace of every consultation, so
+      # the effect of a weights or ranking change is readable in the CI output
+      # of the PR that made it, not only as a pass/fail.
+      - name: Trace the demonstration consultations
+        run: make triage-all

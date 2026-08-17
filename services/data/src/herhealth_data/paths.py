@@ -31,6 +31,10 @@ TABLES_DIR: Final[Path] = BUILD_DIR / "tables"
 #: Sectioned, quotable text produced by the clean step. Gitignored.
 CLEAN_DIR: Final[Path] = BUILD_DIR / "clean"
 
+#: The passage index: a vector matrix plus one JSON line per passage.
+#: Generated and gitignored — rebuildable from build/clean/ with `make index`.
+INDEX_DIR: Final[Path] = BUILD_DIR / "index"
+
 DATA_SERVICE_DIR: Final[Path] = REPO_ROOT / "services" / "data"
 
 #: What to fetch, and the per-source guards. Tracked.

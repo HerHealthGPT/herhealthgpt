@@ -174,8 +174,10 @@ Read [`.claude/skills/source-ingestion/SKILL.md`](.claude/skills/source-ingestio
 - Raw fetched content is immutable. It lands in `raw/{source}/{YYYY-MM-DD}/` and
   is never overwritten; a re-fetch creates a new dated directory so changes are
   diffable. Every record stores `url`, `fetched_at`, `content_hash` and `licence`.
-- Confirm before any network call. Cache aggressively. **Tests never hit the
-  network.**
+- Confirm before any network call. Cache aggressively. **Ingestion and triage
+  tests never hit the network**, and run with `make test`. (The backend's app
+  layer adds database tests that start a local PostgreSQL in Docker — no external
+  network — fenced into a separate `make test-api` suite.)
 - Source precedence, lower wins on conflict: NICE CKS → NHS → NICHD/MedlinePlus →
   CDC → RCOG/ACOG. When two sources disagree on urgency the higher-precedence one
   wins **and** the conflict is appended to `build/conflicts.jsonl`. Never resolve

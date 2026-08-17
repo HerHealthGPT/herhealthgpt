@@ -1,0 +1,31 @@
+# Local development database for the backend.
+#
+# The test suite does NOT use this — it starts its own throwaway PostgreSQL via
+# testcontainers. This file is for running the service by hand: bring the
+# database up, apply migrations, run the app, and point Postman at it.
+#
+#   docker compose -f infra/compose.yml up -d postgres
+#   cp infra/envs/backend.env.example infra/envs/backend.env
+#   make migrate serve            # applies migrations, then serves the API
+#
+# Nothing here is a production topology; that arrives with the deploy ticket.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: herhealth
+      POSTGRES_PASSWORD: herhealth
+      POSTGRES_DB: herhealth
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U herhealth -d herhealth"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:

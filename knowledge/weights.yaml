@@ -23,11 +23,41 @@
 # Each answer adds the matching value to the running score of every condition
 # that has a row for it. `neutral` is pinned to 0.0 and never appears in
 # evidence.csv — a neutral row is an omitted row.
+#
+# WHY THESE VALUES. Adding log-odds is the same as multiplying odds, so every
+# weight below reads as a plain multiplier — exp(w):
+#
+#     strong_support  +1.5  ->  x4.5  "about four and a half times more likely"
+#     weak_support    +0.6  ->  x1.8  "about twice as likely"
+#     neutral          0.0  ->  x1    changes nothing, so the row is omitted
+#     argues_against  -0.5  ->  /1.6  "about one and a half times less likely"
+#     rules_out       -4.0  ->  /55   "far less likely"
+#
+# Those multipliers are not our taste. They sit on the conventional bands used
+# in evidence-based medicine for grading how far a diagnostic finding shifts
+# belief: ~2x is a small but sometimes important increase, ~5x is moderate,
+# ~0.5x is a small decrease, and below 0.1x is a large decrease.
+#
+# NOTE WHAT IS AND IS NOT BEING CLAIMED. We do NOT claim any row has a measured
+# likelihood ratio — no source gives us one, and writing a number on a row would
+# be inventing evidence. The claim is about the RULER: the spacing of this
+# five-point scale follows a published convention rather than our preference.
+# Rows stay ordinal. A row says `strong_support`, never `4.5`.
+#
+# There is deliberately NO "conclusive" level (~10x). The strongest support this
+# system can express is moderate, because one sentence from a public health page
+# is not conclusive evidence of anything.
+#
+# This reading only holds because plausibility is an independent logistic. Under
+# a softmax the weights would mean something different depending on what every
+# other condition scored. See docs/adr/0005 and docs/KNOWLEDGE_BASE.md §6a.
 log_odds:
   # A source describes this as a main or characteristic sign.
+  # x4.5 — the conventional "moderate increase" band.
   strong_support: 1.5
 
   # A source lists it among the features of the condition.
+  # x1.8 — the conventional "small but sometimes important" band.
   weak_support: 0.6
 
   # Pinned. The absence of evidence, not evidence of absence.
@@ -42,9 +72,22 @@ log_odds:
   # (-0.6) is the first tuning experiment worth running.
   argues_against: -0.5
 
-  # Large enough that a single rules_out row drops a condition below
-  # plausibility_floor regardless of accumulated support — which is what makes
-  # it mean "rules out" rather than "counts heavily against".
+  # Counts very heavily against, and eliminates a condition on its own FROM A
+  # STANDING START: -4.0 clears the -2.94 floor.
+  #
+  # It does NOT eliminate regardless of accumulated support, which this comment
+  # used to claim. Weights simply add, so a rules_out row only reaches the floor
+  # when prior support is below +1.06 log-odds — and a single strong_support row
+  # (+1.5) already exceeds that:
+  #
+  #     nothing       +0.0 -4.0 = -4.0 -> 0.018   eliminated
+  #     1 weak        +0.6 -4.0 = -3.4 -> 0.032   eliminated
+  #     1 strong      +1.5 -4.0 = -2.5 -> 0.076   SURVIVES
+  #     2 strong      +3.0 -4.0 = -1.0 -> 0.269   SURVIVES
+  #
+  # Harmless today — evidence.csv has zero rules_out rows. BEFORE AUTHORING THE
+  # FIRST ONE, read docs/adr/0009: the choice between making elimination
+  # absolute and leaving it additive has to be made then, not discovered later.
   rules_out: -4.0
 
 # ---------------------------------------------------------------------------

@@ -14,6 +14,8 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
+from herhealth_contracts.scoring import plausibility
+
 from herhealth_data.ingest import (
     FetchOutcome,
     FetchRecord,
@@ -25,6 +27,13 @@ from herhealth_data.ingest import (
     write_lock,
 )
 from herhealth_data.knowledge import Severity, load_knowledge_base, validate_directory
+from herhealth_data.thresholds import (
+    FRAGILE_MARGIN,
+    analyse,
+    eliminating_rows_needed,
+    reachable_scores,
+    rules_out_ceiling,
+)
 
 __all__ = [
     "run_build",
@@ -34,6 +43,7 @@ __all__ = [
     "run_icd",
     "run_tables",
     "run_fetch",
+    "run_thresholds",
     "run_validate",
     "run_verify_quotes",
 ]
@@ -125,6 +135,212 @@ def run_validate(args: argparse.Namespace) -> int:
             f"{len(base.sources)} sources"
         )
     print(f"{len(warnings)} warning(s)")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# retrieval
+# --------------------------------------------------------------------------
+
+
+def _load_embedder(name: str | None):  # type: ignore[no-untyped-def]
+    """The hashing stand-in when asked for it, otherwise the real model.
+
+    Named explicitly rather than falling back silently: a run that quietly used
+    a bag-of-words embedder instead of bge-m3 would produce plausible-looking
+    proposals with no semantic matching behind them at all.
+
+    ``None`` means the caller expressed no preference, so the default model is
+    resolved here — inside the lazy import — rather than in the CLI, which must
+    stay importable without the retrieval extra.
+    """
+    from herhealth_data.retrieval import (
+        DEFAULT_MODEL,
+        HashingEmbedder,
+        SentenceTransformerEmbedder,
+    )
+
+    if name is None:
+        name = DEFAULT_MODEL
+    if name == "hashing":
+        print("using the hashing stand-in — lexical overlap only, NOT semantic")
+        return HashingEmbedder()
+    return SentenceTransformerEmbedder(name)
+
+
+def run_index(args: argparse.Namespace) -> int:
+    """Build the passage index from build/clean/.
+
+    Downloads model weights on first run unless --model hashing.
+    """
+    from herhealth_data.retrieval import build_index, load_passages
+
+    if not args.clean_dir.is_dir():
+        print(f"error: no cleaned documents at {args.clean_dir} — run `make clean` first")
+        return 2
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        for problem in problems:
+            print(problem)
+        return 2
+
+    # Quote-only sources are indexed — we may read and quote them. The flag
+    # travels with each passage so the SERVED corpus can exclude them later.
+    ingestable = {s.id: s.may_be_ingested for s in base.sources}
+    passages = load_passages(args.clean_dir, ingestable)
+    if not passages:
+        print(f"error: no passages found in {args.clean_dir}")
+        return 1
+
+    by_source = Counter(p.source_id for p in passages)
+    quote_only = sum(1 for p in passages if not p.may_be_ingested)
+    print(f"{len(passages)} passages from {len(by_source)} source(s)")
+    for source_id, count in sorted(by_source.items()):
+        ingestable_here = any(
+            p.may_be_ingested for p in passages if p.source_id == source_id
+        )
+        mark = "" if ingestable_here else "  (quote-only)"
+        print(f"  {source_id:<14} {count:>5}{mark}")
+    print(f"\n{quote_only} passage(s) are quote-only and must never enter the served corpus.")
+
+    embedder = _load_embedder(args.model)
+    print(f"\nembedding with {embedder.name} ({embedder.dimensions}d)...")
+    index = build_index(passages, embedder)
+    index.save(args.index_dir)
+    print(f"index written to {args.index_dir}")
+    return 0
+
+
+def run_search(args: argparse.Namespace) -> int:
+    """Query the index by hand. The quickest way to see whether it works."""
+    from herhealth_data.retrieval import PassageIndex
+
+    if not (args.index_dir / "manifest.json").is_file():
+        print(f"error: no index at {args.index_dir} — run `make index` first")
+        return 2
+
+    index = PassageIndex.load(args.index_dir)
+    embedder = _load_embedder(args.model or index.model_name)
+
+    hits = index.search(args.query, embedder, k=args.k)
+    if not hits:
+        print("no hits")
+        return 1
+
+    for hit in hits:
+        print(f"\n  {hit.score:.3f}  {hit.passage.citation}")
+        print(f"         {hit.passage.text}")
+    print()
+    return 0
+
+
+def run_propose(args: argparse.Namespace) -> int:
+    """Propose candidate evidence rows into a DRAFT batch for review.
+
+    Writes `approved: false` and a placeholder strength, so nothing can reach
+    evidence.csv without a person reading it.
+    """
+    from herhealth_data.retrieval import PassageIndex, propose_rows, write_batch
+
+    if not (args.index_dir / "manifest.json").is_file():
+        print(f"error: no index at {args.index_dir} — run `make index` first")
+        return 2
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        for problem in problems:
+            print(problem)
+        return 2
+
+    index = PassageIndex.load(args.index_dir)
+    embedder = _load_embedder(args.model or index.model_name)
+
+    proposals = propose_rows(
+        base,
+        index,
+        embedder,
+        condition_ids=args.condition or None,
+        per_gap=args.per_gap,
+        min_score=args.min_score,
+        limit=args.limit,
+    )
+
+    for proposal in proposals:
+        gap = proposal.gap
+        print(f"\n  {proposal.score:.3f}  {gap.condition.id} · {gap.feature.id}={gap.value}")
+        print(f"         {proposal.passage.citation}")
+        print(f"         {proposal.passage.text[:110]}")
+
+    if not proposals:
+        print("no candidates cleared the score threshold")
+        return 1
+
+    write_batch(proposals, args.out, model_name=embedder.name)
+    print(f"\n{len(proposals)} proposal(s) written to {args.out}")
+    print("DRAFT — approved: false, every strength is a placeholder.")
+    print("Review each row, set a real strength, then re-run `make evidence`.")
+    return 0
+
+
+# --------------------------------------------------------------------------
+# thresholds
+# --------------------------------------------------------------------------
+
+
+def run_thresholds(args: argparse.Namespace) -> int:
+    """Show where each tunable threshold sits among reachable evidence scores.
+
+    Exits 1 if any threshold is fragile — sitting so close to a score the
+    evidence can actually produce that its meaning is an accident rather than a
+    decision. Not wired into CI, because a fragile threshold is a design debt to
+    discuss, not a build break.
+    """
+    knowledge_dir: Path = args.knowledge
+    base, problems = load_knowledge_base(knowledge_dir)
+    if base is None:
+        for problem in problems:
+            print(problem)
+        return 2
+
+    weights = base.weights
+    combos = reachable_scores(weights)
+
+    print("SCORES THE EVIDENCE CAN ACTUALLY REACH")
+    print("  A threshold only means something relative to these.\n")
+    for combo in combos:
+        print(f"  {combo.score:+6.2f} log-odds = {plausibility(combo.score):.3f}   "
+              f"{combo.describe()}")
+
+    print("\nWHERE EACH THRESHOLD SITS")
+    fragile = []
+    for placement in analyse(weights):
+        flag = "  ← FRAGILE" if placement.is_fragile else ""
+        print(f"\n  {placement.name} = {placement.value}  ({placement.log_odds:+.3f} log-odds)")
+        print(f"    means: {placement.meaning}")
+        if placement.margin_below is not None and placement.below is not None:
+            print(f"    room below ({placement.below.describe()}): "
+                  f"{placement.margin_below:+.3f}{flag}")
+        if placement.margin_above is not None and placement.above is not None:
+            print(f"    room above ({placement.above.describe()}): {placement.margin_above:+.3f}")
+        robust = placement.robust_value()
+        if placement.is_fragile and robust is not None:
+            print(f"    robust alternative, equal room either side: {robust:.3f}")
+        if placement.is_fragile:
+            fragile.append(placement)
+
+    print("\nELIMINATION")
+    print(f"  argues_against rows needed to reach the floor: "
+          f"{eliminating_rows_needed(weights):.1f}")
+    print(f"  rules_out overcomes prior support only below "
+          f"{rules_out_ceiling(weights):+.2f} log-odds  (see docs/adr/0009)")
+
+    print()
+    if fragile:
+        print(f"FRAGILE: {len(fragile)} threshold(s) within {FRAGILE_MARGIN} log-odds "
+              f"of a reachable score — {', '.join(p.name for p in fragile)}")
+        return 1
+    print("OK: every threshold has clear room on both sides")
     return 0
 
 

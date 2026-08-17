@@ -1,0 +1,17 @@
+name: heavy prolonged periods, early forties
+note: >-
+  Heavy bleeding supports fibroids and adenomyosis, which share
+  ROUTINE_APPOINTMENT, but pelvic_inflammatory_disease also picks up weak
+  support and carries URGENT_SAME_DAY. An unresolved differential is reported at
+  its most urgent member, so this is expected to come back urgent.
+answers:
+  bleeding_heaviness: heavy
+  period_duration: over_7_days
+  age_band: 40_to_44
+  pelvic_pain_severity: none
+  pelvic_pain_timing: none
+  cycle_regularity: regular
+  anaemia_symptoms: "yes"
+  abnormal_discharge: "no"
+  fever: "no"
+  pregnancy_status: not_pregnant

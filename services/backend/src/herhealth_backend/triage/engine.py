@@ -7,14 +7,18 @@ same state produces the same decision every time, which is what makes the
 evaluation harness meaningful and what stops a model from talking the system out
 of an escalation.
 
-The engine takes a :class:`KnowledgeBase` rather than loading one. Loading lives
-in ``services/data``, and nothing outside ``packages/contracts`` may cross a
-service boundary — so the caller loads and injects. That also means every test
-here constructs its own tiny knowledge base and none of them touch a file.
+The engine takes a :class:`KnowledgeBase` rather than loading one, so every test
+here constructs its own tiny knowledge base and none of them touch a file. The
+strict loader that reads the real files lives in ``herhealth_contracts.loading``
+— it is in contracts precisely because both services need it, and nothing
+outside contracts may cross a service boundary.
 
 ``should_stop`` checks in order, first match wins. The order IS the policy:
 
-1. A red flag fired → escalate. No differential, no model call.
+1. A red flag fired → finish the escalation, then escalate. No differential, no
+   model call. "Finish" means: while a *more severe* rule is one unasked answer
+   from firing, ask that answer first. A rule matching on one clause must not
+   pre-empt a worse one that was a single question away.
 2. Every live condition shares one action → stop; more questions cannot change
    what the user is told.
 3. No unasked question could change the action → stop; asking would only cost
@@ -24,9 +28,10 @@ here constructs its own tiny knowledge base and none of them touch a file.
 6. Otherwise → ask.
 
 Under-triage is the dominant failure mode, so wherever this code chooses, it
-chooses the more urgent action. Two places matter: an unresolved differential
-returns its **most urgent** member's action, and concluding ``SELF_CARE``
-requires clearing a strictly higher bar than any other action.
+chooses the more urgent action. Three places matter: an unresolved differential
+returns its **most urgent** member's action, concluding ``SELF_CARE`` requires
+clearing a strictly higher bar than any other action, and when several red-flag
+rules match at once the **most severe** wins rather than the first in the file.
 """
 
 from __future__ import annotations
@@ -116,12 +121,23 @@ class TriageEngine:
     # -- red flags ---------------------------------------------------------
 
     def _first_matching_red_flag(self, answers: Sequence[Answer]) -> str | None:
-        """The first rule every clause of which matches. Order is file order."""
+        """The MOST SEVERE rule every clause of which matches.
+
+        Not the first in file order. Two rules can match the same answers —
+        ``severe_pelvic_pain`` needs only severity, ``sudden_severe_pelvic_pain``
+        needs severity and sudden onset — and returning whichever came first in
+        the file would make the escalation depend on how the YAML was arranged.
+        Ties break on file order, so the choice stays deterministic.
+        """
         given = {a.feature_id: a.value for a in answers if a.is_known}
-        for rule in self.base.red_flags:
-            if all(self._clause_matches(clause, given) for clause in rule.all_of):
-                return rule.id
-        return None
+        matches = [
+            rule
+            for rule in self.base.red_flags
+            if all(self._clause_matches(clause, given) for clause in rule.all_of)
+        ]
+        if not matches:
+            return None
+        return max(matches, key=lambda rule: _severity(rule.action)).id
 
     @staticmethod
     def _clause_matches(clause: Clause, given: dict[str, str]) -> bool:
@@ -154,6 +170,65 @@ class TriageEngine:
             return None
         return next(r for r in self.base.red_flags if r.id == state.fired_red_flag_id)
 
+    # -- escalation probing ------------------------------------------------
+
+    def _one_answer_from_escalating(
+        self, state: TriageState, fired: RedFlagRule
+    ) -> list[tuple[RedFlagRule, Clause]]:
+        """More severe rules that a single unasked answer would complete.
+
+        A rule qualifies only if **exactly one** of its clauses is outstanding,
+        that clause's feature has not been put to the user yet, and at least one
+        other clause already matches.
+
+        Each of those conditions is doing work:
+
+        - *Exactly one outstanding* keeps the bound structural. Every probe
+          either fires the rule or kills it, so the screen finishes; chasing
+          rules two answers away would not terminate so tidily.
+        - *Not yet asked* because a feature already answered — including
+          answered ``unknown`` — cannot later satisfy the clause. Continuing to
+          consider such a rule would be asking a question whose answer is in.
+        - *At least one clause already matching* keeps this scoped to
+          escalations of the presentation in front of us. Without it, any
+          unrelated single-clause emergency rule would be dragged in the moment
+          anything at all fired.
+        """
+        given = {answer.feature_id: answer.value for answer in state.answers if answer.is_known}
+        candidates: list[tuple[RedFlagRule, Clause]] = []
+
+        for rule in self.base.red_flags:
+            if _severity(rule.action) <= _severity(fired.action):
+                continue
+            outstanding = [c for c in rule.all_of if not self._clause_matches(c, given)]
+            if len(outstanding) != 1 or len(outstanding) == len(rule.all_of):
+                continue
+            clause = outstanding[0]
+            if clause.feature_id in state.asked_feature_ids:
+                continue
+            candidates.append((rule, clause))
+
+        return candidates
+
+    def escalation_probe(self, state: TriageState, fired: RedFlagRule) -> str | None:
+        """The feature to ask before concluding on ``fired``, if any.
+
+        Ranked by how many more severe rules the answer would settle, then by
+        burden, then by id so the choice is deterministic. Preferring coverage
+        over burden means one question can close several rules at once, which is
+        what keeps the screen short.
+        """
+        coverage: dict[str, int] = {}
+        for _, clause in self._one_answer_from_escalating(state, fired):
+            coverage[clause.feature_id] = coverage.get(clause.feature_id, 0) + 1
+        if not coverage:
+            return None
+
+        def rank(feature_id: str) -> tuple[int, int, str]:
+            return (-coverage[feature_id], self._features[feature_id].burden, feature_id)
+
+        return min(coverage, key=rank)
+
     # -- the decision ------------------------------------------------------
 
     def should_stop(self, state: TriageState) -> Decision:
@@ -162,9 +237,24 @@ class TriageEngine:
         live = state.live(floor)
         differential = tuple(live.items())
 
-        # 1. A red flag outranks everything, including the differential.
+        # 1. A red flag outranks everything, including the differential — but
+        #    finish the escalation before concluding on it. A rule that fired on
+        #    one clause must not pre-empt a more severe rule that is a single
+        #    unasked answer away.
         rule = self.red_flag(state)
         if rule is not None:
+            probe = self.escalation_probe(state, rule)
+            if probe is not None:
+                return Decision(
+                    reason=StopReason.ASK,
+                    next_feature_id=probe,
+                    red_flag_id=rule.id,
+                    differential=differential,
+                    explanation=(
+                        f"red flag {rule.id!r} fired ({rule.action.value}); asking "
+                        f"{probe} because one answer could escalate further"
+                    ),
+                )
             return Decision(
                 reason=StopReason.RED_FLAG,
                 action=rule.action,

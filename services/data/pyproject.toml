@@ -32,6 +32,19 @@ ingest = [
     "pyarrow>=16.0",
 ]
 
+# Semantic search over the cleaned corpus. Split from `ingest` because the two
+# run at different times and the model weights are large: authoring proposals
+# needs this, validating knowledge does not.
+retrieval = [
+    # The index is a normalised matrix and an exhaustive dot product. At a few
+    # thousand sentences that is exact, fast, and needs no index-building step —
+    # FAISS earns its keep somewhere above ~100k vectors, not here.
+    "numpy>=1.26",
+    # Wraps BAAI/bge-m3. Chosen on published Arabic RAG results; see ADR 0010.
+    # Imported lazily, so this is only needed when actually embedding.
+    "sentence-transformers>=3.0",
+]
+
 # Test/lint tooling is declared once, in the workspace root's dev group.
 
 [project.scripts]
