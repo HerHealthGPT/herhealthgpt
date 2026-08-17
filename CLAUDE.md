@@ -35,13 +35,28 @@ benchmark of women's-health concerns. Findings that drive the architecture:
 
 Consequences, all binding:
 
-1. **No fine-tuning in the MVP.** RAG plus a deterministic controller. Fine-tuning
-   is a documented contingency, not a deliverable.
+1. **No fine-tuned model decides urgency.** RAG plus a deterministic controller.
+   A fine-tune may *phrase* text; it may never choose an action code.
+   **This is narrower than the old rule "no fine-tuning in the MVP", and
+   deliberately so** — the supervisor has asked that the QLoRA model from our
+   evaluation paper be used, and that request is compatible with this constraint
+   as long as the adapter sits on the phrasing path only. Open question, tracked
+   in [`docs/research/0001`](docs/research/0001-llm-triage-architecture.md);
+   do not resolve it by editing this line.
 2. **The triage decision lives in Python, not in the model or the prompt.** The
    model extracts feature values and phrases text. It never decides whether to
    ask another question or what urgency to assign.
 3. **Under-triage is the dominant failure mode.** Whenever a design choice trades
    false alarms against missed escalations, choose false alarms.
+
+   The FDA's Clinical Decision Support Software guidance (29 Jan 2026) describes
+   this failure independently, as a human-factors risk: automation bias causes
+   *"errors of … omission (failing to act because of not being prompted to do
+   so)"*, and *"in situations that require urgent action, automation bias
+   increases because there is not sufficient time for the user to adequately
+   consider other information."* That is under-triage, named by a regulator. Our
+   benchmark finding and the conservative tie-breaks in `weights.yaml` are not a
+   local quirk — cite this when the bias toward false alarms is questioned.
 4. Cross-language comparison is on the **action code**, never on text similarity.
 
 ---
@@ -54,7 +69,7 @@ Monorepo. Four independently deployable services, one contracts package.
 services/frontend/    Next.js, responsive web app (NOT a PWA — see below)
 services/backend/     FastAPI: triage, tracker, directory, visit prep,
                       retrieval, safety rules, orchestration
-services/model/       vLLM: Qwen3.5-9B, embeddings, reranker
+services/model/       vLLM: Qwen3.5-9B generation; bge-m3 embeddings (ADR 0010)
 services/data/        ingestion, evaluation harness, benchmark cases
 packages/contracts/   Pydantic schemas, error codes, safety policy
 packages/types-ts/    TypeScript generated from the OpenAPI spec
@@ -70,8 +85,15 @@ RTL support for Arabic. Do not add PWA scaffolding, and do not suggest it.
 **Import rule:** nothing outside `packages/contracts/` may be imported across
 service boundaries. Enforced by import-linter in CI.
 
-**No model weights load inside the backend process.** Embeddings and reranking
-are HTTP calls to `services/model`.
+**No model weights load inside the backend process.** Embedding is an HTTP call
+to `services/model`.
+
+**Retrieval is `BAAI/bge-m3` over sentence-level passages, and there is no
+reranker.** Chosen on published Arabic RAG results — multilingual encoders beat
+Arabic-specific ones, which is the counterintuitive direction. Sentence-level
+chunking is load-bearing for `make verify-quotes`, not a tuning knob. A reranker
+is deferred until retrieval evaluation shows the right passage retrieved but
+ranked outside top *k*. See [`docs/adr/0010`](docs/adr/0010-multilingual-embeddings-beat-arabic-specific-ones.md).
 
 **Deploy:** merge to main → path-filtered CI builds only what changed → image
 tagged with the git SHA → PR bumps that tag in `infra/envs/staging.env` → merge
@@ -85,63 +107,88 @@ Nothing is ever edited directly on the server.
 Seven files under `knowledge/`. Five are hand-authored and reviewed, kept as
 plain text in git so every change appears as a reviewable diff.
 
+Counts are **as built on 2026-08-17**, read from the files. They are not targets.
+If you change a file, change the number here in the same commit.
+
 | File | Rows | What it is |
 |---|---|---|
-| `features.yaml` | ~50 | Everything the system may ask about |
-| `conditions.yaml` | 17 | Everything the system may suspect |
-| `evidence.csv` | ~350 | The sparse grid connecting them |
-| `red_flags.yaml` | ~25 | Deterministic escalation rules |
-| `sources.yaml` | ~15 | Provenance, licence, precedence |
+| `features.yaml` | 37 | Everything the system may ask about |
+| `conditions.yaml` | 12 | Everything the system may suspect |
+| `evidence.csv` | 89 | The sparse grid connecting them |
+| `red_flags.yaml` | 14 | Deterministic escalation rules |
+| `sources.yaml` | 5 | Provenance, licence, precedence |
 | `weights.yaml` | — | Ordinal-to-log-odds mapping, tunable |
-| `actions.yaml` | — | Four action codes, resolved per locale |
+| `actions.yaml` | 4 | Four action codes, resolved per locale |
+
+`evidence.csv` rows by source: NHS 37, womenshealth 30, MedlinePlus 13, NICHD 8,
+CDC 1. By strength: `weak_support` 46, `strong_support` 34, `argues_against` 9,
+and **no `rules_out` row has ever been authored** — see ADR 0009, which must be
+revisited before the first one is.
+
+Counting `evidence.csv` with `wc -l` gives the wrong answer. `source_quote` and
+`note` contain embedded newlines; parse it as CSV.
 
 Plus `passages.parquet`, generated by ingestion, which is the only artifact
 produced at scale.
 
 ### The conditions, and where each stands
 
-| # | Condition | State |
-|---|---|---|
-| 1 | PCOS / PMOS | **authored** |
-| 2 | Endometriosis | **authored** |
-| 3 | Uterine fibroids | **authored** |
-| 4 | `normal_variation` | **authored** — without it `SELF_CARE` is unreachable |
-| 5 | Pelvic inflammatory disease | **authored** — the only `URGENT_SAME_DAY` baseline |
-| 6 | Perimenopause | **authored** — stops PCOS being over-suspected over 45 |
-| 7 | **Ovarian cyst** | sources confirmed, not authored |
-| 8 | **Urinary tract infection** | sources confirmed, not authored |
-| 9 | **Sexually transmitted infection** | sources confirmed, not authored |
-| 10 | Primary ovarian insufficiency | 3 sources available |
-| 11 | Inherited bleeding disorder | 3 sources available |
-| 12 | Hypothyroidism | 2 sources available |
-| 13 | Functional hypothalamic amenorrhoea | thin — NHS page is generic |
-| 14 | Adenomyosis | **blocked** — NHS only, fails the two-source rule |
-| 15 | Hyperprolactinaemia | **blocked** — MedlinePlus only |
-| 16 | Endometrial polyp | **blocked** — no dedicated page on any usable source |
-| 17 | Pregnancy-related bleeding | **blocked** — no slug resolved on any source |
+**Twelve conditions are authored.** These are the `id` values in
+`conditions.yaml`, and nothing outside this list may be suspected.
 
-**7–9 were added on 2026-08-04** after auditing what our own sources name as
-differentials. NHS lists all three as causes of pelvic pain, and each has three
-usable sources. They matter because they are the *benign or infective*
-alternatives: without them, `urinary_symptoms` points at fibroids when the
-answer is usually a UTI, `abnormal_discharge` has nothing infective to point at,
-and `pain_onset: sudden` has no torsion or rupture to explain it.
+| # | Condition | Note |
+|---|---|---|
+| 1 | `pcos` | |
+| 2 | `endometriosis` | |
+| 3 | `uterine_fibroids` | |
+| 4 | `normal_variation` | without it `SELF_CARE` is unreachable |
+| 5 | `pelvic_inflammatory_disease` | the only `URGENT_SAME_DAY` baseline |
+| 6 | `perimenopause` | stops PCOS being over-suspected over 45 |
+| 7 | `ovarian_cyst` | explains `pain_onset: sudden` |
+| 8 | `urinary_tract_infection` | stops `urinary_symptoms` pointing at fibroids |
+| 9 | `sexually_transmitted_infection` | the infective read on `abnormal_discharge` |
+| 10 | `thrush` | the benign read on `abnormal_discharge` |
+| 11 | `bacterial_vaginosis` | ditto, and the commonest cause |
+| 12 | `adenomyosis` | single-source, admitted under ADR 0006 |
+
+**`adenomyosis` is authored on NHS alone.** It was blocked under the two-source
+rule; ADR 0006 admits a single-source condition *when the row says why*, and NHS
+names adenomyosis repeatedly alongside endometriosis as a cause of heavy and
+painful periods. Its rows are the ones to read first when auditing provenance.
+
+Not authored, and each needs sources confirmed before it may be: primary ovarian
+insufficiency, inherited bleeding disorder, hypothyroidism, functional
+hypothalamic amenorrhoea, hyperprolactinaemia, endometrial polyp,
+pregnancy-related bleeding. The last three had no usable dedicated page when
+checked on 2026-08-04. **Coverage gaps are a stated limitation, not an oversight
+— report them wherever coverage is reported.**
+
+**7–11 exist because of what the differential needs, not because they are
+interesting.** They are the *benign or infective* alternatives. Without them the
+grid pulls every presentation toward a chronic gynaecological condition:
+`urinary_symptoms` points at fibroids when the answer is usually a UTI,
+`abnormal_discharge` has nothing infective or benign to point at, and
+`pain_onset: sudden` has no torsion or rupture to explain it. A differential made
+only of chronic conditions over-triages by construction.
 
 **Cancers are deliberately absent.** NHS names womb and ovarian cancer as causes
 of these presentations, but modelling them invites the system to suggest cancer
 to a worried user, which is not what it is for. They are served by red flags
 instead — postmenopausal bleeding routes to a GP without ever naming why.
 
-**Adenomyosis being blocked is a real limitation**, not an oversight: NHS names
-it repeatedly alongside endometriosis as a cause of heavy and painful periods,
-and we cannot author it on one source. State it wherever coverage is reported.
+**The remaining gaps are real limitations, not oversights.** Hyperprolactinaemia,
+endometrial polyp and pregnancy-related bleeding are named by our own sources as
+causes of these presentations and are absent because no usable dedicated page
+resolved. State this wherever coverage is reported.
 
 ### The five evidence weights, and nothing else
 
 `strong_support` `weak_support` `neutral` `argues_against` `rules_out`
 
-`neutral` means **omit the row**. The file is sparse: 14 × 50 is 700 possible
-cells but only ~350 carry meaning.
+`neutral` means **omit the row**. The file is sparse, and much sparser than it
+looks: 12 conditions × 37 features is 444 possible cells, and 89 carry meaning —
+**20% filled**. A missing row is not a gap to be filled in; it is the correct
+representation of "this source does not connect these two things".
 
 ### The four action codes, and nothing else
 
@@ -220,12 +267,21 @@ Terms were read from the sources' own pages on 2026-08-03. Only usable sources
 appear in `sources.yaml`; the rest were **removed** rather than listed, so
 nothing unusable can be cited by accident.
 
-| Source | Access | Licence | Status |
-|---|---|---|---|
-| MedlinePlus | Topic pages + topics XML, no key | Public domain **except** A.D.A.M. encyclopedia | **available** |
-| NICHD | Pages, no key | US federal, public domain *(unverified)* | **available** |
-| CDC | Pages, Socrata token optional | US federal, public domain *(unverified)* | **available** |
-| NHS website | Public pages, fetched under robots policy | Crown copyright, no reuse grant | **citable_only** |
+**Five sources, and `sources.yaml` is the authority.** The table below must match
+it.
+
+| Source | `id` | Prec. | Licence | Status |
+|---|---|---|---|---|
+| MedlinePlus | `medlineplus` | 3 | Public domain **except** A.D.A.M. encyclopedia | **available** |
+| NICHD | `nichd` | 3 | US federal, public domain *(unverified)* | **available** |
+| Office on Women's Health | `womenshealth` | 3 | US federal, public domain | **available** |
+| CDC | `cdc` | 4 | US federal, public domain *(unverified)* | **available** |
+| NHS website | `nhs` | 2 | Crown copyright, no reuse grant | **citable_only** |
+
+**`womenshealth` (womenshealth.gov) carries 30 of the 89 evidence rows** — the
+second-largest contributor after NHS, and the largest that may actually be
+ingested. NHS supplies more rows but none of them may enter `passages.parquet`,
+which is why the ingestable corpus is smaller than the row count suggests.
 
 **MedlinePlus has a split licence and it matters.** Health topic summaries are
 public domain. The A.D.A.M. Medical Encyclopedia (`medlineplus.gov/ency/*`) and
@@ -265,10 +321,12 @@ inheriting an assumption.
 | **WHO ICD** | Only resolves `TODO_VERIFY` identifiers. Cosmetic; defer. |
 | **NCBI E-utilities, openFDA** | Out of MVP scope. |
 
-**Precedence on conflict** (lower wins): NHS 2, NICHD/MedlinePlus 3, CDC 4.
-Numbering gaps are the removed sources, so the ordering stays stable if a licence
-is ever cleared. In practice the MVP resolves conflicts between
-NICHD/MedlinePlus and CDC only. Never resolve a conflict silently.
+**Precedence on conflict** (lower wins): NHS 2, then NICHD / MedlinePlus /
+womenshealth 3, then CDC 4. Numbering gaps are the removed sources, so the
+ordering stays stable if a licence is ever cleared. Three sources share
+precedence 3, so a conflict among them is **not resolvable by precedence** and
+must go to `build/conflicts.jsonl` with the higher urgency taken. Never resolve a
+conflict silently.
 
 Raw fetches are immutable: `raw/{source}/{YYYY-MM-DD}/`, never overwritten.
 Every record stores `url`, `fetched_at`, `content_hash`, `licence`.
@@ -319,6 +377,37 @@ for the derivation and the cost — once severe pelvic pain is known, six EMERGE
 rules sit one answer away, so that case takes ten questions rather than four.
 
 ---
+
+## The fine-tuned model from our evaluation paper
+
+The paper's model was trained with **QLoRA** on
+`services/data/eval/benchmark/gold_seeds_styled.csv`: 540 rows, 90 distinct
+answers × 6 registers (`canonical`, `layperson`, `clinical`, `ambiguous`,
+`emotionally_concerned`, `indirect_cultural`).
+
+**No `Answer` in that file contains a question mark.** Not one — while 529 of the
+540 `Question` values do. The dataset has an **`ambiguous` register**, and those
+rows are paired with a complete answer too. So the model was shown 90 ambiguous
+questions and taught, every time, to answer rather than ask.
+
+That is the mechanical explanation for clarification-seeking collapsing to 0.000.
+It was not an alignment mystery; it is what the data asked for.
+
+What follows from that, and what does not:
+
+- **It is a genuine asset for phrasing.** Six-register in-domain training is
+  exactly what "render this action code as a sentence a worried user can read"
+  needs, and it is the one thing the base model has no in-domain signal for.
+- **It must not choose an action code**, because the data it was trained on
+  contains no example of choosing one under uncertainty.
+- **QLoRA quantises the base during *training*; the adapter itself is an ordinary
+  LoRA adapter.** vLLM serves adapters with `--enable-lora --lora-modules
+  {name}={path}` on any model implementing `SupportsLoRA`, so the paper's model
+  and the base can be served from one process. The adapter was fitted against an
+  NF4-quantised base, so serving it against an unquantised base is a small
+  distribution shift — usually fine, but **measure it, do not assume it**.
+- Confirm the rank and target modules against the training config before relying
+  on `max_lora_rank`. Nothing in this repo records them yet.
 
 ## Language scope
 
