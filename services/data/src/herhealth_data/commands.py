@@ -143,15 +143,25 @@ def run_validate(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------
 
 
-def _load_embedder(name: str):  # type: ignore[no-untyped-def]
+def _load_embedder(name: str | None):  # type: ignore[no-untyped-def]
     """The hashing stand-in when asked for it, otherwise the real model.
 
     Named explicitly rather than falling back silently: a run that quietly used
     a bag-of-words embedder instead of bge-m3 would produce plausible-looking
     proposals with no semantic matching behind them at all.
-    """
-    from herhealth_data.retrieval import HashingEmbedder, SentenceTransformerEmbedder
 
+    ``None`` means the caller expressed no preference, so the default model is
+    resolved here — inside the lazy import — rather than in the CLI, which must
+    stay importable without the retrieval extra.
+    """
+    from herhealth_data.retrieval import (
+        DEFAULT_MODEL,
+        HashingEmbedder,
+        SentenceTransformerEmbedder,
+    )
+
+    if name is None:
+        name = DEFAULT_MODEL
     if name == "hashing":
         print("using the hashing stand-in — lexical overlap only, NOT semantic")
         return HashingEmbedder()
@@ -187,7 +197,10 @@ def run_index(args: argparse.Namespace) -> int:
     quote_only = sum(1 for p in passages if not p.may_be_ingested)
     print(f"{len(passages)} passages from {len(by_source)} source(s)")
     for source_id, count in sorted(by_source.items()):
-        mark = "" if any(p.may_be_ingested for p in passages if p.source_id == source_id) else "  (quote-only)"
+        ingestable_here = any(
+            p.may_be_ingested for p in passages if p.source_id == source_id
+        )
+        mark = "" if ingestable_here else "  (quote-only)"
         print(f"  {source_id:<14} {count:>5}{mark}")
     print(f"\n{quote_only} passage(s) are quote-only and must never enter the served corpus.")
 

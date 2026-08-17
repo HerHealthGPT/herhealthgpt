@@ -205,7 +205,11 @@ def render_batch(proposals: Sequence[Proposal], *, batch: str, model_name: str) 
         ]
 
     if not proposals:
-        lines += ["  # Nothing cleared the score threshold. Try --min-score lower,", "  # or the gap is genuinely uncovered by the cited sources.", ""]
+        lines += [
+            "  # Nothing cleared the score threshold. Try --min-score lower,",
+            "  # or the gap is genuinely uncovered by the cited sources.",
+            "",
+        ]
 
     return "\n".join(lines)
 

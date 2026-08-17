@@ -13,9 +13,7 @@ this, so it still runs with Docker absent.
 
 from __future__ import annotations
 
-import asyncio
 import os
-import sys
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
@@ -25,12 +23,10 @@ from pathlib import Path
 # reads it.
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
-# psycopg's async mode refuses Windows' default ProactorEventLoop; it needs a
-# selector loop. Setting the policy process-wide makes pytest-asyncio build a
-# compatible loop through the default machinery. No effect off Windows, where the
-# deploy target and CI already run a selector-based loop.
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+# Give psycopg a loop it can drive on Windows, before pytest-asyncio builds one.
+from herhealth_backend.app.eventloop import use_selector_loop_on_windows  # noqa: E402
+
+use_selector_loop_on_windows()
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402

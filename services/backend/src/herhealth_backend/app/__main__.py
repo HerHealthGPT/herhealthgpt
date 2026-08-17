@@ -16,7 +16,8 @@ a worker that would not inherit any of this.
 from __future__ import annotations
 
 import asyncio
-import sys
+
+from herhealth_backend.app.eventloop import use_selector_loop_on_windows
 
 HOST = "127.0.0.1"
 PORT = 8000
@@ -25,8 +26,7 @@ PORT = 8000
 def main() -> None:
     import uvicorn
 
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    use_selector_loop_on_windows()
 
     config = uvicorn.Config(
         "herhealth_backend.app.main:create_app",

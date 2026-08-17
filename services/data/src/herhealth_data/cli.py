@@ -27,8 +27,11 @@ from pathlib import Path
 from herhealth_data import commands, paths
 from herhealth_data.ingest import utc_today
 
-# Imported for the default only; the model itself is loaded lazily at run time.
-from herhealth_data.retrieval.embed import DEFAULT_MODEL
+# Nothing here imports herhealth_data.retrieval. That package pulls in numpy,
+# which lives in the optional `retrieval` extra, and importing it at module
+# scope would make every command — `validate` included — need an extra that only
+# the authoring commands use. The retrieval commands import it inside their own
+# functions instead, so `--model` defaults to None and is resolved there.
 
 __all__ = ["build_parser", "main"]
 
@@ -98,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument("--index-dir", type=Path, default=paths.INDEX_DIR)
     index_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
     index_parser.add_argument(
-        "--model", default=DEFAULT_MODEL, help="'hashing' for the offline stand-in"
+        "--model", default=None, help="defaults to bge-m3; 'hashing' for the offline stand-in"
     )
     index_parser.set_defaults(func=commands.run_index)
 

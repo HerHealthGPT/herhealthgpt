@@ -5,8 +5,10 @@ that way. Read [`CLAUDE.md`](../CLAUDE.md) first for *what* the system does; thi
 document covers *how the code is arranged*.
 
 **Status:** Phase 2. `packages/contracts`, `services/data` and the triage core of
-`services/backend` exist. The backend has no API layer yet; `services/frontend`
-and `services/model` do not exist at all.
+`services/backend` exist. The backend's API layer has begun with a walking
+skeleton — a FastAPI app, a PostgreSQL connection and a health check (the `app/`
+package and `migrations/`); the Accounts domain built on it does not exist yet.
+`services/frontend` and `services/model` do not exist at all.
 
 ---
 
@@ -380,10 +382,28 @@ Argument parsing only — a table of contents. Every default comes from `paths`.
 
 ## `services/backend`
 
-The triage core. **No FastAPI yet**, and deliberately no dependency beyond
-`herhealth-contracts` and `pyyaml`: the controller must be runnable from a test
-or a CLI with no server, no GPU and no network, because that is what makes the
-evaluation harness possible.
+Two layers that do not mix. The **triage core** (`triage/`, `evaluation/`) has
+deliberately no dependency beyond `herhealth-contracts` and `pyyaml`: the
+controller must be runnable from a test or a CLI with no server, no GPU and no
+network, because that is what makes the evaluation harness possible. The **app
+layer** (`app/`, `migrations/`) — FastAPI, SQLAlchemy, psycopg and Alembic behind
+the `api` optional-dependency extra — is imported by neither, and
+`tests/test_boundary.py` enforces that Triage never reaches into it.
+
+The app layer, module by module:
+
+- `app/config.py` — reads `HERHEALTH_DATABASE_URL`; the one place the process
+  looks at the environment.
+- `app/db.py` — `Database`: the async engine and session factory, and `ping()`,
+  the `SELECT 1` the health check depends on.
+- `app/main.py` — `create_app()`, a factory so a test can bind a throwaway
+  database; the `/health` route lives here.
+- `app/__main__.py` — `python -m herhealth_backend.app`, for running the service
+  by hand; sets a psycopg-compatible event loop on Windows.
+- `migrations/` — Alembic, with an empty baseline that establishes versioning
+  before the first table (users, credentials, sessions) arrives.
+
+The triage core, unchanged:
 
 ```
    cli.py         argument parsing, file I/O, rendering
@@ -583,7 +603,8 @@ them.**
 
 | Invariant | Enforced by | Test |
 |---|---|---|
-| Tests never hit the network | `Transport` injection — no test supplies the real one | structural |
+| The offline suite never hits the network | `Transport` injection — no test supplies the real one; the Docker-backed app tests are quarantined to `make test-api` | structural |
+| Triage never imports the app layer | AST scan of the triage source | `test_boundary.py` |
 | Raw content is immutable | `RawStore.save` raises `FileExistsError` | `test_store.py` |
 | A licence guard cannot be bypassed | Checked before the request, and before the immutability check | `test_fetch.py` |
 | No browser impersonation | Assertion over the real config | `test_config.py` |
@@ -602,7 +623,12 @@ them.**
 
 ## Testing strategy
 
-**110 tests. None touch the network. None need fixtures on disk.**
+**The offline suite touches no network and needs no fixtures on disk**, and runs
+with `make test`. The one exception is deliberately fenced off: the backend's app
+layer has a `make test-api` suite that starts PostgreSQL in Docker via
+testcontainers — the only tests that need a running daemon (and, on a cold cache,
+a one-time image pull). They never touch a cloud account, and the offline suite
+stays offline.
 
 One test file per module.
 
