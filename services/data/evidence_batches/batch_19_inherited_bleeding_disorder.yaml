@@ -1,0 +1,109 @@
+# Batch 19 — inherited bleeding disorder, condition + first evidence rows.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# ADDS a new condition to conditions.yaml (see the entry added alongside this
+# batch) AND its first evidence rows in the same session, unlike batches 17
+# and 18 which added rows to an already-created condition. Two sources:
+# womenshealth.gov/a-z-topics/bleeding-disorders (unblocked by the task) and
+# medlineplus.gov/bleedingdisorders.html (probed and confirmed 2026-08-19,
+# after two guessed URLs for a dedicated Von Willebrand disease page both
+# 404'd — see ingest_targets.yaml). MedlinePlus's page is mostly a link hub
+# with only a Summary section of real prose; womenshealth carries the actual
+# symptom detail this batch draws from. That asymmetry is not unusual in this
+# knowledge base — several existing conditions (pcos, endometriosis) already
+# rest more heavily on one source than the other while still meeting the
+# two-source rule.
+
+batch: 19
+covers: [inherited_bleeding_disorder]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: inherited_bleeding_disorder
+    feature_id: bleeding_heaviness
+    value: heavy
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Unusually heavy and long menstrual periods (this is the most common
+      symptom)
+    note: >-
+      Strong: the source explicitly calls this "the most common symptom" of
+      von Willebrand disease (VWD), which womenshealth separately states is
+      "the most common inherited bleeding disorder in women in the United
+      States" — so this is the characteristic sign of the most common form of
+      the condition this batch models, not a minor variant. Corroborated
+      earlier on the same page in more general terms: "As many as one in 10
+      women with heavy periods may have some type of bleeding disorder."
+
+  - condition_id: inherited_bleeding_disorder
+    feature_id: period_duration
+    value: over_7_days
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Unusually heavy and long menstrual periods (this is the most common
+      symptom)
+    note: >-
+      Same sentence, second cell — "heavy AND long" names two findings
+      together as one characteristic symptom. Strong for the same reason as
+      bleeding_heaviness above.
+
+  - condition_id: inherited_bleeding_disorder
+    feature_id: anaemia_symptoms
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Anemia, which causes you to become pale or feel tired or weak
+    note: >-
+      Weak: listed as one of six symptoms in a bulleted list ("Large bruises
+      from a minor bump or injury", nosebleeds, heavy vaginal bleeding,
+      prolonged bleeding after injury, anemia, bleeding into joints/muscles/
+      organs), not singled out as characteristic the way the VWD sentence
+      above is. Note the mechanism is the reverse of most anaemia_symptoms
+      rows: heavy bleeding from a clotting problem CAUSES anaemia here, rather
+      than anaemia being a marker of an unrelated bleeding source — the same
+      relationship CLAUDE.md's own worked example assumes when it discusses
+      why a red flag on this feature was checked and rejected (see
+      red_flags.yaml's note, 2026-08-19).
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. "Large bruises from a minor bump or injury", "Nosebleeds that are
+#    difficult to stop or happen often", "Bleeding too much or for a long
+#    time after an injury, surgery, or dental work", "Bleeding into joints,
+#    muscles, and organs" — all four from the general symptoms list, all four
+#    corroborated again under the VWD-specific list. No feature in
+#    features.yaml covers bruising, nosebleeds, dental/surgical bleeding, or
+#    joint bleeding — these are systemic bleeding-tendency signs outside the
+#    menstrual/pelvic-pain scope this system's feature set was built around.
+#    Not added: the same "a feature earning its place" standard applied
+#    throughout this session's batches (17, 18) — four single-condition
+#    features for one condition's non-menstrual symptoms would be exactly the
+#    low-value feature growth features.yaml's own header warns against.
+#
+# 2. "Heavy or prolonged bleeding during or after childbirth" (VWD-specific
+#    list) and the whole "How do bleeding disorders affect pregnancy?"
+#    section (bleeding during pregnancy, postpartum hemorrhage). Not written
+#    — these describe childbirth/postpartum bleeding specifically, a
+#    different clinical picture from the menstrual bleeding this system's
+#    pregnancy_status and bleeding features are built to capture, and this
+#    system does not model labour or postpartum presentations at all.
+#
+# 3. "Heavy bleeding can be a sign of thyroid problems or uterine fibroids"
+#    (from "Does heavy bleeding mean I have a bleeding disorder?"). This is
+#    the source naming OTHER conditions' symptoms, not this condition's own —
+#    already captured by hypothyroidism's own bleeding_heaviness row
+#    (batch_17) and uterine_fibroids' existing rows. Not duplicated here.
+#
+# No argues_against row: neither source frames any finding as distinguishing
+# this condition from an alternative — the "one in 10 women with heavy
+# periods" sentence is closer to a prevalence statement than a diagnostic
+# distinguishing claim, and quoting it as a row would risk the same
+# never-invent-probabilities problem CLAUDE.md warns against, even though the
+# sentence describes the SOURCE's own wording rather than an authored
+# strength (see batch_15's note on this same distinction for CDC's "1 in 8"
+# PID statistic). Same position as most conditions in this knowledge base.

@@ -262,6 +262,13 @@ conditions:
       CONSEQUENCE TO STATE WHEREVER COVERAGE IS REPORTED: this is the only
       condition in the knowledge base with no corroborating source. If NHS is
       wrong about something here, nothing catches it.
+
+      RE-PROBED 2026-08-18: medlineplus.gov/adenomyosis.html and
+      nichd.nih.gov/health/topics/adenomyosis were both fetched again to check
+      whether a dedicated page now exists. Both failed — neither URL resolves.
+      The single-source exception stands unchanged; this is recorded so the gap
+      is a checked fact as of this date, not an assumption inherited from
+      2026-08-04.
     note: >-
       NHS distinguishes it from endometriosis explicitly — "Endometriosis is a
       different condition where tissue similar to the lining of the womb grows
@@ -308,3 +315,295 @@ conditions:
       matters for elimination: absence of symptoms argues against far less
       strongly here than it would for a condition that is always symptomatic.
       NICHD supplies symptom, cause and treatment pages under conditioninfo/.
+
+  # ---------------------------------------------------------------------------
+  # Thirteenth condition, added 2026-08-19. First of the "unblocked" set named
+  # in the current data-generation task — sources confirmed on womenshealth.gov
+  # on 2026-08-17, two-source rule checked against MedlinePlus/NICHD/CDC per
+  # condition rather than assumed from the womenshealth 200 alone.
+  # ---------------------------------------------------------------------------
+  - id: hypothyroidism
+    label: Hypothyroidism (underactive thyroid)
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, medlineplus]
+    note: >-
+      Two sources, independently checked: womenshealth.gov/a-z-topics/thyroid-
+      disease was named unblocked by the task; medlineplus.gov/hypothyroidism
+      .html was then probed and confirmed to exist (2026-08-19), satisfying the
+      two-source rule rather than assuming it from the womenshealth 200 alone.
+      The two corroborate each other closely — both name heavy/irregular
+      periods and fertility problems as menstrual-cycle effects, which is what
+      makes this condition relevant to the differential at all.
+
+      womenshealth: "Too much or too little thyroid hormone can make your
+      periods very light, heavy, or irregular. Thyroid disease also can cause
+      your periods to stop for several months or longer, a condition called
+      amenorrhea." And on symptoms specifically: "Weight gain, even though you
+      are not eating more food" and "More than usual menstrual bleeding".
+      MedlinePlus corroborates: "Heavy or irregular menstrual periods" and
+      "Fertility problems in women", and adds the mechanism womenshealth
+      states only in passing — "Because hypothyroidism develops slowly, many
+      people don't notice symptoms of the disease for months or even years."
+
+      baseline_action is ROUTINE_APPOINTMENT: neither source frames
+      hypothyroidism itself as requiring urgent care — MedlinePlus's only
+      escalation-adjacent language is about untreated, longstanding cases
+      ("In rare cases, untreated hypothyroidism can cause myxedema coma"),
+      which is a longstanding-complication statement, not the kind of
+      explicit "seek care now" language red_flags.yaml requires, and is in any
+      case far too rare and far too removed from a presenting symptom to
+      justify a red flag.
+
+      Deliberately NOT modelled alongside hyperthyroidism, thyroiditis,
+      goitre, thyroid nodules or thyroid cancer, all of which the womenshealth
+      page also covers at length. hypothyroidism is the one this task named,
+      it is the one with the clearest, most specific menstrual-symptom
+      language, and adding the others would repeat the STI over-splitting
+      question the task explicitly ruled out for a different condition — one
+      more organ system's worth of sub-conditions competing for the same
+      handful of menstrual-cycle features. Thyroid cancer specifically is
+      excluded on the same policy as womb and ovarian cancer: CLAUDE.md's
+      "cancers are deliberately absent" applies here without needing a
+      separate argument.
+
+  - id: primary_ovarian_insufficiency
+    label: Primary ovarian insufficiency (early or premature menopause)
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, medlineplus]
+    note: >-
+      Two sources, independently checked: womenshealth.gov/menopause/early-
+      or-premature-menopause was named unblocked by the task; medlineplus
+      .gov/prematureovarianfailure.html was probed and confirmed (2026-08-19).
+
+      CONFLICT BETWEEN THE TWO SOURCES, recorded here rather than resolved
+      silently — build/conflicts.jsonl is referenced throughout this repo's
+      docs as the place such conflicts are logged, but no pipeline stage
+      currently writes to it (it is described only as a future `make build`
+      artefact in docs/CODE_GUIDE.md); this note is the durable, git-tracked
+      record until that tooling exists.
+
+      womenshealth treats "premature menopause" and "primary ovarian
+      insufficiency" as the SAME thing: "Menopause that happens before age 40
+      is called premature menopause (which is also medically called primary
+      ovarian insufficiency [POI])." MedlinePlus explicitly says they are
+      DIFFERENT: "POI is different from premature menopause... With POI, some
+      women still have occasional periods. They may even get pregnant,"
+      whereas premature menopause is a harder stop — periods end and
+      pregnancy is no longer possible with one's own eggs.
+
+      RESOLUTION: authored as one condition under the id and framing the task
+      specified (primary_ovarian_insufficiency, sourced from the womenshealth
+      URL the task named), because the two sources describe overlapping
+      populations under a shared or near-shared clinical picture — irregular
+      or missed periods, before age 40 — even though they disagree on whether
+      "premature menopause" is the same label or a stricter subtype. This is
+      not the same kind of conflict red_flags.yaml resolves by taking the
+      higher urgency (both sources agree on urgency — routine, see a
+      provider), it is a definitional disagreement, so there is no "more
+      severe wins" tie-break available. The practical consequence for the
+      evidence grid is small: both sources agree closely on the SYMPTOM
+      picture (irregular/missed periods before 40, menopause-like symptoms),
+      which is what the evidence rows in this condition's batch draw on, and
+      neither source's symptom claims are contingent on which definitional
+      reading is correct. But a future author extending this condition should
+      know the two sources are not simply restating each other here.
+
+      Distinguished from perimenopause by AGE ALONE, the same mechanism that
+      already separates perimenopause from pcos: age_band under_20/20_to_29/
+      30_to_39 vs perimenopause's 45_to_54. MedlinePlus: "sometimes POI can
+      start as early as the teenage years," and womenshealth: "About 5% of
+      women naturally go through early menopause," describing the same
+      symptom picture at a younger age than the natural-menopause baseline.
+
+      baseline_action is ROUTINE_APPOINTMENT for the same reason as
+      hypothyroidism and perimenopause: neither source frames this as
+      requiring urgent care on its own, only ongoing management once
+      diagnosed.
+
+  - id: inherited_bleeding_disorder
+    label: Inherited bleeding disorder (e.g. Von Willebrand disease)
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, medlineplus]
+    note: >-
+      Two sources: womenshealth.gov/a-z-topics/bleeding-disorders, unblocked
+      by the task; medlineplus.gov/bleedingdisorders.html, probed and
+      confirmed 2026-08-19 after two guessed URLs for a dedicated Von
+      Willebrand disease page (vonwillebranddisease.html,
+      vonwillebranddiseases.html) both 404'd — the general bleeding-disorders
+      topic page resolved instead. MedlinePlus's page is mostly a link hub
+      with only a Summary section of real prose, corroborating the mechanism
+      (platelets and clotting factors) without repeating womenshealth's
+      symptom detail. This asymmetry mirrors pcos and endometriosis, both of
+      which already rest more heavily on one source than the other while
+      meeting the two-source rule.
+
+      womenshealth: "Von Willebrand disease (VWD) is the most common type of
+      bleeding disorder in women" and, on VWD specifically, "Unusually heavy
+      and long menstrual periods (this is the most common symptom)." Also:
+      "As many as one in 10 women with heavy menstrual periods may have a
+      bleeding disorder" — a real, named fill for `bleeding_heaviness`, which
+      until now pointed only at chronic gynaecological conditions and
+      hypothyroidism.
+
+      Modelled as ONE condition covering the class of inherited bleeding
+      disorders (Von Willebrand disease being the named common example),
+      rather than a separate condition per named disorder (VWD, haemophilia
+      carriers). Same reasoning CLAUDE.md gives for keeping
+      sexually_transmitted_infection as one condition rather than splitting
+      by organism: womenshealth gives every named subtype the same baseline
+      urgency and largely the same menstrual-bleeding presentation, so
+      splitting would multiply authoring without changing any triage outcome.
+
+      baseline_action is ROUTINE_APPOINTMENT: neither source frames a
+      bleeding disorder itself as requiring urgent care — the urgency in this
+      differential already comes from bleeding_heaviness=soaking_hourly and
+      the existing heavy-bleeding red flags, which this condition's evidence
+      feeds into rather than duplicating.
+
+  # ---------------------------------------------------------------------------
+  # New differential, not from the "unblocked" list — fills a real hole. Once
+  # urinary_tract_infection is excluded, urinary_symptoms and
+  # pain_opening_bowels_or_urinating had nowhere else to point.
+  # ---------------------------------------------------------------------------
+  - id: bladder_pain
+    label: Bladder pain syndrome (interstitial cystitis)
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, medlineplus]
+    note: >-
+      Two sources: womenshealth.gov/a-z-topics/bladder-pain, one of the
+      task's named new differentials; medlineplus.gov/interstitialcystitis
+      .html, probed and confirmed on the first guess (2026-08-19) — "bladder
+      pain syndrome" and "interstitial cystitis" are the same condition under
+      two names, and MedlinePlus indexes it under the clinical name, the same
+      naming mismatch already documented for pcos/PMOS in CONTEXT.md.
+
+      THE HOLE THIS FILLS, stated directly by womenshealth: "Bladder pain
+      syndrome is often mistaken for a urinary tract infection (UTI)... But
+      bladder pain syndrome and UTIs are not the same health problem...
+      Bladder pain syndrome cannot be treated with antibiotics." Without this
+      condition, urinary_symptoms and pain_opening_bowels_or_urinating had
+      nowhere to point once urinary_tract_infection is excluded — exactly the
+      gap the task named, and exactly the same shape of gap that justified
+      adding urinary_tract_infection, thrush and bacterial_vaginosis in the
+      first place (see CLAUDE.md's "the benign and infective alternatives").
+
+      baseline_action is ROUTINE_APPOINTMENT: chronic, not urgent — "There is
+      no cure, but there is treatment to help relieve your symptoms" —
+      matching every other chronic condition's baseline in this knowledge
+      base.
+
+  # ---------------------------------------------------------------------------
+  # New differential, not from the "unblocked" list — fills a real hole.
+  # abdominal_swelling_or_pressure had no non-mass explanation.
+  # ---------------------------------------------------------------------------
+  - id: pelvic_organ_prolapse
+    label: Pelvic organ prolapse
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, nichd]
+    note: >-
+      Two sources: womenshealth.gov/a-z-topics/pelvic-organ-prolapse, one of
+      the task's named new differentials; nichd.nih.gov/health/topics/
+      pelvicfloor, probed and confirmed (2026-08-19) after two guessed
+      MedlinePlus URLs (pelvicorganprolapse.html, uterineprolapse.html) both
+      404'd. NICHD's page is thin — two short paragraphs on the general topic
+      of pelvic floor disorders, not a dedicated prolapse page — but it is
+      real, on-topic prose corroborating womenshealth's core mechanism claim,
+      not a content-free hub like the one found and rejected for
+      pregnancy_related_bleeding. This condition rests far more heavily on
+      womenshealth, the same asymmetry already documented for endometriosis
+      ("NICHD has no conditioninfo section... its topic page is a single
+      paragraph").
+
+      THE HOLE THIS FILLS, per the task: abdominal_swelling_or_pressure
+      currently has no explanation beyond a mass condition (fibroids,
+      ovarian_cyst, adenomyosis). womenshealth: "The pressure from prolapse
+      can cause a bulge in the vagina... A feeling of pressure, discomfort,
+      aching, or fullness in the pelvis" — a genuinely different mechanism
+      (structural support failure, not a growth) producing the same reported
+      symptom, which is exactly the kind of alternative explanation this
+      differential was missing.
+
+      baseline_action is ROUTINE_APPOINTMENT: "pelvic organ prolapse is
+      treatable" — no urgent-care framing in either source.
+
+  # ---------------------------------------------------------------------------
+  # New differential, not from the "unblocked" list — fills a real hole.
+  # anaemia_symptoms is thinly supported without this condition to point at.
+  # ---------------------------------------------------------------------------
+  - id: iron_deficiency_anaemia
+    label: Iron-deficiency anaemia
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, medlineplus]
+    note: >-
+      Two sources: womenshealth.gov/a-z-topics/iron-deficiency-anemia, one of
+      the task's named new differentials; medlineplus.gov/anemia.html, probed
+      and confirmed (2026-08-19) after a guessed dedicated page
+      (irondeficiencyanemia.html) 404'd. MedlinePlus's page covers anaemia
+      generally rather than the iron-deficiency form specifically, but names
+      iron deficiency as "the most common cause of anemia" in its own opening
+      sentence, and the symptom picture the two sources describe corroborates
+      closely — this is not the same kind of thin-hub problem found and
+      rejected for pregnancy_related_bleeding, it is a slightly broader-scope
+      page that still substantively covers this condition.
+
+      THE HOLE THIS FILLS, per the task: anaemia_symptoms currently supports
+      only inherited_bleeding_disorder (batch_19) and correlates loosely with
+      extreme_tiredness across several conditions, but has no condition of
+      its own where anaemia IS the primary presentation rather than a
+      secondary complication of heavy bleeding. womenshealth states the
+      mechanism directly and names heavy menstrual periods as a leading
+      cause: "Have heavy menstrual periods. Up to 5% of women of childbearing
+      age develop iron-deficiency anemia because of heavy bleeding during
+      their periods."
+
+      baseline_action is ROUTINE_APPOINTMENT: both sources frame this as a
+      manageable condition ("Treatment for iron-deficiency anemia depends on
+      the cause") with no urgent-care framing for ordinary presentation —
+      the one escalation-adjacent sentence found ("If you have severe
+      bleeding or symptoms of chest pain or shortness of breath, your doctor
+      may recommend iron or red blood cell transfusions") describes a rare
+      treatment pathway, not "seek care now" language, and in any case chest
+      pain and severe bleeding already have their own coverage elsewhere in
+      this knowledge base (severe_pelvic_pain and the heavy-bleeding red
+      flags) rather than needing a new rule keyed on this condition.
+
+  # ---------------------------------------------------------------------------
+  # New differential, not from the "unblocked" list — fills a real hole.
+  # difficulty_conceiving pointed only at pcos and endometriosis.
+  # ---------------------------------------------------------------------------
+  - id: infertility
+    label: Infertility (difficulty conceiving)
+    baseline_action: ROUTINE_APPOINTMENT
+    source_ids: [womenshealth, medlineplus]
+    note: >-
+      Two sources: womenshealth.gov/a-z-topics/infertility, one of the
+      task's named new differentials; medlineplus.gov/infertility.html,
+      confirmed on the first probe (2026-08-19). The two sources' prevalence
+      figures differ slightly (womenshealth: "about 10 percent of women";
+      MedlinePlus: "about 15% of couples") — not resolved or averaged, both
+      are prevalence statements rather than diagnostic claims, and neither is
+      used to set a row's strength (see the "never invent probabilities"
+      rule); recorded here rather than silently picked because CLAUDE.md asks
+      conflicts never be resolved silently, even where the practical stakes
+      are low.
+
+      SHAPE OF THIS CONDITION IS DIFFERENT FROM MOST OTHERS IN THE GRID: both
+      sources are overwhelmingly about causes, diagnosis and treatment
+      pathways, not a symptom list a user reports. The one clear
+      symptom-shaped sentence is womenshealth's: "Some signs that a woman is
+      not ovulating normally include irregular or absent menstrual periods" —
+      which this condition's evidence batch draws on. THE HOLE THIS FILLS,
+      stated directly in the same source: "Ovulation problems are often
+      caused by polycystic ovarian syndrome (PCOS)... Primary ovarian
+      insufficiency (POI) is another cause... Less common causes... Blocked
+      fallopian tubes due to pelvic inflammatory disease, endometriosis...
+      Uterine fibroids." Before this session, difficulty_conceiving pointed
+      only at pcos and endometriosis (plus ovarian_cyst, STI and PID added
+      this session); this condition is the general umbrella the task named,
+      sitting alongside — not replacing — those more specific ones, the same
+      relationship inherited_bleeding_disorder has to bleeding_heaviness.
+
+      baseline_action is ROUTINE_APPOINTMENT: neither source frames
+      infertility itself as urgent — "How long should women try to get
+      pregnant before calling their doctors?... Most experts suggest at
+      least one year" is explicitly a non-urgent timeline.

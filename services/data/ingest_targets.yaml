@@ -376,3 +376,232 @@ documents:
     slug: adenomyosis
     url: https://www.nhs.uk/conditions/adenomyosis/
     licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # PROBED 2026-08-18 and confirmed absent — NOT re-added as live targets.
+  # medlineplus.gov/adenomyosis.html and nichd.nih.gov/health/topics/adenomyosis
+  # both failed to fetch (no page at either URL), matching the 2026-08-04
+  # finding in ADR 0006 and the condition's single_source_reason. Re-probed
+  # because adenomyosis is the priority for a second source; still single-
+  # source. See conditions.yaml for the standing record — do not re-probe
+  # again without a reason to think a page now exists.
+
+  # ---------------------------------------------------------------------------
+  # Pregnancy-related bleeding — added 2026-08-19.
+  #
+  # nhs/bleeding_between_periods names "vaginal bleeding in pregnancy" as a
+  # separate topic without giving a resolvable URL (the cleaner strips actual
+  # hyperlinks). PROBE, not a confirmed URL: nhs.uk's standard path for this
+  # topic under /pregnancy/related-conditions/complications/. If it 404s, that
+  # is recorded rather than the target silently removed.
+  #
+  # Serves two things: the "pregnancy + any bleeding" red flag (Deliverable 4)
+  # and the pregnancy_related_bleeding condition named as unblocked in the
+  # current data-generation task (Deliverable 3) — same womenshealth URL
+  # either way, so one fetch covers both rather than two separate ones later.
+  - source_id: nhs
+    slug: pregnancy_bleeding
+    url: https://www.nhs.uk/pregnancy/related-conditions/complications/vaginal-bleeding/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: womenshealth
+    slug: pregnancy_bleeding
+    url: https://womenshealth.gov/pregnancy/youre-pregnant-now-what/pregnancy-complications
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
+  # Deliverable 3, new conditions — added 2026-08-19.
+  #
+  # All 8 URLs below were confirmed to return 200 against womenshealth.gov on
+  # 2026-08-17, per the current data-generation task. A 200 confirms one
+  # source only — the two-source rule against medlineplus/nichd/cdc is still
+  # checked per condition before anything is authored from these pages.
+  # ---------------------------------------------------------------------------
+
+  - source_id: womenshealth
+    slug: primary_ovarian_insufficiency
+    url: https://womenshealth.gov/menopause/early-or-premature-menopause
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: inherited_bleeding_disorder
+    url: https://womenshealth.gov/a-z-topics/bleeding-disorders
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: hypothyroidism
+    url: https://womenshealth.gov/a-z-topics/thyroid-disease
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: hashimotos
+    url: https://womenshealth.gov/a-z-topics/hashimotos-disease
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: bladder_pain
+    url: https://womenshealth.gov/a-z-topics/bladder-pain
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: pelvic_organ_prolapse
+    url: https://womenshealth.gov/a-z-topics/pelvic-organ-prolapse
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: iron_deficiency_anaemia
+    url: https://womenshealth.gov/a-z-topics/iron-deficiency-anemia
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: infertility
+    url: https://womenshealth.gov/a-z-topics/infertility
+    licence: US federal government work, public domain
+
+  # PROBE, 2026-08-19: two-source check for hypothyroidism, going
+  # condition-by-condition per review decision. MedlinePlus has a well-known
+  # dedicated hypothyroidism topic page; this is a high-confidence guess, not
+  # a blind one.
+  - source_id: medlineplus
+    slug: hypothyroidism
+    url: https://medlineplus.gov/hypothyroidism.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for primary_ovarian_insufficiency.
+  - source_id: medlineplus
+    slug: primary_ovarian_insufficiency
+    url: https://medlineplus.gov/prematureovarianfailure.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for inherited_bleeding_disorder.
+  # First two guesses for a dedicated VWD page (vonwillebranddisease.html,
+  # vonwillebranddiseases.html) both 404'd. Trying MedlinePlus's more general
+  # "bleeding disorders" topic page instead.
+  - source_id: medlineplus
+    slug: inherited_bleeding_disorder
+    url: https://medlineplus.gov/bleedingdisorders.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBED 2026-08-19 and CONFIRMED STILL BLOCKED — not re-added as a live
+  # target. Four URLs tried for a second source: medlineplus.gov/
+  # bleedingduringpregnancy.html (404), medlineplus.gov/
+  # pregnancycomplications.html (404), nichd.nih.gov/health/topics/pregnancy/
+  # conditioninfo/complications (404), and nichd.nih.gov/health/topics/
+  # pregnancy (200, but the entire page is one generic definitional sentence
+  # with no bleeding-specific or symptom content at all — resolves technically
+  # without satisfying the two-source rule in substance). Matches the task's
+  # own 2026-08-04 finding that this condition has no usable dedicated page.
+  # See conditions.yaml — this condition remains unauthored.
+
+  # PROBE, 2026-08-19: two-source check for bladder_pain. MedlinePlus's
+  # standard topic name for this condition is "interstitial cystitis".
+  - source_id: medlineplus
+    slug: bladder_pain
+    url: https://medlineplus.gov/interstitialcystitis.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for pelvic_organ_prolapse.
+  # pelvicorganprolapse.html and uterineprolapse.html on MedlinePlus both
+  # 404'd. Trying NICHD.
+  - source_id: nichd
+    slug: pelvic_organ_prolapse
+    url: https://www.nichd.nih.gov/health/topics/pelvicfloor
+    licence: US federal government work, public domain, IF confirmed.
+
+  # PROBE, 2026-08-19: two-source check for iron_deficiency_anaemia.
+  # irondeficiencyanemia.html 404'd; trying the general "anemia" topic page.
+  - source_id: medlineplus
+    slug: iron_deficiency_anaemia
+    url: https://medlineplus.gov/anemia.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for infertility.
+  - source_id: medlineplus
+    slug: infertility
+    url: https://medlineplus.gov/infertility.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBED 2026-08-19 and CONFIRMED STILL BLOCKED — not re-added as a live
+  # target. Three URLs tried: medlineplus.gov/hyperprolactinemia.html (404 —
+  # confirms only the excluded /ency/ encyclopedia entry exists on
+  # MedlinePlus, matching CLAUDE.md's 2026-08-04 "MedlinePlus only" finding),
+  # nichd.nih.gov/health/topics/hyperprolactinemia (404), and
+  # womenshealth.gov/a-z-topics/hyperprolactinemia (404, not in the task's
+  # confirmed-200 list, a genuine guess). Zero usable sources across three
+  # attempts. This condition remains unauthored.
+
+  # PROBED 2026-08-19 and CONFIRMED STILL BLOCKED — not re-added as a live
+  # target. Three URLs tried: medlineplus.gov/endometrialpolyps.html (404),
+  # nichd.nih.gov/health/topics/uterine/conditioninfo/polyps (404),
+  # womenshealth.gov/a-z-topics/uterine-polyps (404). CDC not probed — its
+  # coverage in this corpus is population-health focused (PCOS/diabetes,
+  # menorrhagia, PID) and a benign structural finding like this is a very low-
+  # probability guess there; not worth a speculative request against CDC's
+  # WAF-protected edge. Zero usable sources across three attempts, matching
+  # CLAUDE.md's 2026-08-04 finding exactly. This condition remains
+  # unauthored.
+
+  # PROBED 2026-08-19 — CONFIRMED STILL BLOCKED for the condition as named
+  # (functional_hypothalamic_amenorrhoea specifically), though one general
+  # source exists. Task notes: "no amenorrhea or period-problems page on
+  # womenshealth" as of 2026-08-17, confirmed unchanged. Three URLs tried:
+  # medlineplus.gov/amenorrhea.html (404), medlineplus.gov/
+  # hypothalamicamenorrhea.html (404), nichd.nih.gov/health/topics/amenorrhea
+  # (200 — kept as a live target below). That NICHD page is real prose, not a
+  # content-free hub: it defines primary vs secondary amenorrhea with clinical
+  # thresholds (no period by 16; absence of 3+ cycles after regular periods)
+  # and names PCOS and FXPOI as common causes of secondary amenorrhea. But it
+  # is about amenorrhea IN GENERAL — it never names the hypothalamic
+  # mechanism the task's condition is specifically about, and remains ONE
+  # source regardless. Not authored: one source describing a broader category
+  # than the condition asked for does not satisfy the two-source rule for the
+  # narrower condition, and ADR 0006's single-source exception requires an
+  # argued reason a condition belongs despite that — "the source doesn't
+  # actually describe this specific condition" is not that argument. This
+  # condition remains unauthored.
+  - source_id: nichd
+    slug: functional_hypothalamic_amenorrhoea
+    url: https://www.nichd.nih.gov/health/topics/amenorrhea
+    licence: US federal government work, public domain, IF confirmed.
+
+  # PROBED 2026-08-19 — NHS checked for all three remaining blocked
+  # conditions, none unblocked.
+  #
+  # hyperprolactinaemia: two URLs tried, both FAILED (not robots-excluded —
+  # a genuine HTTP failure past robots.txt, consistent with 404 given NHS's
+  # otherwise reliable /conditions/<slug>/ pattern used throughout this
+  # session): nhs.uk/conditions/hyperprolactinaemia/ and
+  # nhs.uk/conditions/prolactinoma/ (its most common cause, tried as an
+  # alternate naming). NHS has no page under either name.
+  #
+  # endometrial_polyp: two URLs tried, both FAILED: nhs.uk/conditions/
+  # womb-polyps/ and nhs.uk/conditions/polyps/. NHS has no page under either
+  # name.
+  #
+  # functional_hypothalamic_amenorrhoea: no new fetch — checked directly
+  # against nhs/stopped_or_missed_periods (already fetched and cleaned
+  # earlier this session for the perimenopause work) for "hypothalamic",
+  # "stress", "exercise", "weight". Only "weight" and "stress" appear, and
+  # both are brief treatment-advice mentions ("A GP can also provide advice
+  # or therapy to help you reduce stress and help you to maintain a healthy
+  # weight") — not a named cause tied to a hypothalamic mechanism, and the
+  # term "functional hypothalamic amenorrhoea" does not appear on this page
+  # at all.
+  #
+  # CONCLUSION: five sources now checked across all three conditions
+  # (MedlinePlus, NICHD, womenshealth, CDC not probed for the two structural/
+  # endocrine ones as a low-probability guess, NHS) with zero usable
+  # dedicated content for any of the three as specifically named. All three
+  # remain unauthored — see conditions.yaml note pending / CLAUDE.md coverage
+  # gaps for the standing record.

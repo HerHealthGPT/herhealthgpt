@@ -1,0 +1,81 @@
+# Batch 16 — ovarian cyst backfill.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# ovarian_cyst is already at 11 rows, close to the ~12 target, but — like 8 of
+# 12 conditions — has no eliminating row. Re-read womenshealth/ovarian_cyst
+# in full looking specifically for argues_against-eligible language, per the
+# task's own priority: fixing the elimination gap matters more than raw row
+# count (ADR 0007, finding 1). Found one clean candidate.
+
+batch: 16
+covers: [ovarian_cyst]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: ovarian_cyst
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: argues_against
+    source_id: womenshealth
+    source_quote: >-
+      Typically, no. Most ovarian cysts do not affect your chances of getting
+      pregnant.
+    note: >-
+      ovarian_cyst's FIRST ELIMINATING ROW. Read this one carefully before
+      approving — the full picture, and why argues_against is defensible here
+      specifically where it usually is not.
+
+      This is the answer to the page's own question, "Can ovarian cysts make
+      it harder to get pregnant?" — "Typically, no." That is explicit
+      distinguishing language, not an absence-from-a-symptom-list inference:
+      the source is directly answering whether this feature characterizes the
+      condition, and directly saying it does not, typically. The sentence
+      continues by naming the two conditions where cyst-related infertility
+      DOES apply — endometriosis and PCOS specifically, because the cyst there
+      is a marker of the underlying condition rather than the ovarian_cyst
+      condition in its own right. That naming is what pushes this over the bar
+      ADR 0001 sets for argues_against: the source is not merely silent on
+      fertility, it explicitly frames difficulty_conceiving as characteristic
+      of two named alternatives rather than of this condition.
+
+      The quote is deliberately the opening two sentences only, not the
+      "Sometimes, though..." sentence that follows — that sentence describes
+      the endometriosis/PCOS exception, which is a genuinely different claim
+      (about THOSE conditions, already carrying their own difficulty_
+      conceiving=yes weak_support rows) rather than a qualifier that weakens
+      this row's claim about ovarian_cyst. Quoting it here would mix two
+      different conditions' evidence into one row.
+
+      This does not contradict difficulty_conceiving's existing weak_support
+      rows for endometriosis and pcos (both already in the grid) — it is the
+      same source, on the same page, distinguishing the SAME feature across
+      THREE conditions consistently: weak support for the two conditions where
+      it is a named risk, and this row's exclusion for the condition
+      (ovarian_cyst on its own) where the source says it typically does not
+      apply. That is the grid working as intended, not a conflict.
+
+# WHY ONLY ONE ROW, DESPITE A FULL RE-READ
+#
+# The rest of the page's new material (types of cysts, causes, surgery
+# statistics, cancer risk, testing) is either already claimed by the existing
+# 11 rows, describes diagnostic/imaging findings rather than reportable
+# symptoms (ultrasound appearance, CA-125 blood levels), or is population
+# statistics about surgery/cancer rates that this system does not model as
+# evidence (see the "never invent probabilities" rule — these numbers describe
+# base rates, not a finding a user reports, so there is no feature-value cell
+# for them regardless).
+#
+# One near-miss, examined and NOT written: "Are ovarian cysts ever an
+# emergency?" — "Faintness, dizziness, or weakness" as a standalone
+# escalation trigger. Already examined for the red_flags.yaml side of this
+# question and rejected there (see the CHECKED AND REJECTED note in
+# red_flags.yaml, 2026-08-19): it is gated on "if your doctor told you that
+# you have an ovarian cyst," a precondition the schema cannot express, whether
+# as a red flag OR as an ordinary evidence row — an evidence row would need a
+# feature_id, and no feature exists for "already diagnosed with this
+# condition" (the schema deliberately does not track that; conditions are
+# suspected, not confirmed, per CONTEXT.md's definition of Condition). Not
+# writable either way, for the same underlying reason.

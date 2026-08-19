@@ -1,0 +1,131 @@
+# Batch 20 — bladder pain syndrome, first evidence rows.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# bladder_pain was just added to conditions.yaml as the sixteenth condition —
+# a new differential filling the hole named by the task: urinary_symptoms and
+# related features had nowhere to point once urinary_tract_infection is
+# excluded. 6 rows, all from womenshealth's "What are the symptoms of bladder
+# pain syndrome?" section, which lists 7 distinct findings across 7 clean,
+# separate paragraphs.
+
+batch: 20
+covers: [bladder_pain]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: bladder_pain
+    feature_id: pelvic_pain_severity
+    value: mild
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Pain or discomfort in the lower abdomen. Pain may get worse as the
+      bladder fills up. Your pain may go away for a short time when you
+      urinate and empty the bladder.
+    note: >-
+      Mapped to "mild" rather than a higher grade: the source names pain
+      without grading it, and mild is the least committal reading available —
+      the same encoding decision already made for the STI batch's
+      pelvic_pain_severity row (batch_12) when a source states a finding
+      without a threshold. Weak: listed as one of seven findings without being
+      called characteristic.
+
+  - condition_id: bladder_pain
+    feature_id: urinary_symptoms
+    value: frequency
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Feeling like you need to urinate right away (urgency), often
+      (frequency), or both. Most people urinate between four and seven times
+      a day. People with severe bladder pain syndrome may urinate as often as
+      40 times a day, including during the night.
+    note: >-
+      Strong: this is the second named symptom (after pain) and given the
+      most detail of any finding on the page — a specific, striking number
+      ("as often as 40 times a day") that no other condition's urinary_
+      symptoms row carries. The source names both urgency and frequency
+      together; our feature has no urgency value, so only the frequency half
+      is captured — a known, documented gap of the same shape as
+      urinary_tract_infection's own uncaptured urgency/nocturia findings (see
+      batch_13's note on this).
+
+  - condition_id: bladder_pain
+    feature_id: lower_back_pain
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Pain in the muscles of the pelvic floor, lower abdomen, and lower back
+    note: >-
+      Weak: one of seven listed findings, not singled out. This feature
+      already supports fibroids and endometriosis (features.yaml's own note);
+      this row does not change that picture.
+
+  - condition_id: bladder_pain
+    feature_id: pelvic_pain_timing
+    value: with_periods
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Pain that may get worse during your menstrual period
+    note: >-
+      Weak. Distinct from bladder_pain's pelvic_pain_severity row above —
+      this cell is about WHEN the pain occurs, not how bad it is, and the
+      source states each independently in its own sentence.
+
+  - condition_id: bladder_pain
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Pain during sexual intercourse
+    note: >-
+      Weak — a plain list entry, consistent with pain_with_sex's position as
+      one of the least discriminating features in the whole knowledge base
+      (see batch_10, batch_14). Corroborated more strongly elsewhere on the
+      same page, outside the symptoms list itself: "Bladder pain syndrome may
+      also affect your sex life" (opening summary) and a dedicated section,
+      "Will bladder pain syndrome affect my sex life?" — not cited here
+      because the symptoms-list sentence already carries the claim cleanly.
+
+  - condition_id: bladder_pain
+    feature_id: blood_in_urine_or_stool
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Ulcers, sores, and/or bleeding in the bladder
+    note: >-
+      Mapped onto blood_in_urine_or_stool, not bleeding_between_periods — the
+      source specifies bleeding IN THE BLADDER (i.e. in urine), which is what
+      this feature asks about, and using a menstrual-bleeding feature here
+      would conflate two different findings the source itself keeps distinct.
+      This is the feature's SECOND row — checked against evidence.csv before
+      writing: it already carries one weak_support row for
+      urinary_tract_infection, so this is genuine corroboration across two
+      conditions that both plausibly explain visible blood in urine, rather
+      than an orphan feature finally getting used for the first time.
+
+# WHY BLADDER_PAIN HAS NO ELIMINATING ROW — added 2026-08-19, following a
+# systematic elimination-row audit.
+#
+# There IS real, explicit distinguishing language on this page — womenshealth
+# states plainly: "Bladder pain syndrome is often mistaken for a urinary
+# tract infection (UTI)... But bladder pain syndrome and UTIs are not the
+# same health problem... UTIs are caused by germs that get into the bladder,
+# and are treated with antibiotics. Bladder pain syndrome cannot be treated
+# with antibiotics." This is exactly the kind of sentence ADR 0001 asks
+# argues_against rows to be built from: the source explicitly frames the two
+# conditions as distinct rather than leaving it to inference.
+#
+# NOT WRITTEN AS A ROW, because it cannot be. The distinction the source
+# draws is about CAUSE and TREATMENT RESPONSE (bacterial vs unknown cause;
+# responds to antibiotics vs does not) — not a feature-value pair a user
+# reports. No feature in this schema asks "does your bladder pain respond to
+# antibiotics" or "is a bacterial cause confirmed", nor should one be added
+# for a single condition's sake. This is a different shape of gap from most
+# conditions in this knowledge base: not "the sources never state an
+# excluding claim" (thrush's position, see batch_10's amended note) but "the
+# sources state one clearly, and the schema has nowhere to put it." Recorded
+# here rather than silently dropped.

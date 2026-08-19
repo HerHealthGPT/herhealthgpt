@@ -12,6 +12,20 @@
 # low_mood_or_anxiety and the incontinence value of urinary_symptoms.
 #
 # STI gets one row. See the closing note — that is a finding, not an oversight.
+#
+# AMENDED 2026-08-18: the perimenopause / bleeding_after_menopause weak_support
+# row (originally approved despite its own note asking "if you would rather
+# this feature carried no row at all, say so") has been deleted. A red flag on
+# bleeding_after_menopause=yes now exists in red_flags.yaml, so the gap this
+# row was papering over is closed by the correct mechanism — the red flag fires
+# before evidence scoring ever runs. The NHS sentence it cited ("this needs to
+# be checked... can be a sign of cancer") is escalation language, not a claim
+# that postmenopausal bleeding indicates or supports perimenopause, so
+# weak_support was never the right strength for it. It is also not
+# argues_against: the source never frames the feature as distinguishing or
+# excluding perimenopause, only as needing investigation, and ADR 0001 forbids
+# inferring a distinguishing claim a source doesn't make. Deleted, not
+# softened, per the verification protocol.
 
 batch: 07
 covers: [perimenopause, sexually_transmitted_infection]
@@ -73,33 +87,6 @@ rows:
       page as read in a browser, not from the fetched document, and did not
       appear in the corpus. `make verify-quotes` caught it. The claim is
       unchanged; the citation is now real.
-
-  - condition_id: perimenopause
-    feature_id: bleeding_after_menopause
-    value: "yes"
-    strength: weak_support
-    source_id: nhs
-    source_quote: >-
-      If you have not had a period for more than 12 months and you get any
-      vaginal bleeding (postmenopausal bleeding), this needs to be checked.
-    note: >-
-      READ THIS ONE CAREFULLY BEFORE APPROVING.
-
-      The source is not saying postmenopausal bleeding indicates menopause. It
-      is saying it needs investigating — and the same page adds that it "is not
-      usually serious but can be a sign of cancer".
-
-      The row is defensible only on the sentence's premise: it presupposes the
-      person has not bled for 12 months, which is the source's own definition of
-      menopause. So the feature establishes the life stage, not the pathology.
-      Weak accordingly.
-
-      What this row does NOT do is capture why the symptom matters. NHS files
-      postmenopausal bleeding under "See a GP if", which is routine, so it
-      cannot be a red flag — our schema permits only escalating rules. And the
-      condition it actually points toward, womb cancer, is deliberately not
-      modelled. If you would rather this feature carried no row at all, say so;
-      the honest alternative is deleting it and accepting the gap.
 
   # -------------------------------------------------------------------------
   # Perimenopause — the symptoms that overlap PCOS, which is the danger

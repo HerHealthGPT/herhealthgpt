@@ -1,0 +1,98 @@
+# Batch 22 — iron-deficiency anaemia, first evidence rows.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# iron_deficiency_anaemia was just added to conditions.yaml as the
+# eighteenth condition — the direct fix for anaemia_symptoms' thin support,
+# named explicitly by the task. 3 rows.
+
+batch: 22
+covers: [iron_deficiency_anaemia]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: iron_deficiency_anaemia
+    feature_id: anaemia_symptoms
+    value: "yes"
+    strength: strong_support
+    source_id: medlineplus
+    source_quote: >-
+      Anemia can make you feel tired, cold, dizzy, and irritable. You may be
+      short of breath or have a headache.
+    note: >-
+      Strong: this is THE FINDING this condition was added to explain — the
+      quote maps almost word for word onto anaemia_symptoms' own probe text
+      ("Have you been unusually tired, breathless, or dizzy?"). Cited to
+      MedlinePlus rather than womenshealth because womenshealth's own
+      symptoms list (pale skin, rapid heartbeat, shortness of breath, pica)
+      does not explicitly name tiredness or dizziness the way this sentence
+      does — an odd omission in womenshealth's own list, corrected by
+      MedlinePlus's more direct wording. Both are cited as sources for the
+      condition as a whole; this specific row draws on the one that actually
+      states the claim being made.
+
+  - condition_id: iron_deficiency_anaemia
+    feature_id: bleeding_heaviness
+    value: heavy
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Have heavy menstrual periods. Up to 5% of women of childbearing age
+      develop iron-deficiency anemia because of heavy bleeding during their
+      periods.
+    note: >-
+      Weak: this is a RISK FACTOR statement ("the risk... is highest for
+      women who...", with a specific rate attached) rather than a symptom the
+      source calls characteristic of the condition itself. The "5%" figure in
+      the quote is the source's own wording, quoted verbatim as required —
+      not converted into the row's strength, same distinction already applied
+      to the "1 in 8" PID quote (batch_15) and the "1 in 10" bleeding-disorder
+      quote (batch_19, considered and not written for exactly this reason —
+      this row differs because it names heavy periods as a CAUSE of this
+      specific condition, not merely a shared prevalence statistic).
+
+  - condition_id: iron_deficiency_anaemia
+    feature_id: extreme_tiredness
+    value: "yes"
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      Anemia can make you feel tired, cold, dizzy, and irritable. You may be
+      short of breath or have a headache.
+    note: >-
+      Same sentence as the anaemia_symptoms row above, second cell — "feel
+      tired" supports both features, since extreme_tiredness and
+      anaemia_symptoms are DELIBERATELY OVERLAPPING per features.yaml's own
+      note on extreme_tiredness ("OVERLAPS anaemia_symptoms, deliberately and
+      with care... The two are correlated, so a user may answer yes to both
+      and the controller would count fatigue twice... flagged for phase 2").
+      Weak here specifically because the strong claim already lives on the
+      anaemia_symptoms row above; giving this cell the same strong rating
+      would double the very double-counting risk features.yaml already warns
+      about, for a condition where that risk is at its most direct — this IS
+      the condition anaemia_symptoms exists to detect.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. "Pale or yellow 'sallow' skin", "Rapid or irregular heartbeat", "Pica
+#    (unusual cravings for ice...)" (womenshealth's symptom list). No feature
+#    covers skin colour, heart rate, or pica. Not added — the same
+#    single-condition-feature standard applied throughout this session.
+#    Pica in particular is a striking, specific finding that could be a real
+#    feature candidate if this condition needed sharper discrimination later,
+#    but one row does not justify a new feature on its own.
+#
+# 2. Pregnancy risk factor ("Are pregnant. Iron-deficiency anemia affects one
+#    in six pregnant women"). Not written as a bleeding_heaviness-adjacent
+#    row — pregnancy_status already exists as its own context feature and is
+#    asked for other reasons; adding a pregnancy_status=pregnant row here
+#    would be a genuinely new kind of claim (a risk-factor link between
+#    pregnancy and a background condition) rather than a symptom a user with
+#    this condition reports, and no other condition in the grid uses
+#    pregnancy_status as an evidence-row feature this way.
+#
+# No argues_against row: both sources are symptom/risk-factor lists with no
+# distinguishing language against an alternative. Same position as most
+# conditions in this knowledge base.

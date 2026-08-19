@@ -1,0 +1,194 @@
+# Batch 14 — perimenopause backfill.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# perimenopause sits at 7 rows (down from batch_07's original 8, after the
+# stale bleeding_after_menopause row was deleted once the matching red flag
+# was authored — see the amended note at the top of batch_07). Read the full
+# nhs/menopause_symptoms page, which is far richer than what batch_07 drew
+# from — it only used the "Changes to your periods", age and a handful of
+# "Other symptoms" bullets, and left the entire Vaginal problems, UTIs and
+# Weight gain sections untouched.
+#
+# 5 rows, all from nhs/menopause_symptoms.json, fetched 2026-08-18 and cleaned
+# 2026-08-19 (originally fetched 2026-08-04, page last reviewed 19 May 2026 —
+# content unchanged).
+
+batch: 14
+covers: [perimenopause]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  # -------------------------------------------------------------------------
+  # Vaginal problems — one sentence, two cells. Both features already exist
+  # and are already claimed by other conditions, but neither by perimenopause.
+  # -------------------------------------------------------------------------
+
+  - condition_id: perimenopause
+    feature_id: vulval_itching
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      You may get symptoms such as dryness, a burning feeling, irritation or
+      itching in and around the vagina. These symptoms can also make sex feel
+      painful.
+    note: >-
+      Weak: listed among several vaginal-dryness-related symptoms without
+      being singled out as characteristic, and the source itself frames it as
+      caused by falling oestrogen rather than as a defining sign.
+
+      OVERLAPS thrush's existing vulval_itching=yes row (batch_10,
+      strong_support) — this is a real ambiguity worth flagging rather than
+      hiding: a perimenopausal woman reporting itching is genuinely
+      compatible with both thrush and hormonal vaginal dryness, and age_band
+      is what should carry most of the separating weight here, not this
+      feature. Kept weak specifically so it does not compete with thrush's
+      strong row for a symptom thrush's own source calls "the most common
+      symptom" of.
+
+  - condition_id: perimenopause
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      You may get symptoms such as dryness, a burning feeling, irritation or
+      itching in and around the vagina. These symptoms can also make sex feel
+      painful.
+    note: >-
+      Same sentence, second cell — "these symptoms can also make sex feel
+      painful" refers back to the vaginal dryness/irritation just named. Weak,
+      same reasoning as vulval_itching above: this feature already supports
+      endometriosis, fibroids, PID, STI and thrush (see batch_10 and batch_12
+      on it becoming one of the least discriminating features in the set), and
+      this row does not change that — it is the honest record of what NHS
+      states for this condition specifically.
+
+  # -------------------------------------------------------------------------
+  # UTIs section — NHS names this explicitly as a menopause symptom, not just
+  # a coincidental overlap: "You may get more UTIs... or symptoms that feel
+  # like a UTI."
+  # -------------------------------------------------------------------------
+
+  - condition_id: perimenopause
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      You may get more UTIs (urinary tract infections) or symptoms that feel
+      like a UTI. This includes feeling pain or a burning sensation when you
+      pee and needing to pee more often than usual, including at night.
+    note: >-
+      The source's own framing matters here: this is not "perimenopause causes
+      pain when urinating" as an independent symptom, it is "perimenopause
+      makes UTIs more likely, and can also mimic UTI symptoms without an
+      actual infection" — see urinary_tract_infection's own causes list in
+      nhs/urinary_tract_infection.json, which separately names "having been
+      through the menopause" as a UTI risk factor. Two conditions genuinely
+      overlapping for a stated physiological reason (falling oestrogen thins
+      the urinary tract lining, named explicitly on this page under "Vaginal
+      problems"), not a coincidence in the source material. Kept weak
+      accordingly — the row raises perimenopause a little without claiming
+      this symptom points there over an actual UTI.
+
+  - condition_id: perimenopause
+    feature_id: urinary_symptoms
+    value: frequency
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      You may get more UTIs (urinary tract infections) or symptoms that feel
+      like a UTI. This includes feeling pain or a burning sensation when you
+      pee and needing to pee more often than usual, including at night.
+    note: >-
+      Same sentence, second cell — "needing to pee more often than usual,
+      including at night" maps to the frequency value. Same overlap reasoning
+      as pain_opening_bowels_or_urinating above.
+
+      NOTE: this is a DIFFERENT sentence from the existing urinary_symptoms=
+      incontinence row (batch_07), which cites the separate "Other symptoms"
+      bullet "not being able to control when you pee (urinary incontinence)".
+      Frequency and incontinence are both genuinely stated as perimenopause
+      symptoms by NHS, on two different parts of the same page, so both rows
+      stand.
+
+  # -------------------------------------------------------------------------
+  # Weight gain — its own dedicated section, not a passing mention.
+  # -------------------------------------------------------------------------
+
+  - condition_id: perimenopause
+    feature_id: weight_change
+    value: gain
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      Weight gain during perimenopause and menopause is common.
+    note: >-
+      Weak because "common" describes prevalence, not a characteristic or
+      defining sign — the same distinction that keeps age_band's own row
+      strong while this one is not. weight_change=gain currently only
+      supports pcos (weak_support, batch_03); this is a real and useful
+      overlap to make explicit, since weight_change is high-burden (3) and
+      currently does very little discriminating work with only one condition
+      behind it. age_band remains the feature that actually separates PCOS
+      from perimenopause, per CLAUDE.md and the condition note in
+      conditions.yaml — this row does not change that division, it just
+      completes the picture NHS actually states.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. "Hot flushes... make you feel dizzy" (Hot flushes and night sweats
+#    section). Not written onto any dizziness/faintness feature —
+#    feeling_faint exists but is scoped by its own probe to "faint, or
+#    actually passed out", a materially more severe presentation than "make
+#    you feel dizzy" during a hot flush. Mapping the two would overstate what
+#    NHS says on this page relative to what the feature actually asks about.
+#
+# 2. "muscle aches and joint pains", "headaches and migraines that are worse
+#    than usual", "sensitive teeth, painful gums" (Other symptoms bullets).
+#    No feature covers any of these. Not added — features.yaml's own rule is
+#    that a feature earns its place by being usable by more than one
+#    condition or by a red flag, and adding one to capture a single weak
+#    perimenopause row each would be the kind of low-value feature the file's
+#    own header warns against.
+#
+# 3. "reduced sex drive (loss of libido)" (Other symptoms bullet). No feature
+#    covers libido. Not added for the same reason as (2), and additionally
+#    this is a burden-5-adjacent topic that would need real justification to
+#    ask about at all, which one weak row does not provide.
+#
+# 4. Sleep problems, mood/memory/brain fog sections. low_mood_or_anxiety
+#    already has a perimenopause row (batch_07); extreme_tiredness likewise
+#    (batch_07, citing the sleep-disturbance sentence on this same topic from
+#    medlineplus). Nothing new to add beyond what is already claimed.
+#
+# WHY PERIMENOPAUSE HAS NO ELIMINATING ROW, IN FULL — added 2026-08-19,
+# extending batch_07's age_band note, which only justified why AGE does not
+# argue against perimenopause and left the condition as a whole unaddressed.
+# A systematic elimination-row audit found that gap and this note closes it,
+# following a fresh argues_against search across every source this condition
+# cites (nhs/menopause_symptoms, nhs/menopause, nhs/stopped_or_missed_periods,
+# medlineplus/menopause — all already fetched and read this session), not
+# just the age framing already on record.
+#
+# ONE candidate found, and — like primary_ovarian_insufficiency's equivalent
+# finding — it does not apply to this grid. medlineplus/menopause states: "A
+# condition called primary ovarian insufficiency (POI) happens when your
+# ovaries stop working normally before you are age 40. But this condition is
+# different from early menopause." Genuine distinguishing language, but it
+# distinguishes perimenopause/early menopause from POI specifically — and
+# primary_ovarian_insufficiency is modelled in this knowledge base
+# (conditions.yaml) as authored under the SAME label/framing dispute this
+# very sentence is drawing, per that condition's own documented source
+# conflict (batch_18). The two conditions overlap by design — age_band is
+# what is supposed to separate them, not an excluding symptom — so a sentence
+# that says "these are different" without naming a reportable finding cannot
+# become a row here any more than it could for POI.
+#
+# Nothing else on any of the four pages frames a finding as distinguishing
+# or excluding — the rest is symptom lists, "Contact your GP if" boxes
+# (routine, not exclusionary), and treatment advice. No row written.

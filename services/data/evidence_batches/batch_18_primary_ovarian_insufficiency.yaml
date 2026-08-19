@@ -1,0 +1,168 @@
+# Batch 18 — primary ovarian insufficiency, first evidence rows.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# primary_ovarian_insufficiency was just added to conditions.yaml as the
+# fourteenth condition — see the note there for the two-source confirmation
+# AND the recorded terminology conflict between womenshealth and MedlinePlus
+# (they disagree on whether "premature menopause" and "POI" are the same
+# thing). That conflict does not affect this batch: both sources agree
+# closely on the SYMPTOM picture this batch draws from, which is what matters
+# for evidence rows regardless of which definitional reading is correct.
+#
+# 6 rows: 3 age_band rows for an open "before 40" threshold (same encoding
+# decision as adenomyosis's "over 30" threshold, batch_11), plus
+# cycle_regularity, difficulty_conceiving, and periods_stopped_duration.
+
+batch: 18
+covers: [primary_ovarian_insufficiency]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  # -------------------------------------------------------------------------
+  # Age — an open "before 40" threshold, same encoding decision as
+  # adenomyosis's "over 30" (batch_11): one row per qualifying band, all
+  # citing the same source sentence, rather than picking one band and
+  # understating the source's actual claim.
+  # -------------------------------------------------------------------------
+
+  - condition_id: primary_ovarian_insufficiency
+    feature_id: age_band
+    value: under_20
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      As you get older, fertility naturally decreases. This usually starts
+      around age 40 or later. Menstrual periods may also become irregular as
+      you transition to menopause. If you have POI, these changes happen
+      earlier, before age 40. Sometimes POI can start as early as the
+      teenage years.
+    note: >-
+      First of three identical-strength age rows for the open "before 40"
+      threshold — see 20_to_29 and 30_to_39 below. "Sometimes... as early as
+      the teenage years" is the specific clause justifying under_20
+      separately from the other two bands, which rest on "before age 40"
+      alone.
+
+      Weak, not strong: this is a diagnostic criterion (the defining age
+      threshold) rather than a symptom a source calls characteristic — the
+      same reasoning that made adenomyosis's age rows weak rather than strong.
+
+  - condition_id: primary_ovarian_insufficiency
+    feature_id: age_band
+    value: 20_to_29
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      Primary ovarian insufficiency (POI) happens when your ovaries stop
+      working normally before you are 40.
+    note: >-
+      Second of three. See under_20 above for the encoding decision. This
+      band and 30_to_39 below cite the shorter, plainer definitional sentence
+      rather than the teenage-years one, since neither age range is singled
+      out the way "teenage years" is.
+
+  - condition_id: primary_ovarian_insufficiency
+    feature_id: age_band
+    value: 30_to_39
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      Primary ovarian insufficiency (POI) happens when your ovaries stop
+      working normally before you are 40.
+    note: >-
+      Third of three. See under_20 above. NOTE: womenshealth's corroborating
+      age-risk sentence — "Age. You can get POI when you're young, but it
+      becomes more common between the ages of 35 and 40" — could arguably
+      make 30_to_39 the strongest of the three bands rather than equal to the
+      other two. Left equal (weak) here for consistency with the encoding
+      decision made for adenomyosis; flagged for the reviewer to reconsider
+      if a graded reading is preferred.
+
+  # -------------------------------------------------------------------------
+  # Cycle and fertility
+  # -------------------------------------------------------------------------
+
+  - condition_id: primary_ovarian_insufficiency
+    feature_id: cycle_regularity
+    value: irregular
+    strength: strong_support
+    source_id: medlineplus
+    source_quote: The first sign of POI is usually irregular or missed periods.
+    note: >-
+      Strong: the source explicitly calls this "the first sign... usually" —
+      the same "usually the first sign" framing that made NHS's equivalent
+      perimenopause sentence strong_support (batch_07). Two conditions in this
+      knowledge base now share that exact framing from their respective
+      sources, which is expected — POI IS early perimenopause by another
+      name, per womenshealth's own framing, whichever side of the terminology
+      conflict is taken.
+
+  - condition_id: primary_ovarian_insufficiency
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      You may see a health care provider because of difficulty getting
+      pregnant or trouble with infertility.
+    note: >-
+      Weak, consistent with every difficulty_conceiving row already in the
+      grid (endometriosis, ovarian_cyst, pcos, sexually_transmitted_infection,
+      pelvic_inflammatory_disease, hypothyroidism — all weak_support, see
+      batch_17's note on this feature never carrying strong_support anywhere).
+      Corroborated by womenshealth: "Women who have gone through early or
+      premature menopause cannot get pregnant using their own eggs" — a
+      stronger-sounding claim, but specific to the harder "premature
+      menopause" reading MedlinePlus's own definition explicitly distinguishes
+      POI from (see the conflict note in conditions.yaml). Kept weak and
+      cited to MedlinePlus's own POI-specific sentence rather than
+      womenshealth's stronger one, to avoid importing a claim that may not
+      apply to POI under MedlinePlus's own definition of the term.
+
+  # -------------------------------------------------------------------------
+  # Periods stopped
+  # -------------------------------------------------------------------------
+
+  - condition_id: primary_ovarian_insufficiency
+    feature_id: periods_stopped_duration
+    value: over_6_months
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      You know you have gone through menopause when you have not had your
+      period for 12 months in a row.
+    note: >-
+      Mapped to over_6_months, the widest available band, rather than
+      inventing a 12_months value the feature does not have — periods_stopped
+      _duration's allowed_values are [not_stopped, under_3_months,
+      3_to_6_months, over_6_months], so 12 months in a row necessarily falls
+      in the top band without needing a finer distinction the schema does not
+      offer. Weak because this defines menopause generally (the same sentence
+      NHS uses almost verbatim for perimenopause), not POI specifically — POI
+      is distinguished from ordinary menopause by age, which the age_band
+      rows above carry, not by this feature.
+
+# WHY PRIMARY_OVARIAN_INSUFFICIENCY HAS NO ELIMINATING ROW — added 2026-08-19,
+# following a systematic elimination-row audit. This condition's batch was
+# dominated by the terminology-conflict write-up (see conditions.yaml); a
+# dedicated argues_against search was not recorded at the time, so it was
+# done now rather than assumed.
+#
+# ONE candidate found, and it does NOT apply to this grid. MedlinePlus states:
+# "POI is different from premature menopause... With POI, some women still
+# have occasional periods. They may even get pregnant." That is genuine
+# distinguishing language — but it distinguishes POI from PREMATURE
+# MENOPAUSE, a label this system does not model as a separate condition (the
+# batch's own resolution treats them as one authored condition under the
+# task's framing; see conditions.yaml). There is no cell in the evidence grid
+# for "premature menopause" to argue against, so the sentence has nowhere to
+# land as a row, however clearly it states an exclusion.
+#
+# The rest of both sources (causes, risk factors, complications, diagnosis,
+# treatment) is exactly that — causal and procedural information, not
+# findings framed as distinguishing this condition from PCOS, perimenopause,
+# or anything else already in the differential. No row written. Recorded
+# here so the search is not silently repeated or silently assumed away.

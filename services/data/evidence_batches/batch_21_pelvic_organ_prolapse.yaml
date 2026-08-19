@@ -1,0 +1,99 @@
+# Batch 21 — pelvic organ prolapse, first evidence rows.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# pelvic_organ_prolapse was just added to conditions.yaml as the seventeenth
+# condition. 4 rows, all from womenshealth (NICHD's page is too thin to
+# supply symptom-level detail — see the condition note).
+
+batch: 21
+covers: [pelvic_organ_prolapse]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: pelvic_organ_prolapse
+    feature_id: abdominal_swelling_or_pressure
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: A feeling of pressure, discomfort, aching, or fullness in the pelvis
+    note: >-
+      Strong: this is precisely THE FINDING this condition was added to
+      explain (see the condition note — abdominal_swelling_or_pressure had no
+      non-mass explanation). Corroborated by the opening summary sentence,
+      not separately quoted here: "The pressure from prolapse can cause a
+      bulge in the vagina that can sometimes be felt or seen."
+
+  - condition_id: pelvic_organ_prolapse
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Women with pelvic organ prolapse may feel uncomfortable pressure during
+      physical activity or sex.
+    note: >-
+      Weak — "uncomfortable pressure," not pain specifically, and the
+      sentence groups sex with physical activity generally rather than
+      calling it out. Consistent with pain_with_sex's position as one of the
+      least discriminating features in the knowledge base (batch_10,
+      batch_14, batch_20).
+
+  - condition_id: pelvic_organ_prolapse
+    feature_id: urinary_symptoms
+    value: incontinence
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Leaking urine (incontinence) or problems having a bowel movement
+    note: >-
+      Only the urinary half of this compound sentence is mapped — "problems
+      having a bowel movement" names a second organ system with no
+      corresponding value in urinary_symptoms' allowed_values ([none,
+      frequency, incontinence, difficulty_passing_urine]), and mapping bowel
+      problems onto a urinary feature would misstate what the source says.
+      Weak: listed among several findings, and this feature already carries
+      rows for fibroids, ovarian_cyst, urinary_tract_infection and
+      perimenopause.
+
+  - condition_id: pelvic_organ_prolapse
+    feature_id: age_band
+    value: 55_plus
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Aging. Pelvic floor disorders are more common in older women. About 37%
+      of women with pelvic floor disorders are 60 to 79 years of age, and
+      about half are 80 or older.
+    note: >-
+      Mapped to the single top band (55_plus) rather than split across
+      multiple bands the way adenomyosis's and primary_ovarian_insufficiency's
+      open-threshold age claims were (batches 11, 18) — the source's own
+      figures (60-79, 80+) both already sit entirely within 55_plus, the
+      widest available band, so there is no ambiguity about which bands
+      qualify the way there was for "over 30" or "before 40". Weak: a
+      prevalence statistic about who GETS the condition, not a symptom a
+      source calls characteristic — the same distinction already applied to
+      every other age_band row in this session's batches.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. "Problems inserting tampons" — no feature covers this. Not added, same
+#    single-condition-feature reasoning applied throughout this session.
+#
+# 2. "Seeing or feeling a bulge or 'something coming out' of the vagina" —
+#    the clearest, most specific finding on the page, and arguably deserves
+#    its own feature more than several that already exist. No current feature
+#    covers a visible/palpable vaginal bulge. FLAGGED, not added: this is the
+#    single strongest candidate in this batch for a genuinely new feature,
+#    since it is specific to this condition and would let the row above
+#    (abdominal_swelling_or_pressure) be joined by a second, more
+#    discriminating one rather than this condition relying on a symptom
+#    shared with three other conditions. Left for the reviewer's judgement
+#    rather than added unilaterally, since adding a feature is a bigger
+#    decision than adding a row.
+#
+# No argues_against row: both sources are pure symptom/mechanism lists, no
+# distinguishing language against an alternative. Same position as most
+# conditions in this knowledge base.
