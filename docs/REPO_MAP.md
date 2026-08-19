@@ -65,13 +65,15 @@ a reviewable diff. Fully explained in [`KNOWLEDGE_BASE.md`](KNOWLEDGE_BASE.md).
 ```
 knowledge/
 ├── features.yaml      37 questions the system may ask
-├── conditions.yaml    12 conditions it may suspect
-├── evidence.csv       89 weighted edges  ← GENERATED, never hand-edit
-├── red_flags.yaml     14 escalation rules
+├── conditions.yaml    19 conditions it may suspect
+├── evidence.csv       135 weighted edges  ← GENERATED, never hand-edit
+├── red_flags.yaml     16 escalation rules
 ├── sources.yaml       5 usable sources
 ├── weights.yaml       the tunable numbers (all chosen by us)
 └── actions.yaml       SELF_CARE · ROUTINE · URGENT · EMERGENCY
 ```
+
+Counts as of 2026-08-19 — see `CLAUDE.md` for what changed.
 
 > ⚠️ **`evidence.csv` is generated.** Edit `services/data/evidence_batches/*.yaml`
 > and run `make evidence`. Hand-edits are silently overwritten and bypass review.
@@ -97,10 +99,10 @@ services/data/
 ├── src/herhealth_data/
 │   ├── ingest/          fetch (robots-checked) → clean → sectioned text
 │   ├── knowledge.py     the lenient validator behind `make validate`
-│   ├── provenance.py    `make verify-quotes` — 103/103 pass
+│   ├── provenance.py    `make verify-quotes` — 151/151 pass
 │   ├── icd.py           WHO ICD-11 lookup, proposes then applies
 │   └── cli.py           argument parsing only
-├── evidence_batches/    10 approved batches → evidence.csv
+├── evidence_batches/    23 approved batches → evidence.csv
 └── eval/
     ├── benchmark/       gold_seeds_styled.csv — the source, unedited
     └── cases/           annotated cases  ← EMPTY, this is the bottleneck
@@ -173,7 +175,7 @@ make install        # create .venv from uv.lock — the only setup step
 | `make validate` | Schema and cross-file references |
 | `make verify-quotes` | Every quote is verbatim in its cited source |
 | `make lint` | ruff + mypy strict on contracts |
-| `make test` | The full suite — 380 tests |
+| `make test` | The full suite — 399 tests |
 
 ### Running it
 

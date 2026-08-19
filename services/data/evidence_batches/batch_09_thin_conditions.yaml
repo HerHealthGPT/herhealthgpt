@@ -16,6 +16,21 @@
 # ovarian_cyst, but those MedlinePlus pages are link hubs with almost no symptom
 # prose. The unused citation is real; the material is not there. Both conditions
 # are enriched from NHS instead.
+#
+# AMENDED 2026-08-19: the ovarian_cyst / difficulty_conceiving=yes weak_support
+# row (NHS: "difficulty getting pregnant – although fertility is usually
+# unaffected by ovarian cysts") has been REPLACED by an argues_against row on
+# the same cell, authored in batch_16 from womenshealth's more direct framing
+# ("Typically, no. Most ovarian cysts do not affect your chances of getting
+# pregnant" — explicitly answering "Can ovarian cysts make it harder to get
+# pregnant?" and naming endometriosis/PCOS as the conditions where it does
+# apply). Both sources agree on the underlying fact; womenshealth states it as
+# a direct answer to the exact question the feature asks, which clears ADR
+# 0001's bar for argues_against, while the NHS quote is a parenthetical aside
+# on a row whose primary claim was "yes" — the two could not coexist on the
+# same (condition, feature, value) triple, and the schema correctly rejected
+# the duplicate when both were briefly present. See batch_16 for the full
+# reasoning and the second reviewer's approval.
 
 batch: 09
 covers: [sexually_transmitted_infection, urinary_tract_infection, ovarian_cyst]
@@ -140,15 +155,6 @@ rows:
       the least discriminating finding in the knowledge base, supporting PCOS,
       PID, perimenopause and now ovarian cyst.
 
-  - condition_id: ovarian_cyst
-    feature_id: difficulty_conceiving
-    value: "yes"
-    strength: weak_support
-    source_id: nhs
-    source_quote: >-
-      difficulty getting pregnant – although fertility is usually unaffected by
-      ovarian cysts
-    note: >-
-      The qualifier is quoted deliberately: the source lists the symptom and
-      immediately undercuts it. A row that quoted only the first half would
-      misrepresent the sentence. Weak is generous.
+  # ovarian_cyst / difficulty_conceiving=yes (NHS, weak_support) REMOVED
+  # 2026-08-19 — see the amended note at the top of this file. Replaced by an
+  # argues_against row on the same cell, authored in batch_16.

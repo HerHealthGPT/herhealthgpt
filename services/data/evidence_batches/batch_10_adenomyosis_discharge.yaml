@@ -128,6 +128,32 @@ rows:
       way from how it was first described.
 
   # -------------------------------------------------------------------------
+  # WHY THRUSH HAS NO ELIMINATING ROW — added 2026-08-19, following a
+  # systematic elimination-row audit that found this reason had been
+  # established in review but never written into a file.
+  #
+  # Re-read nhs/thrush.json and womenshealth/thrush.json in full this session
+  # looking specifically for argues_against-eligible language, the same pass
+  # already applied to bacterial_vaginosis above. Beyond the three rows this
+  # batch already writes (vulval_itching, abnormal_discharge, pain_with_sex),
+  # both pages are almost entirely treatment, self-care, prevention and
+  # "when to see a GP" administrative advice — dosing, what to wash with,
+  # when thrush becomes recurrent, pharmacist guidance. Neither source frames
+  # any finding as distinguishing or excluding thrush from an alternative;
+  # they simply do not discuss what thrush does NOT look like. Same position
+  # as most conditions in this knowledge base: sources describe what a
+  # condition causes, and rarely state what argues against it (ADR 0001).
+  #
+  # Thrush is NOT silent the way PID, STI and bacterial_vaginosis are — no
+  # source calls it frequently asymptomatic — so its absence of an
+  # eliminating row is a different kind of gap from theirs: not "symptoms
+  # don't argue against it because there often are none," but "the sources
+  # simply never state an excluding claim for this condition." No new row is
+  # owed; this records that the search was made and came up empty, per the
+  # standard applied to every other condition audited this session.
+  # -------------------------------------------------------------------------
+
+  # -------------------------------------------------------------------------
   # Bacterial vaginosis — one row only, deliberately
   # -------------------------------------------------------------------------
 

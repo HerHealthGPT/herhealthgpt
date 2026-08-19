@@ -1,0 +1,106 @@
+# Batch 23 — infertility, first evidence rows.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# infertility was just added to conditions.yaml as the nineteenth condition.
+# 3 rows: cycle_regularity (2 values, one sentence) plus difficulty_
+# conceiving as self-reference — the condition IS the presenting complaint,
+# so difficulty_conceiving=yes is close to definitional here, unlike its weak
+# role everywhere else in the grid. age_band was considered (see below) and
+# NOT written, for a reason specific to this condition.
+
+batch: 23
+covers: [infertility]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: infertility
+    feature_id: cycle_regularity
+    value: irregular
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Some signs that a woman is not ovulating normally include irregular or
+      absent menstrual periods.
+    note: >-
+      Weak: "some signs... include", a listed indicator rather than a
+      characteristic sign the source singles out. Note this is the SAME
+      finding (irregularity) that already drives most of the differential —
+      pcos, perimenopause, ovarian_cyst, pelvic_inflammatory_disease and now
+      primary_ovarian_insufficiency and hypothyroidism all carry this row —
+      so infertility joins a genuinely crowded cell rather than adding new
+      discriminating power on its own. Included anyway because the source
+      states it plainly and omitting it would be inconsistent with how every
+      other condition's irregular-cycle claim was treated this session.
+
+  - condition_id: infertility
+    feature_id: cycle_regularity
+    value: absent
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Some signs that a woman is not ovulating normally include irregular or
+      absent menstrual periods.
+    note: >-
+      Same sentence, second cell — "irregular OR absent" names both as
+      alternative signs. Same reasoning and same caveat about crowding as
+      the irregular row above.
+
+  - condition_id: infertility
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Infertility means not being able to get pregnant after one year of
+      trying (or six months if a woman is 35 or older).
+    note: >-
+      STRONG, unlike every other difficulty_conceiving row in the grid (all
+      weak_support elsewhere — endometriosis, ovarian_cyst, pcos, STI, PID,
+      hypothyroidism, primary_ovarian_insufficiency). This is not an
+      inconsistency: for every other condition, difficulty conceiving is one
+      listed consequence among several. For THIS condition, it is the
+      definition — the quote IS the condition's own definition sentence, not
+      a symptom drawn from a list. A user answering yes to this feature is
+      describing the presenting complaint this condition exists to model, so
+      strong_support is the honest reading rather than an inflated one.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. age_band, from "How does age affect a woman's ability to have children?"
+#    — "about one-third of couples in which the woman is over 35 have
+#    fertility problems", an open "over 35" threshold that would map to
+#    40_to_44/45_to_54/55_plus following the same encoding decision already
+#    used for adenomyosis (batch_11) and primary_ovarian_insufficiency
+#    (batch_18). NOT written, for a reason specific to this condition rather
+#    than a mechanical repeat of that pattern: age_band already carries
+#    perimenopause (45_to_54, strong) and primary_ovarian_insufficiency
+#    (under_20/20_to_29/30_to_39, weak) rows that are STRUCTURAL to this
+#    knowledge base's design — CLAUDE.md states plainly that age_band exists
+#    specifically to separate perimenopause from pcos, and adding infertility
+#    across the same four bands with the same weak strength would blunt that
+#    separation rather than sharpen the differential, since a woman in her
+#    40s would now accumulate weak age support toward THREE conditions from
+#    one answer instead of the two the design intends. Flagged for the
+#    reviewer's judgement rather than added unilaterally — this is a
+#    genuinely different call from the mechanical "one row per band" decision
+#    made twice already this session, not an oversight.
+#
+# 2. PCOS, POI, PID, endometriosis and uterine fibroids named as causes of
+#    infertility ("What causes infertility in women?"). Not written as
+#    additional difficulty_conceiving rows for THOSE conditions — each
+#    already has its own difficulty_conceiving=yes row, cited to its own
+#    dedicated source page, and this page naming them again is corroboration
+#    of existing rows rather than a reason to add duplicates citing a third
+#    page.
+#
+# 3. The entire causes-in-men, risk-factors-for-men, and treatment/ART
+#    sections (varicocele, sperm count, IUI, IVF, surrogacy, etc.). Out of
+#    scope — this system triages the woman presenting, not her partner's
+#    fertility, and none of it is a symptom a female user reports.
+#
+# No argues_against row: no source frames any finding as distinguishing
+# infertility from an alternative. Same position as most conditions in this
+# knowledge base.

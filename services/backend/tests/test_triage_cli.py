@@ -111,11 +111,25 @@ def test_reaching_emergency_costs_the_escalation_screen(
     is known, so the screen runs past `max_questions`. That is deliberate — the
     question budget is about patience, and emergency screening is not subject
     to it — but it is a real cost and it should not drift silently.
+
+    Only 5 of those 6 show up as escalation-screen probes here, not 6, since the
+    2026-08-19 knowledge base growth (`primary_ovarian_insufficiency`'s
+    age_band=30_to_39 row) changed the early differential enough to move
+    `bleeding_heaviness` earlier in the question order — to turn 4, before
+    `severe_pelvic_pain` fires, instead of after. The fixture answers
+    `bleeding_heaviness` as `unknown`, and once a feature is asked — at any
+    turn, escalation screen or not — `asked_feature_ids` excludes it from being
+    probed again, so `pelvic_pain_with_heavy_bleeding` no longer appears as a
+    *probe* in this transcript. It is still asked, at turn 4 rather than
+    later, and `questions_asked` is unchanged at 10: nothing became
+    unreachable, the question just moved earlier in the sequence. Investigated
+    and confirmed a reordering, not a coverage gap, before updating this
+    pinned count.
     """
     transcript = run("sudden_severe_pain", real_engine)
     assert transcript.questions_asked > real_engine.weights.max_questions
     probes = [t for t in transcript.turns if t.answer and t.decision.red_flag_id]
-    assert len(probes) == 6
+    assert len(probes) == 5
 
 
 def test_a_red_flag_cites_the_sentence_it_came_from(real_engine: TriageEngine) -> None:

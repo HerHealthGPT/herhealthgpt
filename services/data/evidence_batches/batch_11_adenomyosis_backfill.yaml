@@ -1,0 +1,160 @@
+# Batch 11 — adenomyosis backfill.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-18.
+#
+# adenomyosis sits at 5 rows, the lowest of the "authored" conditions besides
+# bacterial_vaginosis and thrush, and it is the single-source exception under
+# ADR 0006 — the condition where a second source matters most. Re-probed
+# medlineplus.gov/adenomyosis.html and nichd.nih.gov/health/topics/adenomyosis
+# on 2026-08-18; both still fail to resolve, so it remains NHS-only. This
+# batch grows what NHS alone supports rather than adding a second source,
+# which is not available.
+#
+# All 6 rows are read from nhs.uk/conditions/adenomyosis/, fetched and cleaned
+# 2026-08-18 (fetched 2026-08-04, content unchanged — page last reviewed 17
+# July 2023).
+
+batch: 11
+covers: [adenomyosis]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  # -------------------------------------------------------------------------
+  # Age — the source names an open threshold ("over 30"), not one band.
+  # Encoded as a weak row on every band from 30_to_39 upward, per review
+  # decision 2026-08-18: this represents the source's actual claim (an open
+  # threshold) rather than overstating it as a single age peak. All four rows
+  # cite the same two source sentences.
+  # -------------------------------------------------------------------------
+
+  - condition_id: adenomyosis
+    feature_id: age_band
+    value: 30_to_39
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      Adenomyosis is more commonly diagnosed in women over the age of 30.
+    note: >-
+      First of four identical-strength rows for the open "over 30" threshold —
+      see 40_to_44, 45_to_54 and 55_plus below. Weak: a diagnosed-more-often
+      pattern, not a characteristic sign, and the source itself calls it a risk
+      factor rather than a defining feature ("who is more likely to get
+      adenomyosis").
+
+  - condition_id: adenomyosis
+    feature_id: age_band
+    value: 40_to_44
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      Adenomyosis is more commonly diagnosed in women over the age of 30.
+    note: Second of four. See 30_to_39 above for the encoding decision.
+
+  - condition_id: adenomyosis
+    feature_id: age_band
+    value: 45_to_54
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      Adenomyosis is more commonly diagnosed in women over the age of 30.
+    note: >-
+      Third of four. See 30_to_39 above. NOTE: this band overlaps
+      perimenopause's strong age_band row — both conditions can be live for a
+      woman in this band, which is expected; age alone does not separate them
+      the way it does for PCOS vs perimenopause. Bleeding pattern and pain
+      timing carry that weight here instead.
+
+  - condition_id: adenomyosis
+    feature_id: age_band
+    value: 55_plus
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      Adenomyosis is more commonly diagnosed in women over the age of 30.
+    note: Fourth of four. See 30_to_39 above.
+
+  # -------------------------------------------------------------------------
+  # Bleeding pattern and pain timing — genuinely new cells, not covered by
+  # batch_10.
+  # -------------------------------------------------------------------------
+
+  - condition_id: adenomyosis
+    feature_id: bleeding_between_periods
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: you bleed between periods or after sex
+    note: >-
+      From the "See a GP if:" list — a symptom prompting a GP visit, not an
+      escalation ("Ask for an urgent GP appointment..." is the separate,
+      already-covered severe-pain box on this same page). Weak: listed
+      alongside three other bullets without emphasis, and the same NHS page for
+      endometriosis does not name this symptom, so it is a genuine (if weak)
+      point of separation between the two conditions that present almost
+      identically otherwise.
+
+  - condition_id: adenomyosis
+    feature_id: pelvic_pain_timing
+    value: throughout_cycle
+    strength: weak_support
+    source_id: nhs
+    source_quote: pelvic pain (pain in the lower part of your tummy)
+    note: >-
+      A DIFFERENT cell from the existing pelvic_pain_timing=with_periods row in
+      batch_10, not a duplicate. That row cites "painful periods" under
+      "Symptoms of adenomyosis affect your periods" — period-timed pain. This
+      row cites this list item, which sits under the separate heading "Other
+      symptoms can happen any time in your menstrual cycle, such as:" —
+      cycle-independent pain. NHS states both, for different symptom clusters
+      on the same page, so both timings are genuinely supported rather than one
+      being inferred from the other.
+
+      The quote is this list item alone, not the heading plus the item: in the
+      cleaned source the two are separate paragraph strings, not one sentence,
+      so concatenating them would fail verify-quotes (the same issue fixed on
+      the bleeding_after_menopause red flag). This item stands on its own as a
+      complete clause — it names the symptom and defines it in parentheses
+      without depending on the heading to be read — so citing it alone loses
+      nothing; the heading's context ("any time in your menstrual cycle") is
+      preserved above in this note instead.
+
+      Weak because it is a plain list entry, not called characteristic.
+
+# WHY ADENOMYOSIS HAS NO ELIMINATING ROW — added 2026-08-19, following a
+# systematic elimination-row audit. Unlike thrush and bladder_pain, this
+# condition had never been searched for argues_against language at all
+# before this note; the search was done now rather than assumed to follow
+# the same pattern.
+#
+# THREE things found on nhs/adenomyosis.json, none of which supports a row:
+#
+# 1. "Endometriosis is a different condition where tissue similar to the
+#    lining of the womb grows in other places, such as the ovaries or
+#    fallopian tubes." Real distinguishing text, but it distinguishes
+#    adenomyosis from endometriosis MECHANISTICALLY (where the tissue
+#    grows) — an anatomical fact, not a symptom a user could report. No
+#    feature in this schema asks about tissue location.
+#
+# 2. "Sometimes further tests are needed to find out what's causing your
+#    symptoms, or to rule out similar conditions such as endometriosis."
+#    Also real, but about the DIAGNOSTIC PROCESS (tests, exams) rather than
+#    a self-reportable finding — it names that testing exists to
+#    differentiate the two, not which answer would do so.
+#
+# 3. "Some people with adenomyosis have no symptoms." This is the
+#    "frequently silent" pattern that already justifies the absence of an
+#    eliminating row for pelvic_inflammatory_disease, sexually_transmitted_
+#    infection and bacterial_vaginosis (batch_05, batch_07/batch_12,
+#    batch_10's amended note) — a positive reason NOT to write one, since
+#    absence of any given symptom argues against a frequently-silent
+#    condition very little, and the protocol forbids inferring argues_against
+#    from absence in a symptom list.
+#
+# So this condition's gap is a genuine mix of two of the reasons already
+# seen elsewhere this session: real distinguishing language exists but has
+# nowhere to land in the schema (bladder_pain's shape, batch_20), AND the
+# condition is explicitly stated to be frequently asymptomatic (PID/STI/BV's
+# shape). No row written either way. Recorded so the search is not repeated
+# or silently assumed.

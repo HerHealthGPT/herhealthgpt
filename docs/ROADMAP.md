@@ -52,10 +52,10 @@ pie showData
 
 | Component | Status | Notes |
 |---|---|---|
-| Knowledge base | ✅ **done** | 37 features, 12 conditions, 89 rows, 14 red flags |
-| Provenance checking | ✅ **done** | 103/103 quotes verbatim in source |
-| Ingestion pipeline | ✅ **done** | 68 pages fetched and cleaned, robots-checked |
-| Triage controller | ✅ **done** | Six stopping rules, 380 tests passing |
+| Knowledge base | ✅ **done** | 37 features, 19 conditions, 135 rows, 16 red flags (2026-08-19) |
+| Provenance checking | ✅ **done** | 151/151 quotes verbatim in source |
+| Ingestion pipeline | ✅ **done** | 67 documents fetched and cleaned, robots-checked |
+| Triage controller | ✅ **done** | Six stopping rules, 399 tests passing |
 | Evaluation harness | ✅ **done** | Metrics + gates written; **no cases to run** |
 | Benchmark cases | 🔴 **empty** | The bottleneck — blocks every gated metric |
 | Retrieval / RAG | 🔴 **not started** | Cleaned text exists; nothing chunked or embedded |
@@ -123,14 +123,14 @@ MVP needs and it is not the bottleneck. Remaining work is evaluation only:
 > agreement — so the central claim goes untested and the baseline comparison
 > exists in English only.
 >
-> This is small: ~30 questions, not 89 evidence rows. NLLB-200 plus a
+> This is small: ~30 questions, not 135 evidence rows. NLLB-200 plus a
 > native-speaker pass, exactly as the proposal budgeted. The schema already
 > carries `Language` on variants and propagates labels from English by
 > `canonical_case_id`, so the asymmetry bug cannot recur.
 
 ### Track 2 — Retrieval & Model *(1–2 people)*
 
-Start **now**, against the 12 conditions that already exist. Do not wait for the
+Start **now**, against the 19 conditions that already exist. Do not wait for the
 knowledge base to be perfect — it already is, for this purpose.
 
 1. Chunk `build/clean/` into `build/passages.parquet`. **NHS text must be
@@ -203,11 +203,11 @@ All measured, none hidden. Full detail in
 
 | # | Problem | Effect | Fix waits on |
 |---|---|---|---|
-| 1 | Nothing leaves the differential | All 12 conditions live at the end of every consultation | More eliminating rows, or a higher floor |
+| 1 | Nothing leaves the differential | Was true of all 12 conditions as of the last measured run; **not re-measured** since the 2026-08-19 knowledge base growth to 19 conditions and several new `argues_against` rows (`ovarian_cyst` gained its first). Re-run before citing this row. | More eliminating rows, or a higher floor |
 | 2 | Question selection is nearly fixed | Same 6 questions regardless of answers | Making separation depend on current scores |
 | 3 | **Every case returns `URGENT_SAME_DAY`** | Safe but uninformative | 1 and 2 above |
 | 4 | Stopping rule 4 can under-triage | Latent; pinned by a strict xfail test | A policy decision on over-triage |
-| 5 | Two conditions barely modelled | `bacterial_vaginosis` has 1 row | More rows, or drop them |
+| 5 | Two conditions barely modelled | `bacterial_vaginosis` still has 1 row (confirmed 2026-08-19 — genuinely exhausted, not yet backfilled; see `CLAUDE.md`). `thrush` grew from its original count and is no longer the thinnest. | More rows, or drop them |
 | 6 | Mid-range answers move nothing | "moderate" is invisible to the controller | ~8 more rows from existing sources |
 
 Problem 3 is the one to explain to mentors: **the system currently tells
@@ -225,6 +225,6 @@ remaining research problem, and it needs the evaluation set to settle.
 2. **A live consultation** — `make triage CASE=services/backend/cases/sudden_severe_pain.yaml`
    prints every question, why it was chosen, what each answer was worth, and
    which rule ended it, citing the NHS sentence.
-3. **The provenance guarantee** — `make verify-quotes`, 103/103.
+3. **The provenance guarantee** — `make verify-quotes`, 151/151.
 4. **The honest limitations** — the table above. Naming them is the strongest
    thing in the project.

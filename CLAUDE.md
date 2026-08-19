@@ -107,23 +107,36 @@ Nothing is ever edited directly on the server.
 Seven files under `knowledge/`. Five are hand-authored and reviewed, kept as
 plain text in git so every change appears as a reviewable diff.
 
-Counts are **as built on 2026-08-17**, read from the files. They are not targets.
+Counts are **as built on 2026-08-19**, read from the files. They are not targets.
 If you change a file, change the number here in the same commit.
+
+**These counts reflect only APPROVED batches.** A larger dataset-generation pass
+landed 2026-08-19 with 11 more batches (`batch_13` through `batch_23`, ~30 rows,
+7 new conditions) still awaiting the second-reviewer approval the protocol
+requires — see `services/data/evidence_batches/`. Re-run `make evidence` and
+update this table again once they are reviewed; do not treat the numbers below
+as final.
 
 | File | Rows | What it is |
 |---|---|---|
 | `features.yaml` | 37 | Everything the system may ask about |
-| `conditions.yaml` | 12 | Everything the system may suspect |
-| `evidence.csv` | 89 | The sparse grid connecting them |
-| `red_flags.yaml` | 14 | Deterministic escalation rules |
+| `conditions.yaml` | 19 | Everything the system may suspect |
+| `evidence.csv` | 98 | The sparse grid connecting them |
+| `red_flags.yaml` | 16 | Deterministic escalation rules |
 | `sources.yaml` | 5 | Provenance, licence, precedence |
 | `weights.yaml` | — | Ordinal-to-log-odds mapping, tunable |
 | `actions.yaml` | 4 | Four action codes, resolved per locale |
 
-`evidence.csv` rows by source: NHS 37, womenshealth 30, MedlinePlus 13, NICHD 8,
-CDC 1. By strength: `weak_support` 46, `strong_support` 34, `argues_against` 9,
+`evidence.csv` rows by source: NHS 42, womenshealth 30, MedlinePlus 17, NICHD 8,
+CDC 1. By strength: `weak_support` 55, `strong_support` 34, `argues_against` 9,
 and **no `rules_out` row has ever been authored** — see ADR 0009, which must be
 revisited before the first one is.
+
+**7 of 19 conditions currently have zero evidence** (`hypothyroidism`,
+`primary_ovarian_insufficiency`, `inherited_bleeding_disorder`, `bladder_pain`,
+`pelvic_organ_prolapse`, `iron_deficiency_anaemia`, `infertility`) — each is
+schema-valid and its evidence is drafted in a pending batch, but `make validate`
+correctly warns that nothing can raise them until that batch is approved.
 
 Counting `evidence.csv` with `wc -l` gives the wrong answer. `source_quote` and
 `note` contain embedded newlines; parse it as CSV.
@@ -133,7 +146,7 @@ produced at scale.
 
 ### The conditions, and where each stands
 
-**Twelve conditions are authored.** These are the `id` values in
+**Nineteen conditions are authored.** These are the `id` values in
 `conditions.yaml`, and nothing outside this list may be suspected.
 
 | # | Condition | Note |
@@ -150,44 +163,81 @@ produced at scale.
 | 10 | `thrush` | the benign read on `abnormal_discharge` |
 | 11 | `bacterial_vaginosis` | ditto, and the commonest cause |
 | 12 | `adenomyosis` | single-source, admitted under ADR 0006 |
+| 13 | `hypothyroidism` | added 2026-08-19; menstrual effects of thyroid disease |
+| 14 | `primary_ovarian_insufficiency` | added 2026-08-19; age alone separates it from perimenopause |
+| 15 | `inherited_bleeding_disorder` | added 2026-08-19; gives `bleeding_heaviness` a non-gynaecological explanation |
+| 16 | `bladder_pain` | added 2026-08-19; the non-infective read on `urinary_symptoms` once UTI is excluded |
+| 17 | `pelvic_organ_prolapse` | added 2026-08-19; the non-mass read on `abdominal_swelling_or_pressure` |
+| 18 | `iron_deficiency_anaemia` | added 2026-08-19; gives `anaemia_symptoms` a condition of its own |
+| 19 | `infertility` | added 2026-08-19; the general umbrella `difficulty_conceiving` needed |
+
+**Conditions 13–19 have evidence drafted but not yet approved** — see the
+pending-batches note above. `make validate` correctly warns on all seven until
+that review lands; this is expected, not a defect.
 
 **`adenomyosis` is authored on NHS alone.** It was blocked under the two-source
 rule; ADR 0006 admits a single-source condition *when the row says why*, and NHS
 names adenomyosis repeatedly alongside endometriosis as a cause of heavy and
 painful periods. Its rows are the ones to read first when auditing provenance.
+**Re-probed 2026-08-19** for a second source (MedlinePlus, NICHD) — both still
+404. The exception stands, now checked as of this date rather than inherited
+from 2026-08-04.
 
-Not authored, and each needs sources confirmed before it may be: primary ovarian
-insufficiency, inherited bleeding disorder, hypothyroidism, functional
-hypothalamic amenorrhoea, hyperprolactinaemia, endometrial polyp,
-pregnancy-related bleeding. The last three had no usable dedicated page when
-checked on 2026-08-04. **Coverage gaps are a stated limitation, not an oversight
-— report them wherever coverage is reported.**
+**`primary_ovarian_insufficiency` carries a documented source conflict.**
+womenshealth treats "premature menopause" and "POI" as the same thing;
+MedlinePlus explicitly says they differ (POI can still permit occasional
+periods and pregnancy; premature menopause cannot). Authored under the task's
+named framing regardless, because both sources agree closely on the *symptom*
+picture this condition's evidence draws on — see the full note in
+`conditions.yaml`. Read it before extending this condition.
 
-**7–11 exist because of what the differential needs, not because they are
-interesting.** They are the *benign or infective* alternatives. Without them the
-grid pulls every presentation toward a chronic gynaecological condition:
-`urinary_symptoms` points at fibroids when the answer is usually a UTI,
-`abnormal_discharge` has nothing infective or benign to point at, and
-`pain_onset: sudden` has no torsion or rupture to explain it. A differential made
-only of chronic conditions over-triages by construction.
+**Confirmed still blocked, re-checked 2026-08-19 against all five sources**
+(MedlinePlus, NICHD, womenshealth, CDC, NHS): hyperprolactinaemia, endometrial
+polyp, functional hypothalamic amenorrhoea. All three were re-probed this
+session — hyperprolactinaemia and endometrial polyp have zero usable content on
+any source; functional hypothalamic amenorrhoea has one real but too-general
+source (NICHD's amenorrhea page, which never names the hypothalamic mechanism
+specifically). Also confirmed still blocked: **pregnancy-related bleeding** —
+womenshealth has substantial content (already used for the `bleeding_in_pregnancy`
+red flag) but no second source resolved after four URL attempts across
+MedlinePlus and NICHD, and the single-source exception was considered and
+declined for this condition specifically. **Coverage gaps are a stated
+limitation, not an oversight — report them wherever coverage is reported.**
+
+**Conditions 7–11 and 16–19 exist because of what the differential needs, not
+because they are interesting.** 7–11 are the *benign or infective* alternatives
+to the original phase-1 three; 16–19 are the differentials added 2026-08-19 to
+close specific named holes. Without them the grid pulls every presentation
+toward a chronic gynaecological condition: `urinary_symptoms` pointed at
+fibroids when the answer is usually a UTI or bladder pain syndrome,
+`abnormal_discharge` had nothing infective or benign to point at,
+`pain_onset: sudden` had no torsion or rupture to explain it,
+`abdominal_swelling_or_pressure` had no non-mass explanation, and
+`anaemia_symptoms` and `difficulty_conceiving` had no condition of their own. A
+differential made only of chronic conditions over-triages by construction.
 
 **Cancers are deliberately absent.** NHS names womb and ovarian cancer as causes
 of these presentations, but modelling them invites the system to suggest cancer
 to a worried user, which is not what it is for. They are served by red flags
-instead — postmenopausal bleeding routes to a GP without ever naming why.
-
-**The remaining gaps are real limitations, not oversights.** Hyperprolactinaemia,
-endometrial polyp and pregnancy-related bleeding are named by our own sources as
-causes of these presentations and are absent because no usable dedicated page
-resolved. State this wherever coverage is reported.
+instead — postmenopausal bleeding routes to a GP without ever naming why, via
+the `bleeding_after_menopause` red flag in `red_flags.yaml` (`URGENT_SAME_DAY`,
+added 2026-08-19). **This mechanism did not actually exist before that date** —
+`bleeding_after_menopause` appeared in no red-flag clause, only a single
+`weak_support` evidence row pointing at `perimenopause`, so a postmenopausal
+woman reporting bleeding was routed toward perimenopause at routine urgency
+rather than escalated. That stale row was deleted the same day the red flag was
+added; see `services/data/evidence_batches/batch_07_perimenopause_sti.yaml`'s
+amended note.
 
 ### The five evidence weights, and nothing else
 
 `strong_support` `weak_support` `neutral` `argues_against` `rules_out`
 
 `neutral` means **omit the row**. The file is sparse, and much sparser than it
-looks: 12 conditions × 37 features is 444 possible cells, and 89 carry meaning —
-**20% filled**. A missing row is not a gap to be filled in; it is the correct
+looks: 19 conditions × 37 features is 703 possible cells, and 98 carry meaning —
+**14% filled**, sparser than before despite more rows, because seven new
+conditions arrived with no evidence yet (see the pending-batches note above). A
+missing row is not a gap to be filled in; it is the correct
 representation of "this source does not connect these two things".
 
 ### The four action codes, and nothing else
@@ -242,7 +292,15 @@ If in doubt, omit the row — a missing row is neutral, which is safe.
 - Thresholds in `weights.yaml` are set so the bar for concluding `SELF_CARE` is
   strictly higher than for `ROUTINE_APPOINTMENT`.
 - Any condition where sources conflict on urgency takes the **higher** urgency,
-  and the conflict is appended to `build/conflicts.jsonl`.
+  and the conflict is recorded — in the relevant row's or condition's own
+  `note`, not in `build/conflicts.jsonl`. **That file is referenced throughout
+  this document and the codebase as where conflicts are logged, but no pipeline
+  stage currently writes to it** — confirmed 2026-08-19 while resolving the
+  `primary_ovarian_insufficiency` source conflict; `docs/CODE_GUIDE.md`
+  describes it only as a future `make build` artefact. Until that tooling
+  exists, the durable, git-tracked record is the batch or condition note
+  itself. Fix the sentence or build the tooling — do not keep citing a file
+  that does not exist.
 - `DATASHEET.md` states plainly that the knowledge base is source-traceable but
   not clinician-adjudicated, and that this is a stated limitation.
 
@@ -278,10 +336,12 @@ it.
 | CDC | `cdc` | 4 | US federal, public domain *(unverified)* | **available** |
 | NHS website | `nhs` | 2 | Crown copyright, no reuse grant | **citable_only** |
 
-**`womenshealth` (womenshealth.gov) carries 30 of the 89 evidence rows** — the
+**`womenshealth` (womenshealth.gov) carries 30 of the 98 evidence rows** — the
 second-largest contributor after NHS, and the largest that may actually be
 ingested. NHS supplies more rows but none of them may enter `passages.parquet`,
 which is why the ingestable corpus is smaller than the row count suggests.
+MedlinePlus grew from 13 to 17 rows in the 2026-08-19 pass — still third, but
+narrowing the gap.
 
 **MedlinePlus has a split licence and it matters.** Health topic summaries are
 public domain. The A.D.A.M. Medical Encyclopedia (`medlineplus.gov/ency/*`) and

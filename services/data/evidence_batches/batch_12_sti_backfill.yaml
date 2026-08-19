@@ -1,0 +1,133 @@
+# Batch 12 — sexually transmitted infection backfill.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# sexually_transmitted_infection sits at 3 rows, tied with thrush for the
+# thinnest condition after adenomyosis was backfilled in batch_11. batch_07's
+# closing note already examined and rejected splitting it into per-organism
+# conditions or adding a genital-lesion feature; this batch does not revisit
+# either. What batch_07 and batch_09 had not yet drawn on is MedlinePlus's
+# dedicated chlamydia page, which is richer than the general NHS/womenshealth
+# STI overview pages on what happens when an infection is not caught early.
+#
+# All rows are read from medlineplus/chlamydia.json and womenshealth/
+# sexually_transmitted_infection.json, both fetched 2026-08-04 and cleaned
+# 2026-08-19.
+
+batch: 12
+covers: [sexually_transmitted_infection]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  # -------------------------------------------------------------------------
+  # "If the infection spreads" — MedlinePlus's chlamydia page names four
+  # symptoms of progression in one sentence. All four are weak, not strong,
+  # because the source itself frames them as what happens if the infection is
+  # NOT caught early, not as typical or presenting symptoms — the same
+  # sentence that opens the "Symptoms" section says chlamydia "doesn't usually
+  # cause any symptoms" at all.
+  # -------------------------------------------------------------------------
+
+  - condition_id: sexually_transmitted_infection
+    feature_id: pelvic_pain_severity
+    value: mild
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      If the infection spreads, you might get lower abdominal (belly) pain,
+      pain during sex, nausea, and fever.
+    note: >-
+      Mapped to "mild" rather than "moderate" or "severe": the source names
+      pain without grading it, and mild is the least committal reading
+      available on our ordinal scale — the same caution CLAUDE.md asks for
+      when a source states a finding without a threshold. Weak because this is
+      explicitly a progression symptom ("if the infection spreads"), not a
+      presenting one — this condition can be, and usually is, silent.
+
+      Overlaps pelvic_inflammatory_disease's own pelvic_pain_severity=severe
+      row (batch_05), which is expected rather than a duplication error: PID
+      is what an untreated STI progresses into, and the condition note in
+      conditions.yaml already states this directly ("it is the CAUSE of pelvic
+      inflammatory disease"). The two conditions sharing this feature is the
+      grid correctly representing that causal relationship, not redundancy.
+
+  - condition_id: sexually_transmitted_infection
+    feature_id: pain_with_sex
+    value: "yes"
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      If the infection spreads, you might get lower abdominal (belly) pain,
+      pain during sex, nausea, and fever.
+    note: >-
+      Same sentence, second cell. Weak for the same reason as
+      pelvic_pain_severity above — a progression symptom, not a presenting
+      one. This feature already supports endometriosis, fibroids, PID and
+      thrush (see batch_10's note on it becoming one of the least
+      discriminating features in the set); this row does not change that
+      picture, it is simply the honest record of what the source states.
+
+  - condition_id: sexually_transmitted_infection
+    feature_id: feeling_sick_or_vomiting
+    value: "yes"
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      If the infection spreads, you might get lower abdominal (belly) pain,
+      pain during sex, nausea, and fever.
+    note: Same sentence, third cell. Weak for the same reason as above.
+
+  - condition_id: sexually_transmitted_infection
+    feature_id: fever
+    value: "yes"
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: >-
+      If the infection spreads, you might get lower abdominal (belly) pain,
+      pain during sex, nausea, and fever.
+    note: >-
+      Same sentence, fourth and last cell. Weak for the same reason as above.
+      Also already pelvic_inflammatory_disease's strongest single feature
+      (batch_05, strong_support) — here it is weak because, unlike the PID
+      row, this source names it only as a late-stage complication rather than
+      naming it "among the signs" the way womenshealth does for PID.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. womenshealth: "Chlamydia and gonorrhea, left untreated, raise the risk of
+#    chronic pelvic pain and life-threatening ectopic pregnancy." Not written
+#    as a direct STI -> pelvic_pain row, on top of the four above, because it
+#    describes the SAME causal chain the four MedlinePlus rows already cover
+#    (untreated infection -> complication), just at a further stage
+#    (chronic pain, ectopic pregnancy) that this condition's baseline_action
+#    note already assigns to pelvic_inflammatory_disease rather than to STI
+#    itself: "It escalates only through PID, which carries the urgent
+#    baseline." Writing a second, stronger row here would blur that
+#    deliberate division rather than add information the four rows above do
+#    not already carry.
+#
+# 2. MedlinePlus: "if the chlamydia infects the rectum... it can cause rectal
+#    pain, discharge, and bleeding." Not written — no feature covers rectal
+#    symptoms specifically, and batch_07 already examined and rejected adding
+#    genital/rectal-lesion features for STI on burden grounds. Same reasoning
+#    applies here without needing to be re-argued.
+#
+# 3. MedlinePlus: "discharge, which may have a strong smell" as a refinement
+#    of the existing abnormal_discharge=yes row (batch_07, already
+#    strong_support from NHS). Not written as a separate row —
+#    abnormal_discharge is a plain boolean in this schema, so "may have a
+#    strong smell" cannot land on a different cell; it is additional colour on
+#    a cell already filled, not a new one. Noted here rather than silently
+#    dropped, per ADR 0001's spirit that a considered omission is worth
+#    recording.
+#
+# No argues_against or elimination row was found for sexually_transmitted_
+# infection in either source. Both explicitly and repeatedly describe the
+# condition as frequently silent — womenshealth: "Many STIs have only mild
+# symptoms or no symptoms at all"; MedlinePlus (chlamydia specifically):
+# "Chlamydia doesn't usually cause any symptoms" — so absence of any symptom
+# argues against it very little, and the protocol forbids inferring an
+# argues_against row from absence in a symptom list. Same position PID is in
+# (batch_05) and for the same reason.

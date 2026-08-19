@@ -13,10 +13,11 @@ Supervisor: Dr. Rahatara Ferdousi. Mentors: Deloitte Innovation Hub, Egypt.
 > about what a user has.
 
 **Status: Phase 2 complete — knowledge base and triage controller.**
-All seven knowledge files are authored and validated: 37 features, 12
-conditions, 89 evidence rows, 14 red-flag rules, 5 sources, **103/103 quotes
+All seven knowledge files are authored and validated: 37 features, 19
+conditions, 135 evidence rows, 16 red-flag rules, 5 sources, **151/151 quotes
 verified verbatim** against their cited source. The stopping controller and the
-evaluation harness are built and tested (380 tests).
+evaluation harness are built and tested (399 tests). Counts as of 2026-08-19 —
+see `CLAUDE.md` for what changed and why.
 
 **Not built yet:** retrieval, model serving, API, frontend. See
 [`docs/ROADMAP.md`](docs/ROADMAP.md).

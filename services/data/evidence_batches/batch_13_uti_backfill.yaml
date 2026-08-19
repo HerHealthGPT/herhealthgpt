@@ -1,0 +1,101 @@
+# Batch 13 — urinary tract infection backfill.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# urinary_tract_infection sits at 6 rows, the lowest remaining count after
+# adenomyosis and STI were backfilled in batches 11 and 12. Read all three
+# sources in full (nhs, medlineplus, womenshealth) looking for genuinely new
+# feature-value cells, not just more colour on cells already filled.
+#
+# ONE ROW WRITTEN. Most of what these three pages add beyond the existing 6
+# rows has no feature to attach to — see the closing note for what was found
+# and rejected, which is most of this batch's work.
+
+batch: 13
+covers: [urinary_tract_infection]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: urinary_tract_infection
+    feature_id: extreme_tiredness
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: Feeling tired, shaky, confused, or weak.
+    note: >-
+      A genuinely new cell — none of the existing 6 rows touch tiredness.
+      Corroborated by MedlinePlus, which separately lists "Fever, tiredness, or
+      shakiness" among UTI symptoms in its own Summary section — two
+      independent sources naming fatigue is why this clears the bar for a row
+      at all, given how easily tiredness could be a symptom of almost
+      anything.
+
+      Weak, not strong: womenshealth's own sentence bundles it with "shaky,
+      confused, or weak" as one item rather than singling it out, and both
+      sources list it alongside several other symptoms without calling it
+      characteristic.
+
+      OVERLAPS anaemia_symptoms and extreme_tiredness's own note in
+      features.yaml, which already flags that extreme_tiredness and
+      anaemia_symptoms are correlated and can be double-counted by a user
+      answering yes to both. Not a new problem introduced by this row — just
+      worth remembering when reading UTI's plausibility alongside a heavy-
+      bleeding case.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. "confused" (womenshealth, same sentence as the row above, and the source
+#    separately notes this is "more common in older women"). NOT mapped onto
+#    sudden_confusion=yes, even though that is the only confusion-related
+#    feature in the schema. sudden_confusion's own probe asks "Have you
+#    SUDDENLY become confused" and the feature currently only appears in the
+#    pelvic_pain_with_sudden_confusion red flag, built from NHS's acute
+#    emergency framing. Neither source here says the confusion from a UTI is
+#    sudden — it is described as a general symptom of infection, closer to
+#    delirium building over the infection's course than an acute onset. Using
+#    the feature for this row would attach "sudden" framing to a claim the
+#    source does not make. Left unwritten rather than stretched.
+#
+# 2. NHS: "Your pee may also be dark or smell. If this is your only symptom,
+#    it might be because you've not been drinking enough water." This is
+#    explicit distinguishing language — exactly the kind of sentence ADR 0001
+#    asks argues_against rows to be built from — and MedlinePlus and
+#    womenshealth corroborate the underlying symptom ("Urine that smells bad
+#    or looks cloudy or reddish" / "milky or cloudy"). But no feature in
+#    features.yaml covers urine appearance or smell, so there is no cell to
+#    write either the supporting or the excluding half of this onto. Flagged
+#    here rather than silently dropped: if a urine_appearance feature is ever
+#    added, this sentence is the first thing to encode, and it would be one of
+#    the few genuinely well-supported argues_against candidates in the whole
+#    corpus.
+#
+# 3. NHS: "needing to pee suddenly or more urgently than usual" and "needing
+#    to pee more often than usual during the night (nocturia)". Both are
+#    urinary_symptoms values, but the feature's allowed_values are
+#    [none, frequency, incontinence, difficulty_passing_urine] — urgency and
+#    nocturia are neither "frequency" as already encoded nor any of the other
+#    three values. Not mapped onto frequency, because urgency and frequency
+#    are different findings and conflating them would overstate what the
+#    existing frequency row already captures faithfully. Same category of gap
+#    as (2): a real source sentence with nowhere to go in the current schema.
+#
+# 4. NHS: "a very low temperature below 36C". Not mapped onto fever=yes — a
+#    low temperature is a different, in some ways opposite, clinical sign from
+#    a fever, and the fever feature is a plain boolean with no way to
+#    represent it without misstating the row.
+#
+# 5. "Pressure in your lower abdomen" / "Pressure in your lower belly"
+#    (womenshealth, MedlinePlus) — already the existing
+#    abdominal_swelling_or_pressure=yes row (weak_support, womenshealth). Not
+#    duplicated; corroboration from a second source noted here rather than as
+#    a second row, since the cell is already filled.
+#
+# No argues_against row was written for the reason given in (2): the one
+# strong distinguishing sentence found ("if this is your only symptom, it
+# might be because you've not been drinking enough water") has no feature to
+# land on. This condition therefore stays without an eliminating row, but for
+# a documented and specific reason — a missing feature, not an absence of
+# source language — rather than the general "sources rarely say what argues
+# against something" reason that applies to most of the other conditions.

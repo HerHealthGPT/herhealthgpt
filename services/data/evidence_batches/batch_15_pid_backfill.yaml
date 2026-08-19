@@ -1,0 +1,89 @@
+# Batch 15 — pelvic inflammatory disease backfill.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# pelvic_inflammatory_disease sits at 9 rows, already close to the ~12 target
+# and the most thoroughly sourced of the remaining thin conditions (3
+# sources: nhs, womenshealth, cdc — see batch_05). Re-read nhs/
+# pelvic_inflammatory_disease.json and cdc/pelvic_inflammatory_disease.json in
+# full. Almost everything in both is already claimed by batch_05's 9 rows or
+# is a symptom with no available feature (genital lesions, the same gap
+# batch_07 already examined for STI). One genuinely open cell found.
+
+batch: 15
+covers: [pelvic_inflammatory_disease]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: pelvic_inflammatory_disease
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: weak_support
+    source_id: cdc
+    source_quote: >-
+      1 in 8 women with a history of PID experience difficulties getting
+      pregnant.
+    note: >-
+      A genuinely new cell — none of the existing 9 rows touch fertility.
+      difficulty_conceiving currently supports endometriosis, ovarian_cyst,
+      pcos and sexually_transmitted_infection (batch_09); PID was the one
+      obvious gap given it is literally what an untreated STI becomes.
+
+      The number in the quote ("1 in 8") is the source's own wording, quoted
+      verbatim as required — it is not converted into the row's strength.
+      CLAUDE.md's "never invent probabilities" rule governs what WE assert as
+      a strength value, not whether a cited sentence may itself contain a
+      figure; the strength here is weak_support, an ordinary ordinal judgement
+      like every other row, not a reading of "1 in 8" as somehow stronger or
+      weaker than a plain-language claim would be.
+
+      Weak, not strong, and deliberately so: this describes a CONSEQUENCE of a
+      past history of PID ("with a history of PID"), not a presenting symptom
+      a user reports during an acute episode — the same category as the STI
+      fertility row already in the grid (batch_09,
+      sexually_transmitted_infection/difficulty_conceiving, also weak, also
+      quoting a "can lead to" / "left untreated" framing). Keeping both weak
+      is consistent: PID and STI are causally linked conditions in this
+      knowledge base, and their evidence rows should not silently imply
+      stronger claims than either source actually makes for the acute
+      presentation.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. CDC's own symptom list ("Pain in your lower abdomen", "An unusual
+#    discharge with a bad odor", "Pain and/or bleeding when you have sex",
+#    "Burning sensation when you urinate") — all four already claimed by
+#    batch_05's existing rows (pelvic_pain_severity, abnormal_discharge,
+#    pain_with_sex, bleeding_between_periods, pain_opening_bowels_or_
+#    urinating), several of them citing this exact CDC page already. No new
+#    cells here.
+#
+# 2. NHS complications: "lumps or swellings filled with pus (abscesses) in
+#    your fallopian tubes or ovaries" and CDC's "Formation of scar tissue...
+#    that can lead to tubal blockage" / "Ectopic pregnancy". No feature covers
+#    abscess formation or scarring — these are diagnostic/imaging findings,
+#    not something a user could report as a symptom, so there is no honest way
+#    to turn them into a feature-value row without inventing a way to ask
+#    about them. Ectopic pregnancy risk is already the mechanism behind the
+#    possible_ectopic_pregnancy and bleeding_in_pregnancy red flags, which is
+#    the correct place for it rather than a second, weaker evidence row here.
+#
+# 3. CDC risk-factor list ("more likely to get PID if you... have more than
+#    one sex partner... are sexually active and 25 or younger... use an IUD").
+#    These are RISK FACTORS for getting PID, not symptoms a user with PID
+#    currently has, and this system does not model risk-factor questions
+#    outside age_band and pregnancy_status (both already asked for other
+#    reasons). Consistent with why sexual-history questions were not added
+#    when STI was reviewed in batch_07.
+#
+# Still no argues_against row for PID after this batch — unchanged from
+# batch_05's original finding: both NHS ("Not everyone with pelvic
+# inflammatory disease (PID) will have symptoms") and womenshealth say PID is
+# frequently silent, so absence of any symptom cannot become an eliminating
+# row under the protocol. CDC corroborates this a third time here ("your
+# symptoms may be mild, or you may not experience any symptoms"). PID stays
+# in the same position as uterine_fibroids: raised freely, lowered almost
+# never, and that is a property of the sources, not a gap in how thoroughly
+# they were read.

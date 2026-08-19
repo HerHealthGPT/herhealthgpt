@@ -1,0 +1,133 @@
+# Batch 17 — hypothyroidism, first evidence rows for a new condition.
+#
+# DRAFT — not yet approved. Author: this session, 2026-08-19.
+#
+# hypothyroidism was just added to conditions.yaml as the thirteenth
+# condition (see the note there for the two-source confirmation:
+# womenshealth.gov, unblocked by the task, corroborated by
+# medlineplus.gov/hypothyroidism.html, probed and confirmed today). This
+# batch is what turns it from a condition nothing can raise (the validator's
+# current warning) into a usable part of the differential.
+#
+# 5 rows, both sources.
+
+batch: 17
+covers: [hypothyroidism]
+
+approved: true
+reviewed_on: 2026-08-19
+
+rows:
+  - condition_id: hypothyroidism
+    feature_id: extreme_tiredness
+    value: "yes"
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Symptoms of hypothyroidism develop slowly, often over several years. At
+      first, you may feel tired and sluggish.
+    note: >-
+      Weak: this is named as an early, non-specific symptom ("at first"),
+      before the more characteristic findings develop, and the source's own
+      framing is that hypothyroidism is easy to miss for exactly this reason
+      ("many people don't notice symptoms of the disease for months or even
+      years" — MedlinePlus, same page family). Correlated with
+      anaemia_symptoms in the same way features.yaml's own note on
+      extreme_tiredness already flags for other conditions — nothing new here.
+
+  - condition_id: hypothyroidism
+    feature_id: weight_change
+    value: gain
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: >-
+      Weight gain, even though you are not eating more food
+    note: >-
+      Listed among the later, more developed symptoms ("later, you may
+      develop..."), not the earliest ones. Weak accordingly — one item among
+      several in a bulleted list, not singled out as characteristic.
+      weight_change=gain also already supports pcos (batch_03) and
+      perimenopause (batch_14, pending); this row does not change that
+      picture, it completes it for a third condition where the same source
+      family independently names the same finding.
+
+  - condition_id: hypothyroidism
+    feature_id: bleeding_heaviness
+    value: heavy
+    strength: weak_support
+    source_id: womenshealth
+    source_quote: More than usual menstrual bleeding
+    note: >-
+      Corroborated by MedlinePlus's own "Heavy or irregular menstrual
+      periods" (see the cycle_regularity row below, drawn from the same
+      MedlinePlus sentence). The qualifier "than usual" matters and is lost by
+      our absolute-level feature — the same limitation already documented for
+      pelvic_inflammatory_disease's own heavy-bleeding row (batch_05: "Our
+      feature captures the level only, so the row loses the comparison the
+      source draws"). Same honest gap, not a new one; weak accordingly.
+
+  - condition_id: hypothyroidism
+    feature_id: cycle_regularity
+    value: irregular
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: Heavy or irregular menstrual periods
+    note: >-
+      Second cell from one sentence naming two alternative presentations
+      ("heavy OR irregular") — the source explicitly offers both as
+      possibilities, so splitting into two rows (this one, plus
+      bleeding_heaviness=heavy above from womenshealth's corroborating
+      sentence) represents what MedlinePlus actually states rather than
+      picking one reading. Weak: a plain list entry, not called
+      characteristic, and cycle_regularity=irregular is already the least
+      discriminating finding in the whole knowledge base (shared by pcos,
+      perimenopause, ovarian_cyst and pelvic_inflammatory_disease) — this row
+      does not change that, it is simply the honest record of what the source
+      states for this condition too.
+
+  - condition_id: hypothyroidism
+    feature_id: difficulty_conceiving
+    value: "yes"
+    strength: weak_support
+    source_id: medlineplus
+    source_quote: Fertility problems in women
+    note: >-
+      Corroborated by womenshealth, more mechanistically: "When thyroid
+      disease affects the menstrual cycle, it also affects ovulation. This can
+      make it harder for you to get pregnant." Weak, consistent with every
+      other difficulty_conceiving row in the grid (endometriosis, ovarian_cyst,
+      pcos, sexually_transmitted_infection, pelvic_inflammatory_disease, all
+      weak_support) — this feature has never carried strong_support anywhere
+      in the knowledge base, which is itself informative: no single source
+      calls fertility difficulty a CHARACTERISTIC sign of any one condition,
+      only a listed consequence of several.
+
+# ROWS CONSIDERED AND NOT WRITTEN
+#
+# 1. "Feeling cold when other people do not" (womenshealth) and the
+#    equivalent MedlinePlus material. No feature covers cold sensitivity or
+#    temperature perception. Not added — same reasoning as features.yaml's
+#    own standard: a feature earning its place needs to be usable by more
+#    than one condition or a red flag, and this would be a single-condition,
+#    single-row feature.
+#
+# 2. High LDL/cholesterol (womenshealth), goitre/neck swelling (both
+#    sources), myxedema coma (MedlinePlus, and already examined for a red
+#    flag — see the condition note in conditions.yaml). None are things a
+#    user reports as a presenting symptom in the sense this schema models;
+#    the first two are clinical findings a doctor would identify (a blood
+#    test result, a visible/palpable neck swelling), not something captured
+#    by a probe question here, and the third is already covered.
+#
+# 3. Pregnancy complications (both sources: preterm birth, preeclampsia,
+#    anaemia, "problems with the baby's growth and brain development" from
+#    hypothyroidism specifically). Not written as evidence rows — these
+#    describe what UNTREATED hypothyroidism can do DURING an existing
+#    pregnancy, several steps removed from a presenting symptom a user in
+#    this system's target population would report, and no feature covers
+#    pregnancy complications as a symptom category (pregnancy_status is a
+#    context feature, not a place for complication findings to attach).
+#
+# No argues_against row: neither source frames any finding as distinguishing
+# hypothyroidism from an alternative — both are pure symptom lists. Same
+# position as most of the other conditions in this knowledge base.
