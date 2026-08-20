@@ -173,7 +173,11 @@ def run_index(args: argparse.Namespace) -> int:
 
     Downloads model weights on first run unless --model hashing.
     """
-    from herhealth_data.retrieval import build_index, load_passages
+    from herhealth_data.retrieval import (
+        build_index,
+        evidence_statement_passages,
+        load_passages,
+    )
 
     if not args.clean_dir.is_dir():
         print(f"error: no cleaned documents at {args.clean_dir} — run `make clean` first")
@@ -188,14 +192,21 @@ def run_index(args: argparse.Namespace) -> int:
     # Quote-only sources are indexed — we may read and quote them. The flag
     # travels with each passage so the SERVED corpus can exclude them later.
     ingestable = {s.id: s.may_be_ingested for s in base.sources}
-    passages = load_passages(args.clean_dir, ingestable)
+    source_passages = load_passages(args.clean_dir, ingestable)
+    evidence_passages = evidence_statement_passages(
+        base.evidence, base.features_by_id, base.conditions_by_id, ingestable
+    )
+    passages = [*source_passages, *evidence_passages]
     if not passages:
         print(f"error: no passages found in {args.clean_dir}")
         return 1
 
     by_source = Counter(p.source_id for p in passages)
     quote_only = sum(1 for p in passages if not p.may_be_ingested)
-    print(f"{len(passages)} passages from {len(by_source)} source(s)")
+    print(
+        f"{len(source_passages)} source passage(s) + {len(evidence_passages)} "
+        f"evidence statement(s) = {len(passages)} total, from {len(by_source)} source(s)"
+    )
     for source_id, count in sorted(by_source.items()):
         ingestable_here = any(
             p.may_be_ingested for p in passages if p.source_id == source_id

@@ -25,11 +25,19 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["Passage", "load_passages", "split_sentences"]
+from herhealth_contracts.knowledge import Condition, EvidenceRow, Feature
+from herhealth_contracts.retrieval import PassageType
+
+__all__ = [
+    "Passage",
+    "evidence_statement_passages",
+    "load_passages",
+    "split_sentences",
+]
 
 #: Below this many characters a "sentence" is a heading fragment, a list marker
 #: or navigation debris. Clinical statements are longer.
@@ -78,6 +86,22 @@ class Passage:
     #: never enter the served corpus. Carried per passage so the distinction
     #: survives into the index rather than being re-derived later.
     may_be_ingested: bool = True
+
+    #: ``source_passage`` (a sentence from a cleaned document, the default) or
+    #: ``evidence_statement`` (one evidence.csv row, see
+    #: :func:`evidence_statement_passages`). Mirrors
+    #: ``herhealth_contracts.retrieval.PassageType`` by value rather than by
+    #: import, so a passage built here can be compared against one received
+    #: over the service boundary without services/data depending on that being
+    #: the same object.
+    passage_type: str = PassageType.SOURCE_PASSAGE.value
+
+    #: Populated only when passage_type is "evidence_statement". A source
+    #: passage carries none of these — it is prose, not a graded claim.
+    condition_id: str | None = None
+    feature_id: str | None = None
+    value: str | None = None
+    strength: str | None = None
 
     @property
     def id(self) -> str:
@@ -157,5 +181,65 @@ def load_passages(
                         continue
                     seen.add(key)
                     passages.append(passage)
+
+    return passages
+
+
+def evidence_statement_passages(
+    evidence: Sequence[EvidenceRow],
+    features: Mapping[str, Feature],
+    conditions: Mapping[str, Condition],
+    ingestable: Mapping[str, bool] | None = None,
+) -> list[Passage]:
+    """Render every evidence.csv row as one retrievable statement.
+
+    Each row already carries a verbatim ``source_quote`` — the retrievable part
+    of the row, per docs/research/0001 §2a — but a bare quote does not say
+    which condition or feature it was authored against, so a similarity search
+    over quotes alone could return the right sentence attached to the wrong
+    claim. This wraps the quote in that context. ``source_quote`` itself is
+    appended unedited, character for character, so ``make verify-quotes`` can
+    still check it: only the surrounding sentence is generated.
+
+    Same licence rule as every other passage, checked against the same
+    ``ingestable`` mapping ``load_passages`` uses: a row backed by a
+    ``citable_only`` source (NHS backs 37 of 89 rows today) is still built and
+    still searchable during authoring, but comes back ``may_be_ingested=False``
+    so it can never enter the served corpus. See ``Source.may_be_ingested``.
+
+    A row whose ``condition_id`` or ``feature_id`` is not in ``features`` /
+    ``conditions`` is skipped rather than raised on — that mismatch is a
+    referential-integrity fault ``make validate`` already catches elsewhere,
+    and this function is not the place to raise it a second time.
+    """
+    permitted = ingestable or {}
+    passages: list[Passage] = []
+
+    for row in evidence:
+        feature = features.get(row.feature_id)
+        condition = conditions.get(row.condition_id)
+        if feature is None or condition is None:
+            continue
+
+        strength = row.strength.value.replace("_", " ")
+        text = (
+            f"{feature.label} = {row.value} ({strength}) for {condition.label}. "
+            f'Source: "{row.source_quote}"'
+        )
+        passages.append(
+            Passage(
+                source_id=row.source_id,
+                slug=f"evidence/{row.condition_id}/{row.feature_id}/{row.value}",
+                heading=condition.label,
+                section_type="evidence_statement",
+                text=text,
+                may_be_ingested=permitted.get(row.source_id, False),
+                passage_type=PassageType.EVIDENCE_STATEMENT.value,
+                condition_id=row.condition_id,
+                feature_id=row.feature_id,
+                value=row.value,
+                strength=row.strength.value,
+            )
+        )
 
     return passages
