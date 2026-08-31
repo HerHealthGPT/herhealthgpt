@@ -10,10 +10,10 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 from herhealth_backend.app.accounts.errors import EmailAlreadyRegistered
-from herhealth_backend.app.accounts.password_policy import MAX_LENGTH, PasswordTooWeak
+from herhealth_backend.app.accounts.password_policy import PasswordTooWeak
 from herhealth_backend.app.accounts.registration import register_user
 from herhealth_backend.app.db import Database
 
@@ -26,12 +26,17 @@ class RegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
-    #: No min_length here — that floor is enforced by check_password_strength
-    #: so a weak password gets the specific reasons #8 asks for, not a generic
-    #: FastAPI validation error. max_length exists purely so an oversized body
-    #: is rejected before it reaches argon2id, which will hash whatever it is
-    #: given; check_password_strength enforces the same ceiling independently.
-    password: str = Field(max_length=MAX_LENGTH)
+    #: No length constraints here, deliberately. FastAPI's default validation-
+    #: error response echoes the raw offending value verbatim (Pydantic's
+    #: `.errors()` includes it under "input", and `hide_input_in_errors` only
+    #: affects the human-readable str() form, not that dict) — so a
+    #: schema-level Field(max_length=...) here would leak an oversized
+    #: password straight into the 422 body, which is exactly what #8's
+    #: "plaintext appears nowhere, including logs" criterion forbids.
+    #: check_password_strength enforces both the floor and the ceiling
+    #: instead, before hash_password ever runs, and only ever reports static
+    #: reason strings — never the password itself.
+    password: str
 
 
 class RegisteredUser(BaseModel):

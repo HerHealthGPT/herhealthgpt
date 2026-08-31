@@ -23,10 +23,11 @@ MIN_LENGTH = 8
 #: Above this many characters, a password is refused too. Generous enough for
 #: any real passphrase; the actual point is to stop an arbitrarily large
 #: request body from reaching argon2id, which hashes whatever it is given.
-#: routes.py enforces this at the request-schema level as well, so an
-#: oversized body is rejected before this function — or the hasher — ever
-#: sees it; it is repeated here so the check is correct even if called
-#: directly, not only through the route.
+#: Enforced here and only here — not as a schema-level Field(max_length=...)
+#: in routes.py, because FastAPI's default validation-error response echoes
+#: the raw offending value, which would leak an oversized password into the
+#: 422 body. This function runs before hash_password and reports only static
+#: reason strings, never the password itself.
 MAX_LENGTH = 256
 
 #: Case-folded. The most common passwords in public breach corpora, plus the

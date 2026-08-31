@@ -59,3 +59,21 @@ async def test_register_rejects_a_malformed_email(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+async def test_register_oversized_password_is_rejected_without_echoing_it(
+    client: AsyncClient,
+) -> None:
+    """A too-long password is refused by check_password_strength, the same as a
+    too-short one — never by a schema-level Field constraint, which would have
+    FastAPI echo the raw value into the 422 body. Guards against that leak
+    coming back if a length cap is ever added to RegisterRequest directly.
+    """
+    oversized_password = "a1" * 200  # comfortably past MAX_LENGTH (256)
+    response = await client.post(
+        "/accounts/register",
+        json={"email": "route-oversized-password@example.com", "password": oversized_password},
+    )
+
+    assert response.status_code == 422
+    assert oversized_password not in response.text
