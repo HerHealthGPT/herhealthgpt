@@ -37,6 +37,9 @@ api = [
     # registration request.
     "argon2-cffi>=23.1",
     "email-validator>=2.1",
+    # Signing access tokens (Accounts, #9) — one algorithm, one format, none of
+    # a JWT library's header/algorithm negotiation. See app/accounts/tokens.py.
+    "itsdangerous>=2.2",
 ]
 
 [tool.uv.sources]

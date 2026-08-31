@@ -21,20 +21,24 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from herhealth_backend.app.accounts.error_handlers import register_error_handlers
 from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import database_url
+from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.db import Database
 
 __all__ = ["create_app"]
 
 
-def create_app(database: Database | None = None) -> FastAPI:
+def create_app(database: Database | None = None, session_secret: str | None = None) -> FastAPI:
     """Build the application.
 
     When ``database`` is given the caller owns its lifecycle — the app will not
     dispose it. When it is ``None`` the app creates one from
     :func:`~herhealth_backend.app.config.database_url` on start-up and disposes
-    it on shutdown.
+    it on shutdown. ``session_secret`` (the key access tokens are signed with,
+    see ``app/accounts/tokens.py``) is read from
+    :func:`~herhealth_backend.app.config.session_secret` when not given.
     """
 
     @asynccontextmanager
@@ -42,6 +46,8 @@ def create_app(database: Database | None = None) -> FastAPI:
         owns_database = getattr(app.state, "database", None) is None
         if owns_database:
             app.state.database = Database(database_url())
+        if getattr(app.state, "session_secret", None) is None:
+            app.state.session_secret = configured_session_secret()
         try:
             yield
         finally:
@@ -51,6 +57,9 @@ def create_app(database: Database | None = None) -> FastAPI:
     app = FastAPI(title="HerHealthGPT backend", lifespan=lifespan)
     if database is not None:
         app.state.database = database
+    if session_secret is not None:
+        app.state.session_secret = session_secret
+    register_error_handlers(app)
     app.include_router(accounts_router)
 
     @app.get("/health")

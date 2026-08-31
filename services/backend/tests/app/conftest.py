@@ -46,6 +46,9 @@ from herhealth_backend.app import Database, create_app  # noqa: E402
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _ALEMBIC_INI = _BACKEND_ROOT / "alembic.ini"
 
+#: Not a real secret — only ever used to sign tokens inside this test process.
+_TEST_SESSION_SECRET = "test-only-session-secret-do-not-use-in-production"
+
 
 @pytest.fixture(scope="session")
 def database_url() -> Iterator[str]:
@@ -88,8 +91,16 @@ async def db_session(connection: AsyncConnection) -> AsyncIterator[AsyncSession]
     ``create_savepoint`` mode lets the session commit and roll back within the
     outer transaction without ending it, so code under test can use ``commit()``
     normally while the fixture still discards everything at the end.
+
+    ``expire_on_commit=False`` matches ``Database``'s real session factory
+    (``app/db.py``) — without it, an object a test holds across a second
+    ``commit()`` (e.g. a ``User`` returned by one use case, then passed into
+    another) has its attributes expire, and accessing one outside SQLAlchemy's
+    async greenlet raises ``MissingGreenlet`` rather than a useful test failure.
     """
-    session = AsyncSession(bind=connection, join_transaction_mode="create_savepoint")
+    session = AsyncSession(
+        bind=connection, join_transaction_mode="create_savepoint", expire_on_commit=False
+    )
     try:
         yield session
     finally:
@@ -105,10 +116,15 @@ async def client(database_url: str) -> AsyncIterator[AsyncClient]:
     previous ``client`` test committed. Route tests that need isolation from
     each other should use distinct email addresses, the way the rest of this
     suite avoids colliding table names.
+
+    ``base_url`` is ``https://`` — no TLS is actually involved with
+    ``ASGITransport``, but the auth cookies (see ``accounts/cookies.py``) are
+    marked ``Secure``, and httpx's cookie jar (like a real browser) refuses to
+    replay a ``Secure`` cookie back on a request it thinks is plain HTTP.
     """
     database = Database(database_url)
-    app = create_app(database=database)
+    app = create_app(database=database, session_secret=_TEST_SESSION_SECRET)
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(transport=transport, base_url="https://test") as client:
         yield client
     await database.dispose()

@@ -1,20 +1,36 @@
-"""HTTP surface for Accounts. One route today: registration.
+"""HTTP surface for Accounts: registration and sessions.
 
-Kept a thin translation layer on purpose — ``register_user`` is where the
-actual decisions live, so it can be tested without an ASGI client. This module
-only turns its result and its exceptions into a response.
+Kept a thin translation layer on purpose — the use-case modules
+(``registration.py``, ``sign_in.py``, ``sessions.py``) are where the actual
+decisions live, so each can be tested without an ASGI client. Domain
+exceptions those use cases raise are not caught here: they propagate to the
+handlers ``error_handlers.py`` registers once against the whole app, so this
+module needs no per-route try/except to keep in sync as Accounts grows.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr
 
-from herhealth_backend.app.accounts.errors import EmailAlreadyRegistered
-from herhealth_backend.app.accounts.password_policy import PasswordTooWeak
+from herhealth_backend.app.accounts.cookies import (
+    REFRESH_TOKEN_COOKIE,
+    clear_auth_cookies,
+    set_auth_cookies,
+)
+from herhealth_backend.app.accounts.current_user import get_current_user
+from herhealth_backend.app.accounts.errors import InvalidSession
+from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.registration import register_user
+from herhealth_backend.app.accounts.sessions import (
+    end_all_sessions,
+    end_session,
+    get_active_session,
+    refresh_session,
+)
+from herhealth_backend.app.accounts.sign_in import sign_in as sign_in_user
 from herhealth_backend.app.db import Database
 
 __all__ = ["router"]
@@ -39,31 +55,99 @@ class RegisterRequest(BaseModel):
     password: str
 
 
-class RegisteredUser(BaseModel):
+class SignInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    password: str
+
+
+class UserSummary(BaseModel):
     id: uuid.UUID
     email: str
     email_verified: bool
 
 
+def _require_refresh_token(request: Request) -> str:
+    """The refresh-token cookie, or raise. For the two routes that cannot
+    proceed without one — ``sign-out`` deliberately differs: it treats a
+    missing cookie as already signed out rather than an error.
+    """
+    raw_refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE)
+    if raw_refresh_token is None:
+        raise InvalidSession()
+    return raw_refresh_token
+
+
 @router.post(
     "/register",
-    response_model=RegisteredUser,
+    response_model=UserSummary,
     status_code=status.HTTP_201_CREATED,
 )
-async def register(payload: RegisterRequest, request: Request) -> RegisteredUser:
+async def register(payload: RegisterRequest, request: Request) -> UserSummary:
     database: Database = request.app.state.database
     async with database.session() as session:
-        try:
-            user = await register_user(session, email=payload.email, password=payload.password)
-        except PasswordTooWeak as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail={"reasons": list(exc.reasons)},
-            ) from exc
-        except EmailAlreadyRegistered as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This email address is already registered.",
-            ) from exc
+        user = await register_user(session, email=payload.email, password=payload.password)
 
-    return RegisteredUser(id=user.id, email=user.email, email_verified=user.email_verified)
+    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+
+
+@router.post("/sign-in", response_model=UserSummary)
+async def sign_in(payload: SignInRequest, request: Request, response: Response) -> UserSummary:
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    async with database.session() as session:
+        user, access_token, refresh_token = await sign_in_user(
+            session, secret, email=payload.email, password=payload.password
+        )
+
+    set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)
+    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+
+
+@router.post("/refresh", status_code=status.HTTP_204_NO_CONTENT)
+async def refresh(request: Request, response: Response) -> None:
+    raw_refresh_token = _require_refresh_token(request)
+
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    async with database.session() as session:
+        access_token = await refresh_session(session, secret, raw_refresh_token)
+        await session.commit()
+
+    set_auth_cookies(response, access_token=access_token)
+
+
+@router.post("/sign-out", status_code=status.HTTP_204_NO_CONTENT)
+async def sign_out(request: Request, response: Response) -> None:
+    raw_refresh_token = request.cookies.get(REFRESH_TOKEN_COOKIE)
+    if raw_refresh_token is not None:
+        database: Database = request.app.state.database
+        async with database.session() as session:
+            await end_session(session, raw_refresh_token)
+            await session.commit()
+    clear_auth_cookies(response)
+
+
+@router.post("/sign-out-everywhere", status_code=status.HTTP_204_NO_CONTENT)
+async def sign_out_everywhere(request: Request, response: Response) -> None:
+    # Identified by the refresh token, not the access token: a woman whose
+    # access token has already expired (15 minutes, unrevocable — see
+    # CONTEXT.md) but who still holds a valid refresh token is exactly who
+    # most urgently needs this endpoint to work, e.g. right after realising
+    # her phone was stolen.
+    raw_refresh_token = _require_refresh_token(request)
+
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        active_session = await get_active_session(session, raw_refresh_token)
+        await end_all_sessions(session, active_session.user_id)
+        await session.commit()
+    clear_auth_cookies(response)
+
+
+@router.get("/me", response_model=UserSummary)
+async def me(current_user: User = Depends(get_current_user)) -> UserSummary:  # noqa: B008
+    return UserSummary(
+        id=current_user.id, email=current_user.email, email_verified=current_user.email_verified
+    )
