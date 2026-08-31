@@ -35,17 +35,34 @@ benchmark of women's-health concerns. Findings that drive the architecture:
 
 Consequences, all binding:
 
-1. **No fine-tuned model decides urgency.** RAG plus a deterministic controller.
-   A fine-tune may *phrase* text; it may never choose an action code.
-   **This is narrower than the old rule "no fine-tuning in the MVP", and
-   deliberately so** — the supervisor has asked that the QLoRA model from our
-   evaluation paper be used, and that request is compatible with this constraint
-   as long as the adapter sits on the phrasing path only. Open question, tracked
-   in [`docs/research/0001`](docs/research/0001-llm-triage-architecture.md);
-   do not resolve it by editing this line.
-2. **The triage decision lives in Python, not in the model or the prompt.** The
-   model extracts feature values and phrases text. It never decides whether to
-   ask another question or what urgency to assign.
+1. **The reasoning model decides ask-vs-conclude and the action code directly
+   — the deterministic controller is retired.** This reverses what stood here
+   before, accepted via
+   [ADR 0011](docs/adr/0011-controller-free-triage.md) on **2026-08-31**,
+   against the recommendation of
+   [`docs/research/0001`](docs/research/0001-llm-triage-architecture.md) —
+   that note's findings still stand and are not retracted by this line; the
+   ADR's own risk register restates them unsoftened. The decision is grounded,
+   never free judgement: every turn injects the full text of `red_flags.yaml`
+   plus retrieved evidence-statement and source passages, and the model's only
+   output channel is `TriageDecision`
+   (`packages/contracts/src/herhealth_contracts/decision.py`), a
+   schema-constrained structure enforced by vLLM guided decoding — the one
+   hard rule left, in place of a log-odds score. **The current QLoRA adapter
+   (trained on `gold_seeds_styled.csv`) may not be handed this decision as
+   it stands** — it was shown no example where the correct move is a
+   clarifying question, which is the documented cause of clarification
+   collapsing to 0.000 in the original evaluation. It must be retrained on
+   multi-turn conversational data before it decides anything; until that
+   retrain ships and is reviewed, it stays phrasing-only.
+2. **`TriageDecision`'s schema is the deterministic safety net that remains.**
+   `ask` requires a `next_feature_id` from `features.yaml`'s closed
+   vocabulary; `conclude` requires an `action_code` from `actions.yaml` and,
+   unless the decision is red-flag-driven, up to five `matching_conditions`
+   from `conditions.yaml`'s roster — nothing outside those vocabularies is
+   representable. Which question, or which action, the model picks *within*
+   that vocabulary is no longer checked by code. That gap is named, not
+   hidden — see [ADR 0011's risk register](docs/adr/0011-controller-free-triage.md#risk-register).
 3. **Under-triage is the dominant failure mode.** Whenever a design choice trades
    false alarms against missed escalations, choose false alarms.
 
@@ -394,7 +411,19 @@ Ask before any network call. Tests never hit the network.
 
 ---
 
-## The stopping controller
+## The stopping controller (outgoing)
+
+**Superseded by [ADR 0011](docs/adr/0011-controller-free-triage.md), accepted
+2026-08-31.** `engine.py`, `state.py` and the `should_stop`-based path through
+`dialogue.py` are not yet deleted — they stay in the tree until the new
+`TriageAgent` loop is wired to a real `services/model` and reviewed (ADR 0011's
+migration checklist, steps 4–8) — but this section describes the code being
+migrated away from, not the accepted architecture. In particular, **the
+escalation screen described below is a property of this outgoing code, not a
+guarantee the new design currently reproduces**: the replacement injects
+`red_flags.yaml` in full every turn, but nothing forces the model to notice
+that a more severe rule sits one answer away the way `should_stop` rule 1 did
+by code. That gap is open, tracked in ADR 0011's risk register.
 
 Plain Python in `services/backend/app/triage/`. No LLM involvement.
 
@@ -458,8 +487,17 @@ What follows from that, and what does not:
 - **It is a genuine asset for phrasing.** Six-register in-domain training is
   exactly what "render this action code as a sentence a worried user can read"
   needs, and it is the one thing the base model has no in-domain signal for.
-- **It must not choose an action code**, because the data it was trained on
-  contains no example of choosing one under uncertainty.
+- **As it stands, it must not choose an action code**, because the data it was
+  trained on contains no example of choosing one under uncertainty. Under
+  [ADR 0011](docs/adr/0011-controller-free-triage.md) the reasoning model *is*
+  now permitted to decide, in general — but only after this adapter is
+  retrained on multi-turn conversational data where the correct assistant turn
+  is sometimes a clarifying question, which does not exist in
+  `gold_seeds_styled.csv` today. Handing the untrained adapter the decision
+  would very likely reproduce the 0.994 under-triage collapse this project
+  already measured. Bootstrap data for the retrain exists at
+  `services/data/eval/benchmark/bootstrap_multi_turn.jsonl`; the retraining run
+  itself has not happened.
 - **QLoRA quantises the base during *training*; the adapter itself is an ordinary
   LoRA adapter.** vLLM serves adapters with `--enable-lora --lora-modules
   {name}={path}` on any model implementing `SupportsLoRA`, so the paper's model
@@ -490,6 +528,16 @@ text — that produced language-asymmetric labels skewed toward routine.
 Blocks merge: red-flag recall (must be 100%), per-language under-triage,
 clarification recall on ambiguous cases, grounding, cross-language action
 agreement. Reported but not gated: over-triage, average questions asked.
+
+**Red-flag recall stops being a provable gate once [ADR 0011](docs/adr/0011-controller-free-triage.md)
+ships.** `== 1.0` was checkable because the outgoing controller evaluated every
+red-flag clause by code — a proof, not a sample. Once escalation depends on the
+reasoning model noticing injected `red_flags.yaml` text, 100% recall becomes a
+measured rate like every other metric here. `make eval` needs to change from
+asserting equality to reporting the number, and `DATASHEET.md` needs a sentence
+saying so — neither has happened yet (ADR 0011 migration checklist, item 9).
+Until it does, this line describes the accepted target policy, not what
+today's `make eval` enforces.
 
 ---
 

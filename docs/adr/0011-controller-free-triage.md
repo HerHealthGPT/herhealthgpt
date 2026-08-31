@@ -1,8 +1,17 @@
 ---
-status: proposed
+status: accepted
+accepted: 2026-08-31
 ---
 
 # Remove the deterministic controller for a two-model, retrieval-grounded loop
+
+> **Accepted 2026-08-31.** `CLAUDE.md` rules 1 and 2 were edited in the same
+> change, per this ADR's own condition for acceptance. Migration checklist
+> items 1–3 were already done when this was written; items 4–10 (standing up
+> `services/model`, retraining the adapter, session persistence, wiring
+> guided decoding, deleting the outgoing controller, and updating `make eval`)
+> remain **not started** — acceptance is a decision to build toward this
+> design, not a claim that it is built.
 
 ## Context
 
