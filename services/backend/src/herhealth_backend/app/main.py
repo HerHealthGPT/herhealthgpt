@@ -21,6 +21,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import database_url
 from herhealth_backend.app.db import Database
 
@@ -50,6 +51,7 @@ def create_app(database: Database | None = None) -> FastAPI:
     app = FastAPI(title="HerHealthGPT backend", lifespan=lifespan)
     if database is not None:
         app.state.database = database
+    app.include_router(accounts_router)
 
     @app.get("/health")
     async def health(request: Request) -> JSONResponse:

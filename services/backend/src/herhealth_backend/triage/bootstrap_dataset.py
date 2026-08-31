@@ -37,13 +37,13 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from herhealth_contracts.knowledge import (
+    UNKNOWN_VALUE,
     ActionCode,
     ActionDefinition,
     EvidenceStrength,
     Feature,
     FeatureKind,
     KnowledgeBase,
-    UNKNOWN_VALUE,
 )
 from herhealth_contracts.loading import load_knowledge_base
 
@@ -169,9 +169,8 @@ def transcript_to_conversation(
 
     for turn in transcript.turns:
         if turn.decision.should_stop:
-            messages.append(
-                {"role": "assistant", "content": _phrase_conclusion(turn.decision, base, actions_by_code)}
-            )
+            conclusion = _phrase_conclusion(turn.decision, base, actions_by_code)
+            messages.append({"role": "assistant", "content": conclusion})
         else:
             assert turn.decision.next_feature_id is not None
             assert turn.answer is not None

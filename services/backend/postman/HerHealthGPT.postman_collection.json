@@ -48,6 +48,117 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Registering",
+      "description": "Issue #8: an email address and a password become an unverified user.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\",\n  \"password\": \"correcthorse1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "register"]
+            },
+            "description": "Change the email between runs — the address is unique, so replaying this request as-is gets the 409 in the next request instead."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('response has no password field', function () {",
+                  "    pm.expect(pm.response.json()).to.not.have.property('password');",
+                  "});",
+                  "",
+                  "pm.test('new user is unverified', function () {",
+                  "    pm.expect(pm.response.json().email_verified).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register — duplicate address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\",\n  \"password\": \"correcthorse1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "register"]
+            },
+            "description": "Run Register once first with this same address, then run this. Refused without revealing anything about the existing user."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register — weak password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"someone-else@example.com\",\n  \"password\": \"short\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "register"]
+            },
+            "description": "Below the 8-character floor. The response names what is wrong with it."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});",
+                  "",
+                  "pm.test('response names a reason', function () {",
+                  "    pm.expect(pm.response.json().detail.reasons.length).to.be.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
