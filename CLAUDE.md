@@ -504,8 +504,13 @@ What follows from that, and what does not:
   and the base can be served from one process. The adapter was fitted against an
   NF4-quantised base, so serving it against an unquantised base is a small
   distribution shift — usually fine, but **measure it, do not assume it**.
-- Confirm the rank and target modules against the training config before relying
-  on `max_lora_rank`. Nothing in this repo records them yet.
+- **Rank and target modules, confirmed 2026-08-31 against the real
+  `adapter_config.json`** on `herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`
+  (private, not gated): `r=16`, `lora_alpha=16`, standard LoRA (`use_dora` and
+  `use_rslora` both false), targeting attention and MLP/feed-forward
+  projections (`q/k/v/o_proj`, `gate/up/down_proj`). Base model confirmed as
+  `Qwen/Qwen3.5-9B`. Trained via Unsloth, `peft==0.19.1`. `max_lora_rank=16` is
+  sufficient for serving.
 
 ## Language scope
 

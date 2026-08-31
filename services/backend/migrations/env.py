@@ -5,9 +5,7 @@ at the start of a test session — so there is nothing to gain from the async
 engine the application uses, and a sync flow is far easier to read. psycopg 3
 backs both, so the same URL works here and in the app.
 
-There is no model metadata to autogenerate against yet: the first tables (users,
-credentials, sessions) arrive with the registration ticket. When they do, import
-their declarative ``Base`` here and set ``target_metadata`` to ``Base.metadata``.
+Sessions arrive with #9; until then this is users and credentials only.
 """
 
 from __future__ import annotations
@@ -18,13 +16,14 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+from herhealth_backend.app.accounts.models import Base
+
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# No declarative models registered yet; see the module docstring.
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def _database_url() -> str:

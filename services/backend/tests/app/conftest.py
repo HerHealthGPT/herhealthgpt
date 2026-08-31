@@ -32,6 +32,7 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import (  # noqa: E402
     AsyncConnection,
     AsyncEngine,
@@ -39,6 +40,8 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 from testcontainers.community.postgres import PostgresContainer  # noqa: E402
+
+from herhealth_backend.app import Database, create_app  # noqa: E402
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _ALEMBIC_INI = _BACKEND_ROOT / "alembic.ini"
@@ -91,3 +94,21 @@ async def db_session(connection: AsyncConnection) -> AsyncIterator[AsyncSession]
         yield session
     finally:
         await session.close()
+
+
+@pytest_asyncio.fixture
+async def client(database_url: str) -> AsyncIterator[AsyncClient]:
+    """An ASGI-driven HTTP client against a real app, pointed at the migrated database.
+
+    Uses its own connection pool rather than the ``db_session`` fixture's
+    rolled-back transaction, so a test using ``client`` sees whatever a
+    previous ``client`` test committed. Route tests that need isolation from
+    each other should use distinct email addresses, the way the rest of this
+    suite avoids colliding table names.
+    """
+    database = Database(database_url)
+    app = create_app(database=database)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    await database.dispose()

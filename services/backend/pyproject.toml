@@ -33,6 +33,10 @@ api = [
     # test container's readiness check all share one driver.
     "psycopg[binary]>=3.2",
     "alembic>=1.13",
+    # argon2id credential hashing (Accounts, #8) and EmailStr validation on the
+    # registration request.
+    "argon2-cffi>=23.1",
+    "email-validator>=2.1",
 ]
 
 [tool.uv.sources]
