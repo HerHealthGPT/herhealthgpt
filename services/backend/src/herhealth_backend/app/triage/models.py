@@ -41,7 +41,9 @@ class ConsultationSession(Base):
     __tablename__ = "consultation_sessions"
     __table_args__ = (
         Index("ix_consultation_sessions_user_id", "user_id"),
-        CheckConstraint("status IN ('active', 'concluded')", name="ck_consultation_sessions_status"),
+        CheckConstraint(
+            "status IN ('active', 'concluded')", name="ck_consultation_sessions_status"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

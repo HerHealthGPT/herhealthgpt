@@ -40,9 +40,14 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("status", sa.Text(), server_default="active", nullable=False),
         sa.Column(
-            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
-        sa.CheckConstraint("status IN ('active', 'concluded')", name="ck_consultation_sessions_status"),
+        sa.CheckConstraint(
+            "status IN ('active', 'concluded')", name="ck_consultation_sessions_status"
+        ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -57,7 +62,10 @@ def upgrade() -> None:
         sa.Column("content", sa.Text(), nullable=False),
         sa.Column("decision", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column(
-            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()"), nullable=False
+            "created_at",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(["session_id"], ["consultation_sessions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),

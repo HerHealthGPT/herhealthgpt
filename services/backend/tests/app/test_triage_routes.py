@@ -20,11 +20,10 @@ from herhealth_contracts.loading import load_knowledge_base
 from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 from httpx import ASGITransport, AsyncClient
 
+from conftest import RecordingEmailSender
 from herhealth_backend.app import Database, create_app
 from herhealth_backend.app.accounts.google_identity import UnconfiguredGoogleTokenVerifier
 from herhealth_backend.triage.agent import Message, ScriptedReasoningClient, TriageAgent
-
-from conftest import RecordingEmailSender
 
 REPO = Path(__file__).resolve().parents[4]
 KNOWLEDGE = REPO / "knowledge"

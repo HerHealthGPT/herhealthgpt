@@ -38,7 +38,10 @@ def enforce_provenance_cap(
     place in this codebase that treats a validated decision as immutable
     once emitted.
     """
-    if decision.type is not DecisionType.CONCLUDE or decision.action_code is not ActionCode.SELF_CARE:
+    is_self_care_conclusion = (
+        decision.type is DecisionType.CONCLUDE and decision.action_code is ActionCode.SELF_CARE
+    )
+    if not is_self_care_conclusion:
         return decision
     if decision.red_flag_id is not None:
         return decision

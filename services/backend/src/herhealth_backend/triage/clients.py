@@ -162,11 +162,9 @@ class OpenRouterReasoningClient:
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
     ) -> TriageDecision:
+        system_content = f"{system_prompt}\n\n{_render_context(context)}{_JSON_SHAPE_INSTRUCTION}"
         messages = [
-            {
-                "role": "system",
-                "content": f"{system_prompt}\n\n{_render_context(context)}{_JSON_SHAPE_INSTRUCTION}",
-            },
+            {"role": "system", "content": system_content},
             *({"role": m.role, "content": m.content} for m in history),
         ]
         body = {

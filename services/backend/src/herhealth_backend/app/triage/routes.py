@@ -58,7 +58,7 @@ class TriageTurnRequest(BaseModel):
 async def triage_turn(
     request: TriageTurnRequest,
     http_request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),  # noqa: B008
 ) -> dict[str, Any]:
     """Load (or start) a session, run one turn, persist it, return it.
 
@@ -123,7 +123,9 @@ async def triage_turn(
             # in testing (2026-09-01). Upstream's fault, never a bare 500.
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"reasoning model returned a decision that failed schema validation: {error}",
+                detail=(
+                    f"reasoning model returned a decision that failed schema validation: {error}"
+                ),
             ) from error
         except ClosedVocabularyViolation as error:
             raise HTTPException(
