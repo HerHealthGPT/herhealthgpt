@@ -57,7 +57,7 @@ def read_access_token(secret: str, token: str) -> str:
     or older than ACCESS_TOKEN_TTL.
     """
     try:
-        user_id = _serializer(secret).loads(token, max_age=ACCESS_TOKEN_TTL.total_seconds())
+        user_id = _serializer(secret).loads(token, max_age=int(ACCESS_TOKEN_TTL.total_seconds()))
     except BadSignature as exc:
         raise InvalidAccessToken() from exc
     return str(user_id)

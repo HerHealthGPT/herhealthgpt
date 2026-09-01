@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from herhealth_backend.app.accounts.errors import InvalidSession
@@ -88,7 +88,7 @@ async def refresh_session(session: AsyncSession, secret: str, raw_refresh_token:
     return issue_access_token(secret, user_id=str(row.user_id))
 
 
-async def _revoke(session: AsyncSession, *predicates: object) -> None:
+async def _revoke(session: AsyncSession, *predicates: ColumnElement[bool]) -> None:
     await session.execute(
         update(Session).where(*predicates).values(revoked_at=datetime.now(UTC))
     )
