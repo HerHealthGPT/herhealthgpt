@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+import pytest
 import pytest_asyncio
 from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.knowledge import ActionCode
@@ -24,6 +25,7 @@ from conftest import RecordingEmailSender
 from herhealth_backend.app import Database, create_app
 from herhealth_backend.app.accounts.google_identity import UnconfiguredGoogleTokenVerifier
 from herhealth_backend.triage.agent import Message, ScriptedReasoningClient, TriageAgent
+from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient
 
 REPO = Path(__file__).resolve().parents[4]
 KNOWLEDGE = REPO / "knowledge"
@@ -241,12 +243,11 @@ async def test_signed_out_is_unauthorized(triage_client: AsyncClient) -> None:
     assert response.status_code == 401
 
 
-async def test_unconfigured_triage_is_unavailable(database_url: str) -> None:
-    """No ``triage_agent`` passed to ``create_app`` at all — simulating a
-    deployment with ``OPENROUTER_API_KEY`` unset, the same state
-    ``_build_triage_agent`` in app/main.py produces (returns ``None``) when
-    that variable is absent.
-    """
+async def test_unconfigured_triage_is_unavailable(
+    database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``HERHEALTH_TRIAGE_MODE=off`` — triage routes return 503."""
+    monkeypatch.setenv("HERHEALTH_TRIAGE_MODE", "off")
     database = Database(database_url)
     app = create_app(
         database=database,
@@ -264,3 +265,111 @@ async def test_unconfigured_triage_is_unavailable(database_url: str) -> None:
     await database.dispose()
 
     assert response.status_code == 503
+
+
+async def test_demo_mode_triage_works_without_openrouter(database_url: str) -> None:
+    """HERHEALTH_TRIAGE_MODE=demo wires offline clients — the local-MVP path."""
+    base = load_knowledge_base(KNOWLEDGE)
+    agent = TriageAgent(
+        base=base,
+        reasoning=MvpDemoReasoningClient(),
+        retrieval=StaticRetrievalClient(),
+    )
+
+    async for client in _build_client(database_url, agent):
+        await _register_and_sign_in(client, "triage-demo@example.com")
+        opening = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "My periods have been irregular for months."},
+        )
+        assert opening.status_code == 200, opening.text
+        assert opening.json()["decision"]["type"] == "ask"
+        session_id = opening.json()["session_id"]
+
+        follow_up = await client.post(
+            "/triage/turn",
+            json={"session_id": session_id, "message": "No, I am not pregnant."},
+        )
+        assert follow_up.status_code == 200, follow_up.text
+        assert follow_up.json()["decision"]["type"] == "conclude"
+
+
+async def test_demo_mode_escalates_persistent_bleeding(database_url: str) -> None:
+    base = load_knowledge_base(KNOWLEDGE)
+    agent = TriageAgent(
+        base=base,
+        reasoning=MvpDemoReasoningClient(),
+        retrieval=StaticRetrievalClient(),
+    )
+
+    async for client in _build_client(database_url, agent):
+        await _register_and_sign_in(client, "triage-bleeding@example.com")
+        opening = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "The bleeding does not stop."},
+        )
+        assert opening.status_code == 200, opening.text
+        assert opening.json()["decision"]["type"] == "ask"
+        assert "heavy" in opening.json()["decision"]["question_text"].lower()
+        session_id = opening.json()["session_id"]
+
+        follow_up = await client.post(
+            "/triage/turn",
+            json={"session_id": session_id, "message": "I am soaking through pads every hour."},
+        )
+        assert follow_up.status_code == 200, follow_up.text
+        body = follow_up.json()["decision"]
+        assert body["type"] == "conclude"
+        assert body["action_code"] == "URGENT_SAME_DAY"
+        assert body["matching_conditions"] == []
+    async for client in _build_client(database_url, _scripted_agent(_A_CONCLUDE_DECISION)):
+        await _register_and_sign_in(client, "triage-list@example.com")
+        opening = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "I have had irregular periods for 3 months."},
+        )
+        assert opening.status_code == 200, opening.text
+
+        response = await client.get("/triage/sessions")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["status"] == "concluded"
+    assert "irregular periods" in body[0]["preview"]
+
+
+async def test_get_session_returns_transcript(database_url: str) -> None:
+    async for client in _build_client(database_url, _scripted_agent(_A_CONCLUDE_DECISION)):
+        await _register_and_sign_in(client, "triage-get@example.com")
+        opening = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "I have had irregular periods for 3 months."},
+        )
+        session_id = opening.json()["session_id"]
+
+        response = await client.get(f"/triage/sessions/{session_id}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["id"] == session_id
+    assert len(body["messages"]) == 2
+    assert body["messages"][0]["role"] == "user"
+    assert body["messages"][1]["role"] == "assistant"
+    assert body["messages"][1]["decision"]["type"] == "conclude"
+
+
+async def test_get_someone_elses_session_is_not_found(database_url: str) -> None:
+    async for client in _build_client(database_url, _scripted_agent(_A_CONCLUDE_DECISION)):
+        await _register_and_sign_in(client, "triage-get-owner@example.com")
+        opening = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "I have had irregular periods for 3 months."},
+        )
+        session_id = opening.json()["session_id"]
+        await client.post("/accounts/sign-out")
+
+        await _register_and_sign_in(client, "triage-get-intruder@example.com")
+        response = await client.get(f"/triage/sessions/{session_id}")
+
+    assert response.status_code == 404

@@ -19,6 +19,7 @@ from __future__ import annotations
 from fastapi import Response
 
 from herhealth_backend.app.accounts.session_policy import ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL
+from herhealth_backend.app.config import cookie_secure
 
 __all__ = ["ACCESS_TOKEN_COOKIE", "REFRESH_TOKEN_COOKIE", "set_auth_cookies", "clear_auth_cookies"]
 
@@ -42,7 +43,7 @@ def set_auth_cookies(
         access_token,
         max_age=int(ACCESS_TOKEN_TTL.total_seconds()),
         httponly=True,
-        secure=True,
+        secure=cookie_secure(),
         samesite="lax",
         path="/",
     )
@@ -52,7 +53,7 @@ def set_auth_cookies(
             refresh_token,
             max_age=int(REFRESH_TOKEN_TTL.total_seconds()),
             httponly=True,
-            secure=True,
+            secure=cookie_secure(),
             samesite="lax",
             path=_REFRESH_TOKEN_COOKIE_PATH,
         )
@@ -60,5 +61,6 @@ def set_auth_cookies(
 
 def clear_auth_cookies(response: Response) -> None:
     """Remove both auth cookies, on sign-out and sign-out-everywhere."""
-    response.delete_cookie(ACCESS_TOKEN_COOKIE, path="/")
-    response.delete_cookie(REFRESH_TOKEN_COOKIE, path=_REFRESH_TOKEN_COOKIE_PATH)
+    secure = cookie_secure()
+    response.delete_cookie(ACCESS_TOKEN_COOKIE, path="/", secure=secure)
+    response.delete_cookie(REFRESH_TOKEN_COOKIE, path=_REFRESH_TOKEN_COOKIE_PATH, secure=secure)

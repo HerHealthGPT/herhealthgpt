@@ -179,8 +179,12 @@ class OpenRouterReasoningClient:
         }
         response = self._client.post(_OPENROUTER_URL, headers=self._headers, json=body)
         response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        return TriageDecision.model_validate(json.loads(content))
+        try:
+            payload = response.json()
+            content = payload["choices"][0]["message"]["content"]
+            return TriageDecision.model_validate(json.loads(content))
+        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
+            raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
 
 
 class HttpRetrievalClient:
