@@ -80,7 +80,14 @@ def _render_password_reset(code: str) -> _RenderedEmail:
 class ConsoleEmailSender:
     """Logs the code and writes a styled HTML preview. Every environment's default."""
 
-    async def _deliver(self, *, to: str, code: str, rendered: _RenderedEmail, log_label: str) -> None:
+    async def _deliver(
+        self,
+        *,
+        to: str,
+        code: str,
+        rendered: _RenderedEmail,
+        log_label: str,
+    ) -> None:
         preview_path = write_email_preview(kind=rendered.preview_kind, html=rendered.body_html)
         _logger.info("%s for %s: %s", log_label, to, code)
         _logger.info("styled email preview written to %s", preview_path)

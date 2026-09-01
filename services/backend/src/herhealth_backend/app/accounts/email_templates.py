@@ -18,7 +18,38 @@ BRAND_BORDER = "#ead9de"
 BRAND_ACCENT_BG = "#f8eff2"
 
 _FONT_STACK = (
-    "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
+    "Helvetica, Arial, sans-serif"
+)
+
+_BODY_STYLE = (
+    "margin:0;padding:0;"
+    f"background-color:{BRAND_BACKGROUND};"
+    f"font-family:{_FONT_STACK};"
+    f"color:{BRAND_TEXT};"
+)
+_OUTER_TABLE_STYLE = f"background-color:{BRAND_BACKGROUND};padding:32px 16px;"
+_CARD_TABLE_STYLE = (
+    f"max-width:520px;background-color:{BRAND_CARD};"
+    f"border:1px solid {BRAND_BORDER};"
+    "border-radius:12px;overflow:hidden;"
+)
+_HEADER_GRADIENT = f"linear-gradient(180deg, {BRAND_ACCENT_BG} 0%, {BRAND_CARD} 100%)"
+_HEADER_CELL_STYLE = f"padding:28px 28px 20px;background:{_HEADER_GRADIENT};"
+_BRAND_TITLE_STYLE = (
+    "margin:0;font-size:22px;font-weight:700;line-height:1.3;"
+    f"color:{BRAND_TEXT};"
+)
+_HEADING_STYLE = (
+    "margin:0 0 12px;font-size:20px;font-weight:600;line-height:1.3;"
+    f"color:{BRAND_TEXT};"
+)
+_CODE_SPAN_STYLE = (
+    "display:inline-block;padding:14px 28px;font-size:28px;font-weight:700;"
+    "letter-spacing:0.2em;"
+    f"color:{BRAND_PRIMARY};background-color:{BRAND_ACCENT_BG};"
+    f"border:1px solid {BRAND_BORDER};border-radius:10px;"
+    "font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;"
 )
 
 
@@ -31,14 +62,16 @@ def _wrap_email(*, title: str, body_html: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{safe_title}</title>
 </head>
-<body style="margin:0;padding:0;background-color:{BRAND_BACKGROUND};font-family:{_FONT_STACK};color:{BRAND_TEXT};">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:{BRAND_BACKGROUND};padding:32px 16px;">
+<body style="{_BODY_STYLE}">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+         style="{_OUTER_TABLE_STYLE}">
     <tr>
       <td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background-color:{BRAND_CARD};border:1px solid {BRAND_BORDER};border-radius:12px;overflow:hidden;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+               style="{_CARD_TABLE_STYLE}">
           <tr>
-            <td style="padding:28px 28px 20px;background:linear-gradient(180deg, {BRAND_ACCENT_BG} 0%, {BRAND_CARD} 100%);">
-              <p style="margin:0;font-size:22px;font-weight:700;line-height:1.3;color:{BRAND_TEXT};">
+            <td style="{_HEADER_CELL_STYLE}">
+              <p style="{_BRAND_TITLE_STYLE}">
                 HerHealth<span style="color:{BRAND_PRIMARY};">GPT</span>
               </p>
             </td>
@@ -74,7 +107,7 @@ def _code_block(code: str) -> str:
         Enter this code in the app:
       </p>
       <p style="margin:0 0 20px;text-align:center;">
-        <span style="display:inline-block;padding:14px 28px;font-size:28px;font-weight:700;letter-spacing:0.2em;color:{BRAND_PRIMARY};background-color:{BRAND_ACCENT_BG};border:1px solid {BRAND_BORDER};border-radius:10px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+        <span style="{_CODE_SPAN_STYLE}">
           {safe_code}
         </span>
       </p>"""
@@ -86,7 +119,7 @@ def verification_email(*, code: str, minutes: int) -> tuple[str, str]:
         f"It expires in {minutes} minutes. If you did not sign up, you can ignore this email."
     )
     body = f"""
-      <h1 style="margin:0 0 12px;font-size:20px;font-weight:600;line-height:1.3;color:{BRAND_TEXT};">
+      <h1 style="{_HEADING_STYLE}">
         Verify your email
       </h1>
       <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:{BRAND_MUTED};">
@@ -109,7 +142,7 @@ def password_reset_email(*, code: str, minutes: int) -> tuple[str, str]:
         "Your password has not changed."
     )
     body = f"""
-      <h1 style="margin:0 0 12px;font-size:20px;font-weight:600;line-height:1.3;color:{BRAND_TEXT};">
+      <h1 style="{_HEADING_STYLE}">
         Reset your password
       </h1>
       <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:{BRAND_MUTED};">
