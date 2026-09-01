@@ -44,10 +44,21 @@ class PassageType(StrEnum):
     ``herhealth_data.retrieval.passages.evidence_statement_passages``) and
     carries the row's structured fields alongside its text, so a citation can
     be checked against the knowledge base rather than only read.
+
+    A ``LIVE_FALLBACK`` passage was fetched live, on demand, from an approved
+    domain, because the reviewed index returned nothing usable for the query —
+    see docs/adr/0012-openrouter-reasoning-and-guarded-web-fallback.md. It is
+    never persisted into the served index and never backs a ``strong``/``weak``
+    evidence claim; it exists only so a decision has something real to cite
+    instead of nothing. Callers must treat a decision grounded only in
+    ``LIVE_FALLBACK`` passages as lower-provenance than one grounded in a
+    reviewed passage — see that ADR's §3, rule 4 (it may not resolve to
+    ``SELF_CARE``).
     """
 
     SOURCE_PASSAGE = "source_passage"
     EVIDENCE_STATEMENT = "evidence_statement"
+    LIVE_FALLBACK = "live_fallback"
 
 
 class RetrievedPassage(BaseModel):

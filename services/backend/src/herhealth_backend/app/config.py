@@ -11,6 +11,7 @@ anyone noticing. Tests never read this; they pass a container URL straight to
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 __all__ = [
     "DATABASE_URL_ENV",
@@ -22,6 +23,12 @@ __all__ = [
     "email_sender_kind",
     "GOOGLE_CLIENT_ID_ENV",
     "google_client_id",
+    "KNOWLEDGE_DIR_ENV",
+    "knowledge_dir",
+    "MODEL_SERVICE_URL_ENV",
+    "model_service_url",
+    "OPENROUTER_API_KEY_ENV",
+    "openrouter_api_key",
 ]
 
 #: The one environment variable the process reads to find its database. Namespaced
@@ -105,6 +112,49 @@ def email_sender_kind() -> str:
     ``database_url()``'s string.
     """
     return os.environ.get(EMAIL_SENDER_ENV, "console")
+
+
+#: Where the seven knowledge files live. Same variable name the CLI
+#: (herhealth_backend.triage.cli) and the Makefile's `triage`/`eval` targets
+#: already use — one variable, so a dev box that has it set for the CLI has
+#: it set for the API too.
+KNOWLEDGE_DIR_ENV = "HERHEALTH_KNOWLEDGE_DIR"
+
+#: services/model's base URL — see docs/adr/0012. Defaults to that service's
+#: own default port, so a dev box running both processes needs nothing set.
+MODEL_SERVICE_URL_ENV = "HERHEALTH_MODEL_SERVICE_URL"
+
+#: OpenRouterReasoningClient's key (triage/clients.py, ADR 0012). Optional at
+#: the app level, the same way GOOGLE_CLIENT_ID_ENV is: triage is one feature
+#: of this backend, not the whole of it, so its absence degrades one route
+#: to "not configured" rather than stopping the app from booting at all.
+OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
+
+
+def knowledge_dir() -> Path:
+    """Where to load the knowledge base from. Defaults to ``knowledge/``
+    resolved from the current working directory, matching every Makefile
+    target that runs this process from the repo root.
+    """
+    return Path(os.environ.get(KNOWLEDGE_DIR_ENV, "knowledge"))
+
+
+def model_service_url() -> str:
+    """Base URL for ``services/model`` (see docs/adr/0012). No required-value
+    check like :func:`database_url`'s: an unreachable url fails at the first
+    request, loudly, from ``HttpRetrievalClient`` — there is no silent wrong
+    default to guard against the way a database URL has one.
+    """
+    return os.environ.get(MODEL_SERVICE_URL_ENV, "http://127.0.0.1:8001")
+
+
+def openrouter_api_key() -> str | None:
+    """The OpenRouter API key, or ``None`` if triage is not configured on
+    this deployment. Unlike :func:`database_url` and :func:`session_secret`,
+    absence is not an error — see ``app/triage/routes.py``, which returns a
+    clear 503 instead of failing app start-up.
+    """
+    return os.environ.get(OPENROUTER_API_KEY_ENV) or None
 
 
 def google_client_id() -> str | None:

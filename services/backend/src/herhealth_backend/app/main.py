@@ -20,6 +20,7 @@ from contextlib import asynccontextmanager
 from anyio import to_thread
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from herhealth_contracts.loading import load_knowledge_base
 from sqlalchemy.exc import SQLAlchemyError
 
 from herhealth_backend.app.accounts.email_sender import (
@@ -37,8 +38,14 @@ from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import EMAIL_SENDER_ENV, database_url
 from herhealth_backend.app.config import email_sender_kind as configured_email_sender_kind
 from herhealth_backend.app.config import google_client_id as configured_google_client_id
+from herhealth_backend.app.config import knowledge_dir as configured_knowledge_dir
+from herhealth_backend.app.config import model_service_url as configured_model_service_url
+from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.db import Database
+from herhealth_backend.app.triage.routes import router as triage_router
+from herhealth_backend.triage.agent import TriageAgent
+from herhealth_backend.triage.clients import HttpRetrievalClient, OpenRouterReasoningClient
 
 __all__ = ["create_app"]
 
@@ -58,6 +65,31 @@ def _build_email_sender() -> EmailSender:
     raise RuntimeError(f"{EMAIL_SENDER_ENV}={kind!r} is not recognised. Use 'console' or 'ses'.")
 
 
+def _build_triage_agent() -> TriageAgent | None:
+    """Construct the triage agent if OpenRouter is configured, else ``None``.
+
+    Absence is not an error, the same way an unconfigured Google verifier is
+    not — see :func:`_build_google_verifier`. Triage is one feature of this
+    backend, not the whole of it: a deployment with no
+    ``OPENROUTER_API_KEY`` still boots, and ``app/triage/routes.py`` returns
+    a clear 503 rather than the app failing to start.
+
+    Loads ``knowledge/`` from disk synchronously. Small, local YAML files —
+    the same order of cost as any other config read in this module — so this
+    needs no ``to_thread`` wrapper, unlike :func:`_build_email_sender`'s real
+    network-capable client construction.
+    """
+    api_key = configured_openrouter_api_key()
+    if api_key is None:
+        return None
+    base = load_knowledge_base(configured_knowledge_dir())
+    return TriageAgent(
+        base=base,
+        reasoning=OpenRouterReasoningClient(api_key=api_key),
+        retrieval=HttpRetrievalClient(base_url=configured_model_service_url()),
+    )
+
+
 def _build_google_verifier() -> GoogleTokenVerifier:
     """Construct the configured GoogleTokenVerifier. Unlike ``_build_email_sender``,
     there is no eagerly-blocking client to build here — ``GoogleOAuthTokenVerifier``
@@ -75,6 +107,7 @@ def create_app(
     session_secret: str | None = None,
     email_sender: EmailSender | None = None,
     google_verifier: GoogleTokenVerifier | None = None,
+    triage_agent: TriageAgent | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -91,7 +124,11 @@ def create_app(
     ``app/accounts/google_identity.py``) defaults to a real
     ``GoogleOAuthTokenVerifier`` when ``HERHEALTH_GOOGLE_CLIENT_ID`` is set,
     or an ``UnconfiguredGoogleTokenVerifier`` otherwise — Google sign-in is
-    optional, so its absence never stops the app from booting.
+    optional, so its absence never stops the app from booting. ``triage_agent``
+    (see ``app/triage/routes.py``) defaults to a real ``TriageAgent`` wired to
+    OpenRouter and ``services/model`` when ``OPENROUTER_API_KEY`` is set, or
+    ``None`` otherwise — triage is likewise optional; ``POST /triage/turn``
+    returns 503 rather than the app refusing to start.
     """
 
     @asynccontextmanager
@@ -105,6 +142,8 @@ def create_app(
             app.state.email_sender = await to_thread.run_sync(_build_email_sender)
         if getattr(app.state, "google_verifier", None) is None:
             app.state.google_verifier = _build_google_verifier()
+        if getattr(app.state, "triage_agent", None) is None:
+            app.state.triage_agent = _build_triage_agent()
         try:
             yield
         finally:
@@ -120,8 +159,11 @@ def create_app(
         app.state.email_sender = email_sender
     if google_verifier is not None:
         app.state.google_verifier = google_verifier
+    if triage_agent is not None:
+        app.state.triage_agent = triage_agent
     register_error_handlers(app)
     app.include_router(accounts_router)
+    app.include_router(triage_router)
 
     @app.get("/health")
     async def health(request: Request) -> JSONResponse:

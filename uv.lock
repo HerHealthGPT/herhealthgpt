@@ -12,6 +12,7 @@ members = [
     "herhealth-backend",
     "herhealth-contracts",
     "herhealth-data",
+    "herhealth-model",
     "herhealthgpt",
 ]
 
@@ -701,6 +702,7 @@ api = [
     { name = "email-validator" },
     { name = "fastapi" },
     { name = "google-auth" },
+    { name = "httpx" },
     { name = "itsdangerous" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -716,6 +718,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },
     { name = "google-auth", marker = "extra == 'api'", specifier = ">=2.30" },
     { name = "herhealth-contracts", editable = "packages/contracts" },
+    { name = "httpx", marker = "extra == 'api'", specifier = ">=0.27" },
     { name = "itsdangerous", marker = "extra == 'api'", specifier = ">=2.2" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'api'", specifier = ">=3.2" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -776,6 +779,25 @@ requires-dist = [
 provides-extras = ["ingest", "retrieval"]
 
 [[package]]
+name = "herhealth-model"
+version = "0.1.0"
+source = { editable = "services/model" }
+dependencies = [
+    { name = "fastapi" },
+    { name = "herhealth-contracts" },
+    { name = "herhealth-data", extra = ["ingest", "retrieval"] },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "herhealth-contracts", editable = "packages/contracts" },
+    { name = "herhealth-data", extras = ["retrieval", "ingest"], editable = "services/data" },
+    { name = "uvicorn", specifier = ">=0.30" },
+]
+
+[[package]]
 name = "herhealthgpt"
 version = "0.0.0"
 source = { virtual = "." }
@@ -783,6 +805,7 @@ dependencies = [
     { name = "herhealth-backend" },
     { name = "herhealth-contracts" },
     { name = "herhealth-data" },
+    { name = "herhealth-model" },
 ]
 
 [package.optional-dependencies]
@@ -816,6 +839,7 @@ requires-dist = [
     { name = "herhealth-data", editable = "services/data" },
     { name = "herhealth-data", extras = ["ingest"], marker = "extra == 'ingest'", editable = "services/data" },
     { name = "herhealth-data", extras = ["retrieval"], marker = "extra == 'retrieval'", editable = "services/data" },
+    { name = "herhealth-model", editable = "services/model" },
 ]
 provides-extras = ["ingest", "retrieval", "api"]
 

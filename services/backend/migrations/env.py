@@ -7,6 +7,11 @@ backs both, so the same URL works here and in the app.
 
 Users and credentials arrived with #8, sessions and sign-in failures with #9,
 email verification codes and sends with #10, Google credentials with #11.
+Triage's consultation sessions and messages (issue #20 item 6) arrived as a
+second, separate declarative base — CONTEXT-MAP.md's Triage/Accounts split,
+carried into the ORM. Autogenerate needs to see both, so ``target_metadata``
+below is a list rather than one module's ``Base.metadata``; Alembic accepts
+either.
 """
 
 from __future__ import annotations
@@ -17,7 +22,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-from herhealth_backend.app.accounts.models import Base
+from herhealth_backend.app.accounts.models import Base as AccountsBase
+from herhealth_backend.app.triage.models import Base as TriageBase
 
 config = context.config
 
@@ -32,7 +38,7 @@ if config.config_file_name is not None:
     # for the rest of the session.
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-target_metadata = Base.metadata
+target_metadata = [AccountsBase.metadata, TriageBase.metadata]
 
 
 def _database_url() -> str:
