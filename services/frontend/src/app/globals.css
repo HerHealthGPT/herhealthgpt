@@ -1,26 +1,151 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-urgency-emergency-foreground: var(--urgency-emergency-foreground);
+  --color-urgency-emergency: var(--urgency-emergency);
+  --color-urgency-urgent-foreground: var(--urgency-urgent-foreground);
+  --color-urgency-urgent: var(--urgency-urgent);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/*
+ * Brand primary: deep rose/berry (#9F1239) — warm and professional, not alarm-red.
+ * Urgency tokens (--urgency-*): saturated reds for EMERGENCY / URGENT_SAME_DAY
+ * result screens only. Never use brand primary for clinical urgency UI.
+ * --destructive: form validation and account errors, not triage urgency.
+ */
+:root {
+  --background: oklch(0.99 0.006 15);
+  --foreground: oklch(0.24 0.02 280);
+  --card: oklch(1 0.004 15);
+  --card-foreground: oklch(0.24 0.02 280);
+  --popover: oklch(1 0.004 15);
+  --popover-foreground: oklch(0.24 0.02 280);
+  /* #9F1239 */
+  --primary: oklch(0.441 0.169 13.5);
+  --primary-foreground: oklch(0.99 0.004 15);
+  --secondary: oklch(0.96 0.012 15);
+  --secondary-foreground: oklch(0.38 0.04 13.5);
+  --muted: oklch(0.965 0.01 15);
+  --muted-foreground: oklch(0.48 0.02 280);
+  --accent: oklch(0.94 0.025 15);
+  --accent-foreground: oklch(0.38 0.06 13.5);
+  /* Form/account errors — distinct from triage urgency reds */
+  --destructive: oklch(0.5 0.14 20);
+  --border: oklch(0.91 0.012 15);
+  --input: oklch(0.91 0.012 15);
+  --ring: oklch(0.441 0.169 13.5);
+  /* Triage urgency — result screens only */
+  --urgency-emergency: oklch(0.55 0.245 27);
+  --urgency-emergency-foreground: oklch(0.99 0.004 15);
+  --urgency-urgent: oklch(0.58 0.21 35);
+  --urgency-urgent-foreground: oklch(0.99 0.004 15);
+  --chart-1: oklch(0.441 0.169 13.5);
+  --chart-2: oklch(0.58 0.21 35);
+  --chart-3: oklch(0.55 0.245 27);
+  --chart-4: oklch(0.65 0.08 200);
+  --chart-5: oklch(0.5 0.08 280);
+  --radius: 0.75rem;
+  --sidebar: oklch(0.98 0.008 15);
+  --sidebar-foreground: oklch(0.24 0.02 280);
+  --sidebar-primary: oklch(0.441 0.169 13.5);
+  --sidebar-primary-foreground: oklch(0.99 0.004 15);
+  --sidebar-accent: oklch(0.96 0.012 15);
+  --sidebar-accent-foreground: oklch(0.38 0.04 13.5);
+  --sidebar-border: oklch(0.91 0.012 15);
+  --sidebar-ring: oklch(0.441 0.169 13.5);
+}
+
+.dark {
+  --background: oklch(0.16 0.015 280);
+  --foreground: oklch(0.97 0.006 15);
+  --card: oklch(0.2 0.018 280);
+  --card-foreground: oklch(0.97 0.006 15);
+  --popover: oklch(0.2 0.018 280);
+  --popover-foreground: oklch(0.97 0.006 15);
+  --primary: oklch(0.62 0.16 13.5);
+  --primary-foreground: oklch(0.16 0.015 280);
+  --secondary: oklch(0.26 0.02 280);
+  --secondary-foreground: oklch(0.97 0.006 15);
+  --muted: oklch(0.26 0.02 280);
+  --muted-foreground: oklch(0.7 0.02 280);
+  --accent: oklch(0.28 0.03 13.5);
+  --accent-foreground: oklch(0.97 0.006 15);
+  --destructive: oklch(0.65 0.16 20);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.62 0.16 13.5);
+  --urgency-emergency: oklch(0.62 0.24 27);
+  --urgency-emergency-foreground: oklch(0.99 0.004 15);
+  --urgency-urgent: oklch(0.65 0.2 35);
+  --urgency-urgent-foreground: oklch(0.99 0.004 15);
+  --chart-1: oklch(0.62 0.16 13.5);
+  --chart-2: oklch(0.65 0.2 35);
+  --chart-3: oklch(0.62 0.24 27);
+  --chart-4: oklch(0.65 0.08 200);
+  --chart-5: oklch(0.55 0.08 280);
+  --sidebar: oklch(0.2 0.018 280);
+  --sidebar-foreground: oklch(0.97 0.006 15);
+  --sidebar-primary: oklch(0.62 0.16 13.5);
+  --sidebar-primary-foreground: oklch(0.16 0.015 280);
+  --sidebar-accent: oklch(0.26 0.02 280);
+  --sidebar-accent-foreground: oklch(0.97 0.006 15);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.62 0.16 13.5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
 }

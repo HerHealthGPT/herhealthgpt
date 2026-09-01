@@ -24,18 +24,28 @@ async def test_console_email_sender_logs_the_code(caplog: pytest.LogCaptureFixtu
 
     assert "woman@example.com" in caplog.text
     assert "123456" in caplog.text
+    assert "styled email preview written to" in caplog.text
 
 
-async def test_console_email_sender_logs_the_password_reset_code(
-    caplog: pytest.LogCaptureFixture,
+async def test_console_email_sender_writes_styled_password_reset_preview(
+    caplog: pytest.LogCaptureFixture, tmp_path: pytest.TempPathFactory
 ) -> None:
     sender = ConsoleEmailSender()
 
-    with caplog.at_level("INFO"):
+    with (
+        caplog.at_level("INFO"),
+        patch(
+            "herhealth_backend.app.accounts.email_sender.write_email_preview",
+        ) as mock_write,
+    ):
+        mock_write.return_value = tmp_path / "latest-password-reset.html"
         await sender.send_password_reset_code(to="woman@example.com", code="654321")
 
     assert "woman@example.com" in caplog.text
     assert "654321" in caplog.text
+    mock_write.assert_called_once()
+    assert mock_write.call_args.kwargs["kind"] == "password-reset"
+    assert "#9F1239" in mock_write.call_args.kwargs["html"]
 
 
 async def test_ses_email_sender_calls_send_email_with_the_code() -> None:
@@ -53,6 +63,8 @@ async def test_ses_email_sender_calls_send_email_with_the_code() -> None:
     assert call_kwargs["Destination"] == {"ToAddresses": ["woman@example.com"]}
     assert call_kwargs["ReplyToAddresses"] == [SES_REPLY_TO_ADDRESS]
     assert "123456" in call_kwargs["Message"]["Body"]["Text"]["Data"]
+    assert "123456" in call_kwargs["Message"]["Body"]["Html"]["Data"]
+    assert "#9F1239" in call_kwargs["Message"]["Body"]["Html"]["Data"]
 
 
 async def test_ses_email_sender_calls_send_email_with_the_password_reset_code() -> None:
@@ -70,6 +82,8 @@ async def test_ses_email_sender_calls_send_email_with_the_password_reset_code() 
     assert call_kwargs["Destination"] == {"ToAddresses": ["woman@example.com"]}
     assert call_kwargs["ReplyToAddresses"] == [SES_REPLY_TO_ADDRESS]
     assert "654321" in call_kwargs["Message"]["Body"]["Text"]["Data"]
+    assert "654321" in call_kwargs["Message"]["Body"]["Html"]["Data"]
+    assert "#9F1239" in call_kwargs["Message"]["Body"]["Html"]["Data"]
 
 
 def test_build_email_sender_defaults_to_console(monkeypatch: pytest.MonkeyPatch) -> None:

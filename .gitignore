@@ -1,7 +1,9 @@
 # Immutable fetched source content and generated artefacts.
 # Both are reproducible from `make fetch build`; neither belongs in git.
 raw/
+# Build artefacts
 build/
+services/backend/var/
 
 # Secrets. infra/envs/*.env.example is tracked; the real .env files are not.
 .env
