@@ -3,9 +3,8 @@
 Split into separate tables rather than columns on one, because a user has zero
 or more ways to prove herself and the split is what makes #11's linking rule
 expressible: "the same email address" must never by itself be able to mean
-"the same person." ``CredentialKind`` has one member today; a Google
-credential (#11) is a new row and a migration adding its own columns, never a
-change to what a user *is*.
+"the same person." ``CredentialKind.GOOGLE`` (#11) is a new row and a
+migration adding its own columns, never a change to what a user *is*.
 
 ``Session`` and ``SignInFailure`` arrived with #9. Neither stores a secret
 directly — ``Session.refresh_token_hash`` is a digest, the same reasoning
@@ -58,6 +57,7 @@ class CredentialKind(StrEnum):
     """Every way a user may be able to prove herself. Nothing outside this set."""
 
     PASSWORD = "password"
+    GOOGLE = "google"
 
 
 class User(Base):
@@ -90,13 +90,22 @@ class User(Base):
 class Credential(Base):
     __tablename__ = "credentials"
     __table_args__ = (
-        # At most one credential of a given kind per user — one password, later
-        # one Google identity. Revisit if a kind ever needs more than one.
+        # At most one credential of a given kind per user — one password, one
+        # Google identity. Revisit if a kind ever needs more than one.
         UniqueConstraint("user_id", "kind", name="uq_credentials_user_id_kind"),
-        CheckConstraint("kind IN ('password')", name="ck_credentials_kind"),
+        # A Google subject identifies at most one credential account-wide —
+        # unlike password_hash, this is not per-user data, it is the join key
+        # #11 uses instead of email (email_verified.py's docstring on why:
+        # addresses change, Google's `sub` does not).
+        UniqueConstraint("google_subject", name="uq_credentials_google_subject"),
+        CheckConstraint("kind IN ('password', 'google')", name="ck_credentials_kind"),
         CheckConstraint(
             "(kind != 'password') OR (password_hash IS NOT NULL)",
             name="ck_credentials_password_hash_required",
+        ),
+        CheckConstraint(
+            "(kind != 'google') OR (google_subject IS NOT NULL)",
+            name="ck_credentials_google_subject_required",
         ),
     )
 
@@ -110,6 +119,11 @@ class Credential(Base):
     #: The argon2id hash from herhealth_backend.app.accounts.passwords. Only
     #: set (and only meaningful) when kind is PASSWORD.
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Google's stable `sub` claim. Only set (and only meaningful) when kind
+    #: is GOOGLE — see app/accounts/google_identity.py. Unique across every
+    #: user, not just this one, because a Google identity can only ever
+    #: prove one person.
+    google_subject: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )

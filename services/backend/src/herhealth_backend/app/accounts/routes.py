@@ -29,6 +29,8 @@ from herhealth_backend.app.accounts.email_verification import (
     verify_email,
 )
 from herhealth_backend.app.accounts.errors import InvalidSession
+from herhealth_backend.app.accounts.google_identity import GoogleTokenVerifier
+from herhealth_backend.app.accounts.google_sign_in import sign_in_with_google
 from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.registration import register_user
 from herhealth_backend.app.accounts.sessions import (
@@ -87,6 +89,12 @@ class ResendVerificationRequest(BaseModel):
     email: EmailStr
 
 
+class GoogleSignInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id_token: str
+
+
 class UserSummary(BaseModel):
     id: uuid.UUID
     email: str
@@ -127,6 +135,22 @@ async def sign_in(payload: SignInRequest, request: Request, response: Response) 
     async with database.session() as session:
         user, access_token, refresh_token = await sign_in_user(
             session, secret, email=payload.email, password=payload.password
+        )
+
+    set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)
+    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+
+
+@router.post("/sign-in/google", response_model=UserSummary)
+async def sign_in_google(
+    payload: GoogleSignInRequest, request: Request, response: Response
+) -> UserSummary:
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    google_verifier: GoogleTokenVerifier = request.app.state.google_verifier
+    async with database.session() as session:
+        user, access_token, refresh_token = await sign_in_with_google(
+            session, secret, google_verifier, id_token=payload.id_token
         )
 
     set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)

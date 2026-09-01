@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
-from httpx import AsyncClient, Response
+from httpx import ASGITransport, AsyncClient, Response
 
+from herhealth_backend.app import Database, create_app
+from herhealth_backend.app.accounts.google_identity import (
+    GoogleIdentity,
+    UnconfiguredGoogleTokenVerifier,
+)
 from herhealth_backend.app.accounts.sign_in_throttle import MAX_FAILURES
 from herhealth_backend.app.accounts.verification_send_throttle import MAX_SENDS
 
@@ -369,3 +374,76 @@ async def test_repeated_resend_requests_are_rate_limited(
         "/accounts/verify-email/resend", json={"email": "resend-lockout@example.com"}
     )
     assert locked_out.status_code == 429
+
+
+async def test_sign_in_google_on_an_unknown_address_creates_a_user(
+    client: AsyncClient, google_verifier
+) -> None:
+    google_verifier.identity = GoogleIdentity(
+        sub="route-google-sub-1", email="route-new-google@example.com", email_verified=True
+    )
+
+    response = await client.post("/accounts/sign-in/google", json={"id_token": "whatever"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email"] == "route-new-google@example.com"
+    assert body["email_verified"] is True
+    assert "access_token" in response.cookies
+    assert "refresh_token" in response.cookies
+
+    me = await client.get("/accounts/me")
+    assert me.json()["email"] == "route-new-google@example.com"
+
+
+async def test_sign_in_google_with_an_invalid_token_is_unauthorized(client: AsyncClient) -> None:
+    # The client fixture's google_verifier starts with no identity configured,
+    # so any token is treated as invalid.
+    response = await client.post("/accounts/sign-in/google", json={"id_token": "garbage"})
+
+    assert response.status_code == 401
+
+
+async def test_sign_in_google_without_email_verified_is_refused(
+    client: AsyncClient, google_verifier
+) -> None:
+    """An address that already has an account (verified or not — this one
+    is left unverified by registering and stopping there) must not be
+    touched when Google does not assert it controls the address.
+    """
+    await client.post(
+        "/accounts/register",
+        json={"email": "route-careful@example.com", "password": "correcthorse1"},
+    )
+
+    google_verifier.identity = GoogleIdentity(
+        sub="route-google-sub-2", email="route-careful@example.com", email_verified=False
+    )
+
+    response = await client.post("/accounts/sign-in/google", json={"id_token": "whatever"})
+
+    assert response.status_code == 409
+
+
+async def test_google_sign_in_not_configured_is_service_unavailable(database_url: str) -> None:
+    """A deployment with no ``HERHEALTH_GOOGLE_CLIENT_ID`` set gets an
+    ``UnconfiguredGoogleTokenVerifier`` (see ``main.py``'s ``_build_google_verifier``)
+    rather than the app failing to boot over an optional feature — exercised
+    directly here since httpx's ``ASGITransport`` never runs the app's own
+    lifespan, the same reason the ``client`` fixture always passes every
+    piece of state in explicitly rather than letting the app construct it.
+    """
+    database = Database(database_url)
+    app = create_app(
+        database=database,
+        session_secret="test-only-session-secret-do-not-use",
+        google_verifier=UnconfiguredGoogleTokenVerifier(),
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://test") as unconfigured_client:
+        response = await unconfigured_client.post(
+            "/accounts/sign-in/google", json={"id_token": "whatever"}
+        )
+    await database.dispose()
+
+    assert response.status_code == 503

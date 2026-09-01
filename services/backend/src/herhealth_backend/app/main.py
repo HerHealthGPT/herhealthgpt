@@ -28,9 +28,15 @@ from herhealth_backend.app.accounts.email_sender import (
     SesEmailSender,
 )
 from herhealth_backend.app.accounts.error_handlers import register_error_handlers
+from herhealth_backend.app.accounts.google_identity import (
+    GoogleOAuthTokenVerifier,
+    GoogleTokenVerifier,
+    UnconfiguredGoogleTokenVerifier,
+)
 from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import EMAIL_SENDER_ENV, database_url
 from herhealth_backend.app.config import email_sender_kind as configured_email_sender_kind
+from herhealth_backend.app.config import google_client_id as configured_google_client_id
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.db import Database
 
@@ -52,10 +58,23 @@ def _build_email_sender() -> EmailSender:
     raise RuntimeError(f"{EMAIL_SENDER_ENV}={kind!r} is not recognised. Use 'console' or 'ses'.")
 
 
+def _build_google_verifier() -> GoogleTokenVerifier:
+    """Construct the configured GoogleTokenVerifier. Unlike ``_build_email_sender``,
+    there is no eagerly-blocking client to build here — ``GoogleOAuthTokenVerifier``
+    only does network I/O per call to ``verify``, already offloaded there —
+    so this needs no ``to_thread`` wrapper of its own.
+    """
+    client_id = configured_google_client_id()
+    if client_id is None:
+        return UnconfiguredGoogleTokenVerifier()
+    return GoogleOAuthTokenVerifier(client_id=client_id)
+
+
 def create_app(
     database: Database | None = None,
     session_secret: str | None = None,
     email_sender: EmailSender | None = None,
+    google_verifier: GoogleTokenVerifier | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -68,7 +87,11 @@ def create_app(
     ``email_sender`` (see ``app/accounts/email_sender.py``) defaults to
     whatever ``HERHEALTH_EMAIL_SENDER`` selects
     (:func:`~herhealth_backend.app.config.email_sender_kind`) — ``"console"``
-    (the default) or ``"ses"``, the real sender.
+    (the default) or ``"ses"``, the real sender. ``google_verifier`` (see
+    ``app/accounts/google_identity.py``) defaults to a real
+    ``GoogleOAuthTokenVerifier`` when ``HERHEALTH_GOOGLE_CLIENT_ID`` is set,
+    or an ``UnconfiguredGoogleTokenVerifier`` otherwise — Google sign-in is
+    optional, so its absence never stops the app from booting.
     """
 
     @asynccontextmanager
@@ -80,6 +103,8 @@ def create_app(
             app.state.session_secret = configured_session_secret()
         if getattr(app.state, "email_sender", None) is None:
             app.state.email_sender = await to_thread.run_sync(_build_email_sender)
+        if getattr(app.state, "google_verifier", None) is None:
+            app.state.google_verifier = _build_google_verifier()
         try:
             yield
         finally:
@@ -93,6 +118,8 @@ def create_app(
         app.state.session_secret = session_secret
     if email_sender is not None:
         app.state.email_sender = email_sender
+    if google_verifier is not None:
+        app.state.google_verifier = google_verifier
     register_error_handlers(app)
     app.include_router(accounts_router)
 

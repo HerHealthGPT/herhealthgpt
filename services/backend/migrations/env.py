@@ -6,7 +6,7 @@ engine the application uses, and a sync flow is far easier to read. psycopg 3
 backs both, so the same URL works here and in the app.
 
 Users and credentials arrived with #8, sessions and sign-in failures with #9,
-email verification codes and sends with #10.
+email verification codes and sends with #10, Google credentials with #11.
 """
 
 from __future__ import annotations

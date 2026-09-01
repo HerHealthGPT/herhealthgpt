@@ -590,6 +590,109 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Google sign-in",
+      "description": "Issue #11: sign in with Google, linking to or taking over an existing account only when it's genuinely hers. Needs HERHEALTH_GOOGLE_CLIENT_ID set (see docs/runbooks/google-oauth-client.md) — with it unset, every request in this folder gets a 503. `id_token` has to be a real, currently-valid Google ID token: get one from https://developers.google.com/oauthplayground (gear icon → \"Use your own OAuth credentials\" → your Client ID/secret → scopes `openid email profile` → Authorize → Exchange authorization code for tokens → copy `id_token`). Tokens from the Playground expire in about an hour — get a fresh one if requests start failing with 401.",
+      "item": [
+        {
+          "name": "Sign in with Google",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"PASTE_A_REAL_ID_TOKEN_FROM_THE_OAUTH_PLAYGROUND\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/sign-in/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "sign-in", "google"]
+            },
+            "description": "First run against a token for an address nobody has registered: creates a user with a Google credential and no password. Run again with the same token (or a fresh one for the same Google account) and it signs into the same user instead of creating a second one. Sets access_token/refresh_token cookies exactly like 'Sign in' in the folder above."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('access_token cookie is set', function () {",
+                  "    pm.expect(pm.cookies.has('access_token')).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('refresh_token cookie is set', function () {",
+                  "    pm.expect(pm.cookies.has('refresh_token')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me (signed in via Google)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "me"]
+            },
+            "description": "Run 'Sign in with Google' first. Same /accounts/me the password/session flow uses — proves a Google sign-in reaches an ordinary, otherwise-identical session."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign in with Google — invalid token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"not-a-real-token\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/sign-in/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "sign-in", "google"]
+            },
+            "description": "No real token needed for this one — anything that fails Google's signature/audience check reads the same way."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

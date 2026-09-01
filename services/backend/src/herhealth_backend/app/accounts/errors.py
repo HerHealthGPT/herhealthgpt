@@ -11,6 +11,9 @@ __all__ = [
     "IncorrectVerificationCode",
     "VerificationCodeExpired",
     "TooManyVerificationRequests",
+    "GoogleTokenInvalid",
+    "GoogleEmailNotVerified",
+    "GoogleSignInNotConfigured",
 ]
 
 
@@ -73,4 +76,31 @@ class VerificationCodeExpired(Exception):
 class TooManyVerificationRequests(Exception):
     """Raised when an address has requested a verification code too often
     recently. See ``app/accounts/verification_send_throttle.py``.
+    """
+
+
+class GoogleTokenInvalid(Exception):
+    """Raised when a Google ID token is missing, malformed, expired, or
+    fails signature/audience verification. See
+    ``app/accounts/google_identity.py``.
+    """
+
+
+class GoogleEmailNotVerified(Exception):
+    """Raised when Google's identity would otherwise be linked to, or take
+    over, an existing user, but the token's ``email_verified`` claim is
+    false or absent. #11's fourth acceptance criterion: an unverified claim
+    is never linked to an existing user, whether that user is herself
+    verified (linking) or not (takeover) — in neither case can the address
+    on the token be trusted to be the one behind that user's account.
+    """
+
+
+class GoogleSignInNotConfigured(Exception):
+    """Raised when Google sign-in is called with no
+    ``HERHEALTH_GOOGLE_CLIENT_ID`` configured. Distinct from
+    :class:`GoogleTokenInvalid`: this is a deployment that has not set the
+    feature up, not a bad token — the process still boots (see
+    ``app/config.py::google_client_id``), this is what the route degrades
+    to instead.
     """

@@ -42,6 +42,8 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 from testcontainers.community.postgres import PostgresContainer  # noqa: E402
 
 from herhealth_backend.app import Database, create_app  # noqa: E402
+from herhealth_backend.app.accounts.errors import GoogleTokenInvalid  # noqa: E402
+from herhealth_backend.app.accounts.google_identity import GoogleIdentity  # noqa: E402
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _ALEMBIC_INI = _BACKEND_ROOT / "alembic.ini"
@@ -70,6 +72,22 @@ class RecordingEmailSender:
             if recipient == to:
                 return code
         raise AssertionError(f"No verification code was sent to {to!r}")
+
+
+class StaticGoogleTokenVerifier:
+    """A :class:`~herhealth_backend.app.accounts.google_identity.GoogleTokenVerifier`
+    that returns a fixed identity regardless of the token string, or raises
+    :class:`GoogleTokenInvalid` if none was configured — #11's own
+    requirement that tests supply identities directly with no network call.
+    """
+
+    def __init__(self, identity: GoogleIdentity | None = None) -> None:
+        self.identity = identity
+
+    async def verify(self, id_token: str) -> GoogleIdentity:
+        if self.identity is None:
+            raise GoogleTokenInvalid()
+        return self.identity
 
 
 @pytest.fixture(scope="session")
@@ -136,9 +154,18 @@ def email_sender() -> RecordingEmailSender:
     return RecordingEmailSender()
 
 
+@pytest.fixture
+def google_verifier() -> StaticGoogleTokenVerifier:
+    """No identity configured by default — a test sets ``.identity`` to
+    whatever ``GoogleIdentity`` its scenario needs."""
+    return StaticGoogleTokenVerifier()
+
+
 @pytest_asyncio.fixture
 async def client(
-    database_url: str, email_sender: RecordingEmailSender
+    database_url: str,
+    email_sender: RecordingEmailSender,
+    google_verifier: StaticGoogleTokenVerifier,
 ) -> AsyncIterator[AsyncClient]:
     """An ASGI-driven HTTP client against a real app, pointed at the migrated database.
 
@@ -155,7 +182,10 @@ async def client(
     """
     database = Database(database_url)
     app = create_app(
-        database=database, session_secret=_TEST_SESSION_SECRET, email_sender=email_sender
+        database=database,
+        session_secret=_TEST_SESSION_SECRET,
+        email_sender=email_sender,
+        google_verifier=google_verifier,
     )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="https://test") as client:

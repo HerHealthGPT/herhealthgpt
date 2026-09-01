@@ -20,6 +20,8 @@ __all__ = [
     "session_secret",
     "EMAIL_SENDER_ENV",
     "email_sender_kind",
+    "GOOGLE_CLIENT_ID_ENV",
+    "google_client_id",
 ]
 
 #: The one environment variable the process reads to find its database. Namespaced
@@ -41,6 +43,10 @@ MIN_SESSION_SECRET_LENGTH = 32
 
 #: Which EmailSender app/main.py constructs — see app/accounts/email_sender.py.
 EMAIL_SENDER_ENV = "HERHEALTH_EMAIL_SENDER"
+
+#: The OAuth client this backend is registered as with Google — needed to
+#: check an ID token's audience. See app/accounts/google_identity.py.
+GOOGLE_CLIENT_ID_ENV = "HERHEALTH_GOOGLE_CLIENT_ID"
 
 
 def database_url() -> str:
@@ -99,3 +105,15 @@ def email_sender_kind() -> str:
     ``database_url()``'s string.
     """
     return os.environ.get(EMAIL_SENDER_ENV, "console")
+
+
+def google_client_id() -> str | None:
+    """The OAuth client id Google ID tokens must be issued for, or ``None``
+    if Google sign-in is not configured. Unlike :func:`database_url` and
+    :func:`session_secret`, absence is not an error — Google sign-in is
+    optional functionality no Google Cloud project has been provisioned for
+    yet (unlike SES, which #6 already set up before #10 needed it). A
+    process with this unset still boots; ``/accounts/sign-in/google``
+    degrades to a clear "not configured" response instead.
+    """
+    return os.environ.get(GOOGLE_CLIENT_ID_ENV) or None
