@@ -79,6 +79,7 @@ async def triage_turn(
 
     database: Database = http_request.app.state.database
     async with database.session() as session:
+        consultation: ConsultationSession | None
         if request.session_id is None:
             consultation = ConsultationSession(user_id=user.id)
             session.add(consultation)
