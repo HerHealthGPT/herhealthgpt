@@ -5,7 +5,7 @@ at the start of a test session — so there is nothing to gain from the async
 engine the application uses, and a sync flow is far easier to read. psycopg 3
 backs both, so the same URL works here and in the app.
 
-Sessions arrive with #9; until then this is users and credentials only.
+Users and credentials arrived with #8, sessions and sign-in failures with #9.
 """
 
 from __future__ import annotations
