@@ -29,6 +29,12 @@ __all__ = [
     "model_service_url",
     "OPENROUTER_API_KEY_ENV",
     "openrouter_api_key",
+    "TRIAGE_MODE_ENV",
+    "triage_mode",
+    "COOKIE_SECURE_ENV",
+    "cookie_secure",
+    "CORS_ORIGINS_ENV",
+    "cors_origins",
 ]
 
 #: The one environment variable the process reads to find its database. Namespaced
@@ -130,6 +136,15 @@ MODEL_SERVICE_URL_ENV = "HERHEALTH_MODEL_SERVICE_URL"
 #: to "not configured" rather than stopping the app from booting at all.
 OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 
+#: How triage is wired at boot. ``demo`` uses offline scripted clients (no
+#: OpenRouter, no services/model) for local MVP testing. ``openrouter`` needs
+#: OPENROUTER_API_KEY and a running services/model. ``off`` disables triage.
+TRIAGE_MODE_ENV = "HERHEALTH_TRIAGE_MODE"
+
+#: Auth cookies' ``secure`` flag. Defaults to true; set ``false`` for plain-HTTP
+#: local dev (http://localhost) so browsers store and send session cookies.
+COOKIE_SECURE_ENV = "HERHEALTH_COOKIE_SECURE"
+
 
 def knowledge_dir() -> Path:
     """Where to load the knowledge base from. Defaults to ``knowledge/``
@@ -155,6 +170,46 @@ def openrouter_api_key() -> str | None:
     clear 503 instead of failing app start-up.
     """
     return os.environ.get(OPENROUTER_API_KEY_ENV) or None
+
+
+def triage_mode() -> str:
+    """``demo``, ``openrouter``, or ``off``. Defaults to ``openrouter`` when a
+    key is set, otherwise ``off``. Set ``HERHEALTH_TRIAGE_MODE=demo`` explicitly
+    for local MVP testing without OpenRouter or services/model.
+    """
+    explicit = os.environ.get(TRIAGE_MODE_ENV, "").strip().lower()
+    if explicit in {"demo", "openrouter", "off"}:
+        return explicit
+    if openrouter_api_key():
+        return "openrouter"
+    return "off"
+
+
+def cookie_secure() -> bool:
+    """Whether auth cookies are marked ``Secure``. Off for local HTTP dev."""
+    raw = os.environ.get(COOKIE_SECURE_ENV, "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+#: Cross-origin callers allowed to hit this API with credentials (cookies).
+#: Empty by default — same-origin (the Next.js rewrite proxy) needs none of
+#: this. Set when a frontend calls the API directly from a different origin
+#: (a different host or port counts) — found necessary in dev because the
+#: Next.js dev-server proxy does not reliably hold a slow upstream request
+#: open (see docs/runbooks and app/triage/routes.py's own notes on this).
+CORS_ORIGINS_ENV = "HERHEALTH_CORS_ORIGINS"
+
+
+def cors_origins() -> list[str]:
+    """Comma-separated origins from the environment, or an empty list.
+
+    An empty list is not "allow nothing forever" as a hardcoded policy — it
+    is "no direct cross-origin caller is configured", and
+    ``CORSMiddleware`` with an empty ``allow_origins`` simply permits none,
+    which is the correct default until a caller is named explicitly.
+    """
+    raw = os.environ.get(CORS_ORIGINS_ENV, "")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
 def google_client_id() -> str | None:

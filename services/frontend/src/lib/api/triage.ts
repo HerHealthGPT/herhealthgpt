@@ -7,7 +7,11 @@
  * last given (or null, to start a new consultation).
  */
 import { apiRequest } from "./client";
-import type { TriageTurnResponse } from "./types";
+import type {
+  TriageSessionDetail,
+  TriageSessionSummary,
+  TriageTurnResponse,
+} from "./types";
 
 /** POST /triage/turn → 200, or 404/409/422/502/503 — see errors.ts's
  *  friendlyTriageError, which turns each of those into on-screen copy. */
@@ -16,4 +20,12 @@ export function sendTriageTurn(sessionId: string | null, message: string) {
     method: "POST",
     body: { session_id: sessionId, message },
   });
+}
+
+export function listTriageSessions() {
+  return apiRequest<TriageSessionSummary[]>("/triage/sessions");
+}
+
+export function getTriageSession(sessionId: string) {
+  return apiRequest<TriageSessionDetail>(`/triage/sessions/${sessionId}`);
 }

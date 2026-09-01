@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 
 from anyio import to_thread
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from herhealth_contracts.loading import load_knowledge_base
 from sqlalchemy.exc import SQLAlchemyError
@@ -36,16 +37,19 @@ from herhealth_backend.app.accounts.google_identity import (
 )
 from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import EMAIL_SENDER_ENV, database_url
+from herhealth_backend.app.config import cors_origins as configured_cors_origins
 from herhealth_backend.app.config import email_sender_kind as configured_email_sender_kind
 from herhealth_backend.app.config import google_client_id as configured_google_client_id
 from herhealth_backend.app.config import knowledge_dir as configured_knowledge_dir
 from herhealth_backend.app.config import model_service_url as configured_model_service_url
 from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
 from herhealth_backend.app.config import session_secret as configured_session_secret
+from herhealth_backend.app.config import triage_mode as configured_triage_mode
 from herhealth_backend.app.db import Database
 from herhealth_backend.app.triage.routes import router as triage_router
 from herhealth_backend.triage.agent import TriageAgent
 from herhealth_backend.triage.clients import HttpRetrievalClient, OpenRouterReasoningClient
+from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient, StaticRetrievalClient
 
 __all__ = ["create_app"]
 
@@ -66,23 +70,28 @@ def _build_email_sender() -> EmailSender:
 
 
 def _build_triage_agent() -> TriageAgent | None:
-    """Construct the triage agent if OpenRouter is configured, else ``None``.
+    """Construct the triage agent for this deployment's mode.
 
-    Absence is not an error, the same way an unconfigured Google verifier is
-    not — see :func:`_build_google_verifier`. Triage is one feature of this
-    backend, not the whole of it: a deployment with no
-    ``OPENROUTER_API_KEY`` still boots, and ``app/triage/routes.py`` returns
-    a clear 503 rather than the app failing to start.
-
-    Loads ``knowledge/`` from disk synchronously. Small, local YAML files —
-    the same order of cost as any other config read in this module — so this
-    needs no ``to_thread`` wrapper, unlike :func:`_build_email_sender`'s real
-    network-capable client construction.
+    ``HERHEALTH_TRIAGE_MODE=demo`` (the local-MVP default when no OpenRouter
+    key is set) wires offline scripted clients — no network, no GPU. ``off``
+    disables triage entirely. ``openrouter`` needs ``OPENROUTER_API_KEY`` and
+    a running ``services/model``.
     """
+    mode = configured_triage_mode()
+    base = load_knowledge_base(configured_knowledge_dir())
+
+    if mode == "off":
+        return None
+    if mode == "demo":
+        return TriageAgent(
+            base=base,
+            reasoning=MvpDemoReasoningClient(),
+            retrieval=StaticRetrievalClient(),
+        )
+
     api_key = configured_openrouter_api_key()
     if api_key is None:
         return None
-    base = load_knowledge_base(configured_knowledge_dir())
     return TriageAgent(
         base=base,
         reasoning=OpenRouterReasoningClient(api_key=api_key),
@@ -151,6 +160,20 @@ def create_app(
                 await app.state.database.dispose()
 
     app = FastAPI(title="HerHealthGPT backend", lifespan=lifespan)
+    origins = configured_cors_origins()
+    if origins:
+        # Credentialed (cookie-based) cross-origin requests — needed only
+        # when a frontend calls this API from a different origin than the
+        # Next.js rewrite proxy's same-origin default. allow_origins is
+        # never "*" here: credentials: "include" plus a wildcard origin is
+        # what the fetch spec forbids outright, not a preference.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     if database is not None:
         app.state.database = database
     if session_secret is not None:

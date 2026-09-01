@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   CalendarDays,
   CheckCircle2,
@@ -19,6 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/contexts/auth-context";
+import { routes } from "@/lib/routes";
 
 function DashboardContent() {
   const { user } = useAuth();
@@ -54,7 +56,7 @@ function DashboardContent() {
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle className="text-2xl">Health chat</CardTitle>
-                    <StatusBadge>Opening soon</StatusBadge>
+                    <StatusBadge variant="ready">Ready</StatusBadge>
                   </div>
                   <CardDescription className="mt-1 text-base">
                     Your main way to use HerHealthGPT
@@ -69,12 +71,14 @@ function DashboardContent() {
               </p>
             </CardHeader>
             <CardContent className="border-t border-border/60 bg-muted/30 px-6 py-5 lg:border-t-0 lg:border-l lg:py-8">
-              <Button size="lg" className="w-full min-w-[200px]" disabled>
-                <Sparkles className="size-4" />
-                Start a chat
+              <Button size="lg" className="w-full min-w-[200px]" asChild>
+                <Link href={routes.chat}>
+                  <Sparkles className="size-4" />
+                  Start a chat
+                </Link>
               </Button>
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                We&apos;re finishing this up. Check back soon.
+                Usually takes a few minutes.
               </p>
             </CardContent>
           </div>

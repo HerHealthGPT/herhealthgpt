@@ -48,3 +48,25 @@ export type TriageTurnResponse = {
   session_id: string;
   decision: TriageDecision;
 };
+
+export type TriageSessionSummary = {
+  id: string;
+  status: "active" | "concluded";
+  created_at: string;
+  preview: string;
+};
+
+export type TriageSessionMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  decision: TriageDecision | null;
+  created_at: string;
+};
+
+export type TriageSessionDetail = {
+  id: string;
+  status: "active" | "concluded";
+  created_at: string;
+  messages: TriageSessionMessage[];
+};

@@ -28,6 +28,9 @@ export function SiteHeader() {
           ) : user ? (
             <>
               <Button variant="ghost" size="sm" asChild>
+                <Link href={routes.chat}>Health chat</Link>
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
                 <Link href={routes.dashboard}>Dashboard</Link>
               </Button>
               <Button
