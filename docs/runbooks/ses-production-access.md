@@ -241,8 +241,14 @@ Production access is granted or refused; either way it is written down so the
 team is not guessing later.
 
 - [x] **Granted — 2026-08-12, region `us-east-1`.** Sending quota:
-      **50,000 emails / 24h, 14 emails/sec**, enforcement `HEALTHY`. Update
-      `infra/envs/*.env` with the identity when the sending code is built.
+      **50,000 emails / 24h, 14 emails/sec**, enforcement `HEALTHY`.
+      `infra/envs/backend.env(.example)` updated 2026-09-01 with
+      `HERHEALTH_EMAIL_SENDER` (`console` default, `ses` for real sending) —
+      the sending code (`SesEmailSender`,
+      `services/backend/src/herhealth_backend/app/accounts/email_sender.py`)
+      landed alongside #10. **Bounce/complaint handling via SNS, described in
+      the production-access request above, is not built** — noted as a gap
+      in that class's own docstring rather than left only here.
 - [ ] **Refused:** record AWS's stated reason verbatim, and choose a fallback
       provider (e.g. a transactional-email SaaS) so email verification is not
       blocked. The code seam in Accounts should stay provider-agnostic so a

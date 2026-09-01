@@ -50,6 +50,28 @@ _ALEMBIC_INI = _BACKEND_ROOT / "alembic.ini"
 _TEST_SESSION_SECRET = "test-only-session-secret-do-not-use-in-production"
 
 
+class RecordingEmailSender:
+    """An :class:`~herhealth_backend.app.accounts.email_sender.EmailSender`
+    that remembers what it was asked to send, so a test can read the code a
+    route handed it instead of parsing ``ConsoleEmailSender``'s log output.
+    Used everywhere in this suite instead of ``SesEmailSender`` — #10's own
+    requirement that the suite run with no network and no provider account.
+    """
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str]] = []
+
+    async def send_verification_code(self, *, to: str, code: str) -> None:
+        self.sent.append((to, code))
+
+    def code_for(self, to: str) -> str:
+        """The most recent code sent to ``to``. Raises if none was."""
+        for recipient, code in reversed(self.sent):
+            if recipient == to:
+                return code
+        raise AssertionError(f"No verification code was sent to {to!r}")
+
+
 @pytest.fixture(scope="session")
 def database_url() -> Iterator[str]:
     """A migrated PostgreSQL for the session; yields its SQLAlchemy URL.
@@ -107,8 +129,17 @@ async def db_session(connection: AsyncConnection) -> AsyncIterator[AsyncSession]
         await session.close()
 
 
+@pytest.fixture
+def email_sender() -> RecordingEmailSender:
+    """A fresh recording sender per test, so nothing sent in one test is
+    visible to the next."""
+    return RecordingEmailSender()
+
+
 @pytest_asyncio.fixture
-async def client(database_url: str) -> AsyncIterator[AsyncClient]:
+async def client(
+    database_url: str, email_sender: RecordingEmailSender
+) -> AsyncIterator[AsyncClient]:
     """An ASGI-driven HTTP client against a real app, pointed at the migrated database.
 
     Uses its own connection pool rather than the ``db_session`` fixture's
@@ -123,7 +154,9 @@ async def client(database_url: str) -> AsyncIterator[AsyncClient]:
     replay a ``Secure`` cookie back on a request it thinks is plain HTTP.
     """
     database = Database(database_url)
-    app = create_app(database=database, session_secret=_TEST_SESSION_SECRET)
+    app = create_app(
+        database=database, session_secret=_TEST_SESSION_SECRET, email_sender=email_sender
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="https://test") as client:
         yield client

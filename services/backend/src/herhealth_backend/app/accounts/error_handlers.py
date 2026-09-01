@@ -19,10 +19,13 @@ from fastapi.responses import JSONResponse
 
 from herhealth_backend.app.accounts.errors import (
     EmailAlreadyRegistered,
+    IncorrectVerificationCode,
     InvalidAccessToken,
     InvalidCredentials,
     InvalidSession,
     TooManySignInAttempts,
+    TooManyVerificationRequests,
+    VerificationCodeExpired,
 )
 from herhealth_backend.app.accounts.password_policy import PasswordTooWeak
 
@@ -76,4 +79,34 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": "Not signed in."},
+        )
+
+    @app.exception_handler(IncorrectVerificationCode)
+    async def _incorrect_verification_code(
+        request: Request, exc: IncorrectVerificationCode
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "That code is incorrect."},
+        )
+
+    @app.exception_handler(VerificationCodeExpired)
+    async def _verification_code_expired(
+        request: Request, exc: VerificationCodeExpired
+    ) -> JSONResponse:
+        # The one place #10 asks for a message that reads differently from a
+        # wrong-code response — see VerificationCodeExpired's own docstring
+        # for why the four cases it covers all read the same as each other.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "This code has expired. Request a new one."},
+        )
+
+    @app.exception_handler(TooManyVerificationRequests)
+    async def _too_many_verification_requests(
+        request: Request, exc: TooManyVerificationRequests
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": "Too many attempts. Try again later."},
         )

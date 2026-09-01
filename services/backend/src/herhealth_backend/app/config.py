@@ -18,6 +18,8 @@ __all__ = [
     "SESSION_SECRET_ENV",
     "MIN_SESSION_SECRET_LENGTH",
     "session_secret",
+    "EMAIL_SENDER_ENV",
+    "email_sender_kind",
 ]
 
 #: The one environment variable the process reads to find its database. Namespaced
@@ -36,6 +38,9 @@ SESSION_SECRET_ENV = "HERHEALTH_SESSION_SECRET"
 #: this project's own docs recommend) produces 64 characters, comfortably
 #: past this floor; a short human-typed value is what this actually catches.
 MIN_SESSION_SECRET_LENGTH = 32
+
+#: Which EmailSender app/main.py constructs — see app/accounts/email_sender.py.
+EMAIL_SENDER_ENV = "HERHEALTH_EMAIL_SENDER"
 
 
 def database_url() -> str:
@@ -81,3 +86,16 @@ def session_secret() -> str:
             f"at least {MIN_SESSION_SECRET_LENGTH}, e.g. via `openssl rand -hex 32`."
         )
     return secret
+
+
+def email_sender_kind() -> str:
+    """Which EmailSender to construct: ``"console"`` (the default — logs
+    instead of sending, see ``app/accounts/email_sender.py``) or ``"ses"``
+    (sends for real). Unlike :func:`database_url` and :func:`session_secret`,
+    this has a safe default: a process that never sets
+    ``HERHEALTH_EMAIL_SENDER`` behaves exactly as every environment did
+    before this variable existed. Validating the value is ``app/main.py``'s
+    job, the same way it — not this module — decides what to build from
+    ``database_url()``'s string.
+    """
+    return os.environ.get(EMAIL_SENDER_ENV, "console")

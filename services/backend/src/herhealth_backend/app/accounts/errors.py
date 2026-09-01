@@ -8,6 +8,9 @@ __all__ = [
     "TooManySignInAttempts",
     "InvalidSession",
     "InvalidAccessToken",
+    "IncorrectVerificationCode",
+    "VerificationCodeExpired",
+    "TooManyVerificationRequests",
 ]
 
 
@@ -46,4 +49,28 @@ class InvalidSession(Exception):
 class InvalidAccessToken(Exception):
     """Raised when an access token is missing, tampered with, or past its
     (short, unrevocable) lifetime. See ``app/accounts/tokens.py``.
+    """
+
+
+class IncorrectVerificationCode(Exception):
+    """Raised when a submitted verification code is wrong, but the stored
+    code is still alive (not expired, not used, under the attempt limit).
+    Distinct from :class:`VerificationCodeExpired` because #10 asks for the
+    two to read differently — "wrong code" invites another try; "expired"
+    does not.
+    """
+
+
+class VerificationCodeExpired(Exception):
+    """Raised whenever there is no code left that submitting the right
+    digits could satisfy: none was ever requested, it passed its expiry
+    window, it was already used, or too many wrong guesses used it up.
+    Deliberately one exception for all four — which of them is true is not
+    revealed, only that a fresh code is needed.
+    """
+
+
+class TooManyVerificationRequests(Exception):
+    """Raised when an address has requested a verification code too often
+    recently. See ``app/accounts/verification_send_throttle.py``.
     """

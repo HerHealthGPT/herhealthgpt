@@ -5,7 +5,8 @@ at the start of a test session — so there is nothing to gain from the async
 engine the application uses, and a sync flow is far easier to read. psycopg 3
 backs both, so the same URL works here and in the app.
 
-Users and credentials arrived with #8, sessions and sign-in failures with #9.
+Users and credentials arrived with #8, sessions and sign-in failures with #9,
+email verification codes and sends with #10.
 """
 
 from __future__ import annotations
@@ -21,7 +22,15 @@ from herhealth_backend.app.accounts.models import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers defaults to True, which silently disables any
+    # logger that already exists and isn't one of alembic.ini's own three
+    # (root, sqlalchemy, alembic) — including the app's own module loggers
+    # (email_sender.py's, for one), if this runs in the same process after
+    # they were created. Only the test harness runs migrations in-process
+    # (a real deploy runs `alembic upgrade` as its own process), but that is
+    # exactly where the app's logging then goes silently, permanently dark
+    # for the rest of the session.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

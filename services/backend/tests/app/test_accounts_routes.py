@@ -5,6 +5,7 @@ from __future__ import annotations
 from httpx import AsyncClient, Response
 
 from herhealth_backend.app.accounts.sign_in_throttle import MAX_FAILURES
+from herhealth_backend.app.accounts.verification_send_throttle import MAX_SENDS
 
 
 async def test_register_returns_the_created_user(client: AsyncClient) -> None:
@@ -241,3 +242,130 @@ async def test_sign_out_everywhere_ends_every_session_for_the_user(client: Async
         "/accounts/refresh", headers={"Cookie": f"refresh_token={second_refresh_token}"}
     )
     assert second_session_refresh.status_code == 401
+
+
+async def test_register_sends_a_verification_code(client: AsyncClient, email_sender) -> None:
+    await client.post(
+        "/accounts/register",
+        json={"email": "register-sends-code@example.com", "password": "correcthorse1"},
+    )
+
+    code = email_sender.code_for("register-sends-code@example.com")
+    assert len(code) == 6 and code.isdigit()
+
+
+async def test_verify_email_with_the_correct_code_marks_it_verified(
+    client: AsyncClient, email_sender
+) -> None:
+    await client.post(
+        "/accounts/register",
+        json={"email": "verify-success@example.com", "password": "correcthorse1"},
+    )
+    code = email_sender.code_for("verify-success@example.com")
+
+    response = await client.post(
+        "/accounts/verify-email", json={"email": "verify-success@example.com", "code": code}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email_verified"] is True
+
+
+async def test_verify_email_with_the_wrong_code_is_refused(
+    client: AsyncClient, email_sender
+) -> None:
+    await client.post(
+        "/accounts/register",
+        json={"email": "verify-wrong-code@example.com", "password": "correcthorse1"},
+    )
+    code = email_sender.code_for("verify-wrong-code@example.com")
+    wrong_code = "0" * 6 if code != "0" * 6 else "1" * 6
+
+    response = await client.post(
+        "/accounts/verify-email",
+        json={"email": "verify-wrong-code@example.com", "code": wrong_code},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "That code is incorrect."
+
+
+async def test_verify_email_a_used_code_reads_as_expired_not_incorrect(
+    client: AsyncClient, email_sender
+) -> None:
+    await client.post(
+        "/accounts/register",
+        json={"email": "verify-replay@example.com", "password": "correcthorse1"},
+    )
+    code = email_sender.code_for("verify-replay@example.com")
+    await client.post(
+        "/accounts/verify-email", json={"email": "verify-replay@example.com", "code": code}
+    )
+
+    replayed = await client.post(
+        "/accounts/verify-email", json={"email": "verify-replay@example.com", "code": code}
+    )
+
+    assert replayed.status_code == 400
+    assert replayed.json()["detail"] == "This code has expired. Request a new one."
+
+
+async def test_resend_verification_code_sends_a_new_code(
+    client: AsyncClient, email_sender
+) -> None:
+    await client.post(
+        "/accounts/register",
+        json={"email": "resend-success@example.com", "password": "correcthorse1"},
+    )
+    old_code = email_sender.code_for("resend-success@example.com")
+
+    response = await client.post(
+        "/accounts/verify-email/resend", json={"email": "resend-success@example.com"}
+    )
+
+    assert response.status_code == 204
+    new_code = email_sender.code_for("resend-success@example.com")
+    verify_with_old_code = await client.post(
+        "/accounts/verify-email", json={"email": "resend-success@example.com", "code": old_code}
+    )
+    assert verify_with_old_code.status_code == 400
+    verify_with_new_code = await client.post(
+        "/accounts/verify-email", json={"email": "resend-success@example.com", "code": new_code}
+    )
+    assert verify_with_new_code.status_code == 200
+
+
+async def test_resend_verification_code_for_an_unknown_address_looks_like_success(
+    client: AsyncClient, email_sender
+) -> None:
+    """#10's ninth criterion: resend must not be usable to confirm an
+    address is registered — an unknown address gets the same response as a
+    real one, and nothing is actually sent.
+    """
+    response = await client.post(
+        "/accounts/verify-email/resend", json={"email": "resend-unknown@example.com"}
+    )
+
+    assert response.status_code == 204
+    assert email_sender.sent == []
+
+
+async def test_repeated_resend_requests_are_rate_limited(
+    client: AsyncClient, email_sender
+) -> None:
+    await client.post(
+        "/accounts/register",
+        json={"email": "resend-lockout@example.com", "password": "correcthorse1"},
+    )
+
+    # Registration itself already sent one code; use up the rest of the budget.
+    for _ in range(MAX_SENDS - 1):
+        response = await client.post(
+            "/accounts/verify-email/resend", json={"email": "resend-lockout@example.com"}
+        )
+        assert response.status_code == 204
+
+    locked_out = await client.post(
+        "/accounts/verify-email/resend", json={"email": "resend-lockout@example.com"}
+    )
+    assert locked_out.status_code == 429
