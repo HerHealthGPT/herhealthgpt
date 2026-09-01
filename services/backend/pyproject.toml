@@ -40,6 +40,10 @@ api = [
     # Signing access tokens (Accounts, #9) — one algorithm, one format, none of
     # a JWT library's header/algorithm negotiation. See app/accounts/tokens.py.
     "itsdangerous>=2.2",
+    # SES-backed verification email (Accounts, #10) — the boto3 SES client is
+    # sync, run off the event loop the same way passwords.py runs argon2id.
+    # ConsoleEmailSender needs none of this; only selecting HERHEALTH_EMAIL_SENDER=ses does.
+    "boto3>=1.34",
 ]
 
 [tool.uv.sources]

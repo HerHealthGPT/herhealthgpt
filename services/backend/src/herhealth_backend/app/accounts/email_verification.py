@@ -80,9 +80,9 @@ async def _issue_code(session: AsyncSession, secret: str, user: User) -> str:
     return code
 
 
-def _send(email_sender: EmailSender, *, to: str, code: str) -> None:
+async def _send(email_sender: EmailSender, *, to: str, code: str) -> None:
     try:
-        email_sender.send_verification_code(to=to, code=code)
+        await email_sender.send_verification_code(to=to, code=code)
     except Exception:
         # The code is already committed and valid regardless of whether this
         # delivery attempt succeeds — #10's own framing is that a delivery
@@ -104,7 +104,7 @@ async def send_verification_code(
     code = await _issue_code(session, secret, user)
     await record_send(session, user.email)
     await session.commit()
-    _send(email_sender, to=user.email, code=code)
+    await _send(email_sender, to=user.email, code=code)
 
 
 async def request_verification_resend(
@@ -137,7 +137,7 @@ async def request_verification_resend(
 
     if code is not None:
         assert user is not None
-        _send(email_sender, to=user.email, code=code)
+        await _send(email_sender, to=user.email, code=code)
 
 
 async def verify_email(session: AsyncSession, secret: str, *, email: str, code: str) -> User:

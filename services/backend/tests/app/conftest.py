@@ -53,15 +53,15 @@ _TEST_SESSION_SECRET = "test-only-session-secret-do-not-use-in-production"
 class RecordingEmailSender:
     """An :class:`~herhealth_backend.app.accounts.email_sender.EmailSender`
     that remembers what it was asked to send, so a test can read the code a
-    route handed it instead of parsing ``ConsoleEmailSender``'s log output —
-    #10's own requirement that the suite run with no network is met by the
-    Protocol having no real implementation here at all, console or otherwise.
+    route handed it instead of parsing ``ConsoleEmailSender``'s log output.
+    Used everywhere in this suite instead of ``SesEmailSender`` — #10's own
+    requirement that the suite run with no network and no provider account.
     """
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
 
-    def send_verification_code(self, *, to: str, code: str) -> None:
+    async def send_verification_code(self, *, to: str, code: str) -> None:
         self.sent.append((to, code))
 
     def code_for(self, to: str) -> str:
