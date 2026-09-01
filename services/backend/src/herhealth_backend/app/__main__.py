@@ -11,11 +11,19 @@ would override it. Instead we drive ``Server.serve`` on a selector loop of our
 own. On the Linux deploy target this is the ordinary path; the branch only
 changes anything on a Windows dev box. Reload is off: the reloader re-execs into
 a worker that would not inherit any of this.
+
+The other non-obvious part is ``logging.basicConfig``. Without it, nothing in
+this process's default (unconfigured) logging hierarchy has a handler at
+INFO — ``ConsoleEmailSender`` (#10) would log a verification code and it
+would go nowhere, silently, defeating the point of a *console* sender. One
+call here, the process's one true entry point, is enough for every module
+that just calls ``logging.getLogger(__name__)``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from herhealth_backend.app.eventloop import use_selector_loop_on_windows
 
@@ -26,6 +34,7 @@ PORT = 8000
 def main() -> None:
     import uvicorn
 
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     use_selector_loop_on_windows()
 
     config = uvicorn.Config(

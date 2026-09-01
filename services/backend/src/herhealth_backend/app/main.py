@@ -21,6 +21,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
+from herhealth_backend.app.accounts.email_sender import ConsoleEmailSender, EmailSender
 from herhealth_backend.app.accounts.error_handlers import register_error_handlers
 from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import database_url
@@ -30,7 +31,11 @@ from herhealth_backend.app.db import Database
 __all__ = ["create_app"]
 
 
-def create_app(database: Database | None = None, session_secret: str | None = None) -> FastAPI:
+def create_app(
+    database: Database | None = None,
+    session_secret: str | None = None,
+    email_sender: EmailSender | None = None,
+) -> FastAPI:
     """Build the application.
 
     When ``database`` is given the caller owns its lifecycle — the app will not
@@ -39,6 +44,10 @@ def create_app(database: Database | None = None, session_secret: str | None = No
     it on shutdown. ``session_secret`` (the key access tokens are signed with,
     see ``app/accounts/tokens.py``) is read from
     :func:`~herhealth_backend.app.config.session_secret` when not given.
+    ``email_sender`` (see ``app/accounts/email_sender.py``) defaults to
+    :class:`~herhealth_backend.app.accounts.email_sender.ConsoleEmailSender` —
+    there is no network-backed implementation yet, so this is what every
+    environment gets until one exists.
     """
 
     @asynccontextmanager
@@ -59,6 +68,7 @@ def create_app(database: Database | None = None, session_secret: str | None = No
         app.state.database = database
     if session_secret is not None:
         app.state.session_secret = session_secret
+    app.state.email_sender = email_sender if email_sender is not None else ConsoleEmailSender()
     register_error_handlers(app)
     app.include_router(accounts_router)
 

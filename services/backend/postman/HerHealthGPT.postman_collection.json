@@ -413,6 +413,183 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Verifying",
+      "description": "Issue #10: a code reaches her inbox, she types it in, her address is verified. Registering (in the folder above) already sends the first code — there is no `ConsoleEmailSender` HTTP endpoint, so read the code from the terminal running `make serve`: a line like `verification code for woman@example.com: 123456`. Paste that digit string into the requests below.",
+      "item": [
+        {
+          "name": "Verify email — correct code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\",\n  \"code\": \"PASTE_THE_CODE_FROM_THE_SERVER_CONSOLE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/verify-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "verify-email"]
+            },
+            "description": "Run Register with this address first, then replace the code with the 6-digit one logged to the server's console."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('address is now verified', function () {",
+                  "    pm.expect(pm.response.json().email_verified).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify email — wrong code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\",\n  \"code\": \"000000\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/verify-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "verify-email"]
+            },
+            "description": "A code that is (almost certainly) not the real one. Counts as one of MAX_ATTEMPTS wrong guesses against whatever code is currently live for this address."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('reads as incorrect, not expired', function () {",
+                  "    pm.expect(pm.response.json().detail).to.eql('That code is incorrect.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify email — already used (expect expired)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\",\n  \"code\": \"PASTE_THE_CODE_THAT_JUST_SUCCEEDED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/verify-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "verify-email"]
+            },
+            "description": "Run 'Verify email — correct code' first, then replay the same code. A code is single-use — this must read as expired, not as a second success and not as merely incorrect."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('reads as expired, not incorrect', function () {",
+                  "    pm.expect(pm.response.json().detail).to.eql('This code has expired. Request a new one.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend verification code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/verify-email/resend",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "verify-email", "resend"]
+            },
+            "description": "Issues a fresh code, superseding whatever code this address had — check the server console for the new one. Does nothing (but still returns 204) if the address is unregistered or already verified, and does not say which."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resend verification code — unknown address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody-registered@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/verify-email/resend",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "verify-email", "resend"]
+            },
+            "description": "An address nobody registered. Must return the same 204 as a real address — nothing is actually sent, but the response cannot say so, or it would confirm the address is unregistered."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "pm.test('body is empty either way', function () {",
+                  "    pm.expect(pm.response.text()).to.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

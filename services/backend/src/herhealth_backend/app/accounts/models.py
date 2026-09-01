@@ -11,6 +11,10 @@ change to what a user *is*.
 directly — ``Session.refresh_token_hash`` is a digest, the same reasoning
 ``Credential.password_hash`` is held to — see ``app/accounts/tokens.py``.
 
+``EmailVerificationCode`` and ``VerificationCodeSend`` arrived with #10, same
+reasoning again: ``code_hash`` is a keyed digest (see
+``app/accounts/verification_codes.py``), never the code itself.
+
 ``Base`` is imported by ``migrations/env.py`` as ``target_metadata`` — see
 that module's docstring.
 """
@@ -34,7 +38,16 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-__all__ = ["Base", "CredentialKind", "User", "Credential", "Session", "SignInFailure"]
+__all__ = [
+    "Base",
+    "CredentialKind",
+    "User",
+    "Credential",
+    "Session",
+    "SignInFailure",
+    "EmailVerificationCode",
+    "VerificationCodeSend",
+]
 
 
 class Base(DeclarativeBase):
@@ -67,6 +80,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     sessions: Mapped[list[Session]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    verification_code: Mapped[EmailVerificationCode | None] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -149,6 +165,62 @@ class SignInFailure(Base):
 
     __tablename__ = "sign_in_failures"
     __table_args__ = (Index("ix_sign_in_failures_email_created_at", "email", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class EmailVerificationCode(Base):
+    """The one active verification code for a user. See ``app/accounts/email_verification.py``.
+
+    One row per user, not one row per code issued: requesting a new code
+    (resend) overwrites this row rather than adding another, so there is
+    never more than one code that can succeed at a time — a superseded code
+    simply stops existing rather than needing a separate flag to say so.
+    ``code_hash`` is a keyed digest (``verification_codes.hash_code``); the
+    plaintext code lives only in memory, long enough to email it.
+    """
+
+    __tablename__ = "email_verification_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    #: Wrong guesses against this code. MAX_ATTEMPTS (verification_code_policy.py)
+    #: invalidates the code entirely once reached — a new one must be requested.
+    attempts: Mapped[int] = mapped_column(nullable=False, server_default=text("0"))
+    #: Set once, on successful verification. Null means not yet used — checked
+    #: so the same code cannot be replayed after it has already verified the address.
+    used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="verification_code")
+
+
+class VerificationCodeSend(Base):
+    """One verification code sent to one (normalised) address.
+
+    What ``app/accounts/verification_send_throttle.py`` counts against to
+    limit how often a fresh code can be requested (#10) — kept by address
+    like ``SignInFailure``, and for the same reason: a resend request against
+    an address with no account must count identically to one against a real
+    account, or the counter itself would out which addresses are registered.
+    """
+
+    __tablename__ = "verification_code_sends"
+    __table_args__ = (Index("ix_verification_code_sends_email_created_at", "email", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")

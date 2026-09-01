@@ -10,9 +10,10 @@ do what the shared exception is built not to.
 from __future__ import annotations
 
 from anyio import to_thread
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from herhealth_backend.app.accounts.advisory_lock import serialize_per_email
 from herhealth_backend.app.accounts.emails import normalize_email
 from herhealth_backend.app.accounts.errors import InvalidCredentials, TooManySignInAttempts
 from herhealth_backend.app.accounts.models import Credential, CredentialKind, User
@@ -36,25 +37,10 @@ _DUMMY_PASSWORD_HASH = (
 )
 
 
-async def _serialize_per_email(session: AsyncSession, email: str) -> None:
-    """Block until no other in-flight decision for ``email`` holds this lock.
-
-    ``is_locked_out`` (a SELECT) and ``record_failure`` (an INSERT) are not
-    atomic on their own: under READ COMMITTED, concurrent requests for the
-    same address can each read the failure count before any of the others'
-    inserts commit, letting all of them through at once regardless of
-    MAX_FAILURES. A transaction-scoped advisory lock, keyed by the address,
-    serializes the *decision* (check-then-write) so each request sees the
-    others' committed failures first.
-
-    Deliberately acquired only around that decision in :func:`sign_in`, never
-    around the argon2id verify — holding it there too would serialize even
-    unrelated, legitimate concurrent sign-ins for one address behind whatever
-    hashing cost the first happened to take, turning a fix for a counting
-    race into a latency lever anyone could pull against a chosen address.
-    Committing (or rolling back) releases the lock; nothing to clean up.
-    """
-    await session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:email))"), {"email": email})
+#: Namespaces this module's use of advisory_lock.serialize_per_email away
+#: from other Accounts throttles (email_verification.py has its own) that
+#: might otherwise contend over the same address for an unrelated reason.
+_LOCK_NAMESPACE = "sign-in"
 
 
 async def _authenticate(
@@ -96,10 +82,10 @@ async def sign_in(
     # The slow part — argon2id — runs unlocked. What must be atomic across
     # concurrent sign-ins for one address is only the decision right after
     # it: check the failure count, then write this attempt's outcome, as one
-    # unit. See _serialize_per_email's docstring for why the lock stops here.
+    # unit. See advisory_lock.py for why the lock stops here.
     user = await _authenticate(session, normalized_email, password)
 
-    await _serialize_per_email(session, normalized_email)
+    await serialize_per_email(session, _LOCK_NAMESPACE, normalized_email)
     if await is_locked_out(session, normalized_email):
         await session.commit()
         raise TooManySignInAttempts()

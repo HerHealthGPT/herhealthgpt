@@ -1,11 +1,12 @@
-"""HTTP surface for Accounts: registration and sessions.
+"""HTTP surface for Accounts: registration, sessions, email verification.
 
 Kept a thin translation layer on purpose — the use-case modules
-(``registration.py``, ``sign_in.py``, ``sessions.py``) are where the actual
-decisions live, so each can be tested without an ASGI client. Domain
-exceptions those use cases raise are not caught here: they propagate to the
-handlers ``error_handlers.py`` registers once against the whole app, so this
-module needs no per-route try/except to keep in sync as Accounts grows.
+(``registration.py``, ``sign_in.py``, ``sessions.py``, ``email_verification.py``)
+are where the actual decisions live, so each can be tested without an ASGI
+client. Domain exceptions those use cases raise are not caught here: they
+propagate to the handlers ``error_handlers.py`` registers once against the
+whole app, so this module needs no per-route try/except to keep in sync as
+Accounts grows.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Request, Response, status
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from herhealth_backend.app.accounts.cookies import (
     REFRESH_TOKEN_COOKIE,
@@ -21,6 +22,12 @@ from herhealth_backend.app.accounts.cookies import (
     set_auth_cookies,
 )
 from herhealth_backend.app.accounts.current_user import get_current_user
+from herhealth_backend.app.accounts.email_sender import EmailSender
+from herhealth_backend.app.accounts.email_verification import (
+    request_verification_resend,
+    send_verification_code,
+    verify_email,
+)
 from herhealth_backend.app.accounts.errors import InvalidSession
 from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.registration import register_user
@@ -31,6 +38,7 @@ from herhealth_backend.app.accounts.sessions import (
     refresh_session,
 )
 from herhealth_backend.app.accounts.sign_in import sign_in as sign_in_user
+from herhealth_backend.app.accounts.verification_code_policy import CODE_LENGTH
 from herhealth_backend.app.db import Database
 
 __all__ = ["router"]
@@ -62,6 +70,23 @@ class SignInRequest(BaseModel):
     password: str
 
 
+class VerifyEmailRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    #: Fixed-length, unlike RegisterRequest.password above — a code is not a
+    #: secret in the same sense (short-lived, single-use, never a credential
+    #: on its own), so echoing an oversized value back in a 422 carries none
+    #: of that field's risk.
+    code: str = Field(min_length=CODE_LENGTH, max_length=CODE_LENGTH)
+
+
+class ResendVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+
+
 class UserSummary(BaseModel):
     id: uuid.UUID
     email: str
@@ -86,8 +111,11 @@ def _require_refresh_token(request: Request) -> str:
 )
 async def register(payload: RegisterRequest, request: Request) -> UserSummary:
     database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    email_sender: EmailSender = request.app.state.email_sender
     async with database.session() as session:
         user = await register_user(session, email=payload.email, password=payload.password)
+        await send_verification_code(session, secret, email_sender, user)
 
     return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
 
@@ -151,3 +179,22 @@ async def me(current_user: User = Depends(get_current_user)) -> UserSummary:  # 
     return UserSummary(
         id=current_user.id, email=current_user.email, email_verified=current_user.email_verified
     )
+
+
+@router.post("/verify-email", response_model=UserSummary)
+async def verify_email_route(payload: VerifyEmailRequest, request: Request) -> UserSummary:
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    async with database.session() as session:
+        user = await verify_email(session, secret, email=payload.email, code=payload.code)
+
+    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+
+
+@router.post("/verify-email/resend", status_code=status.HTTP_204_NO_CONTENT)
+async def resend_verification(payload: ResendVerificationRequest, request: Request) -> None:
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    email_sender: EmailSender = request.app.state.email_sender
+    async with database.session() as session:
+        await request_verification_resend(session, secret, email_sender, email=payload.email)
