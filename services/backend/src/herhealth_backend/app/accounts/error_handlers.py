@@ -22,10 +22,14 @@ from herhealth_backend.app.accounts.errors import (
     GoogleEmailNotVerified,
     GoogleSignInNotConfigured,
     GoogleTokenInvalid,
+    IncorrectPasswordResetCode,
     IncorrectVerificationCode,
     InvalidAccessToken,
     InvalidCredentials,
     InvalidSession,
+    NoPasswordCredential,
+    PasswordResetCodeExpired,
+    TooManyPasswordResetRequests,
     TooManySignInAttempts,
     TooManyVerificationRequests,
     VerificationCodeExpired,
@@ -134,8 +138,7 @@ def register_error_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_409_CONFLICT,
             content={
                 "detail": (
-                    "This address is already registered, and Google did not confirm "
-                    "you control it."
+                    "This address is already registered, and Google did not confirm you control it."
                 )
             },
         )
@@ -147,4 +150,42 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"detail": "Signing in with Google is not available yet."},
+        )
+
+    @app.exception_handler(NoPasswordCredential)
+    async def _no_password_credential(request: Request, exc: NoPasswordCredential) -> JSONResponse:
+        # #12's own framing: say so plainly rather than leave her looping
+        # between a reset screen and a sign-in screen that each point at the
+        # other. See NoPasswordCredential's own docstring for why this is
+        # the one deliberate exception to "look the same as an unknown address".
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"detail": "This account signs in with Google. There is no password to reset."},
+        )
+
+    @app.exception_handler(IncorrectPasswordResetCode)
+    async def _incorrect_password_reset_code(
+        request: Request, exc: IncorrectPasswordResetCode
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "That code is incorrect."},
+        )
+
+    @app.exception_handler(PasswordResetCodeExpired)
+    async def _password_reset_code_expired(
+        request: Request, exc: PasswordResetCodeExpired
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "This code has expired. Request a new one."},
+        )
+
+    @app.exception_handler(TooManyPasswordResetRequests)
+    async def _too_many_password_reset_requests(
+        request: Request, exc: TooManyPasswordResetRequests
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": "Too many attempts. Try again later."},
         )

@@ -14,6 +14,10 @@ directly — ``Session.refresh_token_hash`` is a digest, the same reasoning
 reasoning again: ``code_hash`` is a keyed digest (see
 ``app/accounts/verification_codes.py``), never the code itself.
 
+``PasswordResetCode`` and ``PasswordResetSend`` arrived with #12, mirroring
+those two tables exactly for the same reasons — see
+``app/accounts/password_reset.py``.
+
 ``Base`` is imported by ``migrations/env.py`` as ``target_metadata`` — see
 that module's docstring.
 """
@@ -46,6 +50,8 @@ __all__ = [
     "SignInFailure",
     "EmailVerificationCode",
     "VerificationCodeSend",
+    "PasswordResetCode",
+    "PasswordResetSend",
 ]
 
 
@@ -83,6 +89,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     verification_code: Mapped[EmailVerificationCode | None] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    password_reset_code: Mapped[PasswordResetCode | None] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 
@@ -235,6 +244,62 @@ class VerificationCodeSend(Base):
 
     __tablename__ = "verification_code_sends"
     __table_args__ = (Index("ix_verification_code_sends_email_created_at", "email", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class PasswordResetCode(Base):
+    """The one active password-reset code for a user. See ``app/accounts/password_reset.py``.
+
+    Shaped exactly like ``EmailVerificationCode``, for the same reason: one
+    row per user, overwritten rather than added to on a fresh request, so at
+    most one code can ever succeed at a time. ``code_hash`` is a keyed digest
+    (``password_reset_codes.hash_code``); the plaintext code lives only in
+    memory, long enough to email it.
+    """
+
+    __tablename__ = "password_reset_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    #: Wrong guesses against this code. MAX_ATTEMPTS (password_reset_policy.py)
+    #: invalidates the code entirely once reached — a new one must be requested.
+    attempts: Mapped[int] = mapped_column(nullable=False, server_default=text("0"))
+    #: Set once, on a successful reset. Null means not yet used — checked so
+    #: the same code cannot be replayed to reset the password a second time.
+    used_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="password_reset_code")
+
+
+class PasswordResetSend(Base):
+    """One password-reset code sent to one (normalised) address.
+
+    What ``app/accounts/password_reset_throttle.py`` counts against to limit
+    how often a reset can be requested (#12) — kept by address like
+    ``VerificationCodeSend``, and for the same reason: a request against an
+    address with no account, or one with no password credential, must count
+    identically to a real, successful request, or the counter itself would
+    reveal something about the address.
+    """
+
+    __tablename__ = "password_reset_sends"
+    __table_args__ = (Index("ix_password_reset_sends_email_created_at", "email", "created_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")

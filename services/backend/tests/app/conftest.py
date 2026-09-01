@@ -58,20 +58,35 @@ class RecordingEmailSender:
     route handed it instead of parsing ``ConsoleEmailSender``'s log output.
     Used everywhere in this suite instead of ``SesEmailSender`` — #10's own
     requirement that the suite run with no network and no provider account.
+
+    Verification and password-reset codes are recorded separately (#12) —
+    both are 6-digit codes and a test asking for the wrong kind by mistake
+    should fail loudly rather than silently reading the other flow's code.
     """
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, str]] = []
+        self.password_reset_sent: list[tuple[str, str]] = []
 
     async def send_verification_code(self, *, to: str, code: str) -> None:
         self.sent.append((to, code))
 
+    async def send_password_reset_code(self, *, to: str, code: str) -> None:
+        self.password_reset_sent.append((to, code))
+
     def code_for(self, to: str) -> str:
-        """The most recent code sent to ``to``. Raises if none was."""
+        """The most recent verification code sent to ``to``. Raises if none was."""
         for recipient, code in reversed(self.sent):
             if recipient == to:
                 return code
         raise AssertionError(f"No verification code was sent to {to!r}")
+
+    def password_reset_code_for(self, to: str) -> str:
+        """The most recent password-reset code sent to ``to``. Raises if none was."""
+        for recipient, code in reversed(self.password_reset_sent):
+            if recipient == to:
+                return code
+        raise AssertionError(f"No password reset code was sent to {to!r}")
 
 
 class StaticGoogleTokenVerifier:

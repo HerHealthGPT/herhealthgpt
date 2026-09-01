@@ -14,6 +14,10 @@ __all__ = [
     "GoogleTokenInvalid",
     "GoogleEmailNotVerified",
     "GoogleSignInNotConfigured",
+    "NoPasswordCredential",
+    "IncorrectPasswordResetCode",
+    "PasswordResetCodeExpired",
+    "TooManyPasswordResetRequests",
 ]
 
 
@@ -103,4 +107,38 @@ class GoogleSignInNotConfigured(Exception):
     feature up, not a bad token — the process still boots (see
     ``app/config.py::google_client_id``), this is what the route degrades
     to instead.
+    """
+
+
+class NoPasswordCredential(Exception):
+    """Raised when a password-reset request or completion names a real
+    account that has no password credential to reset — one that signs in
+    with Google alone. #12's own framing: this is the one deliberate
+    exception to "an unknown address and a real one must look the same",
+    because the alternative (silence, or a reset mail that cannot help)
+    strands her looping between two screens that each point at the other.
+    """
+
+
+class IncorrectPasswordResetCode(Exception):
+    """Raised when a submitted password-reset code is wrong, but the stored
+    code is still alive (not expired, not used, under the attempt limit).
+    Distinct from :class:`PasswordResetCodeExpired` for the same reason
+    :class:`IncorrectVerificationCode` is distinct from its own expired
+    counterpart — "wrong code" invites another try; "expired" does not.
+    """
+
+
+class PasswordResetCodeExpired(Exception):
+    """Raised whenever there is no reset code left that submitting the right
+    digits could satisfy: none was ever requested, it passed its expiry
+    window, it was already used, or too many wrong guesses used it up.
+    Deliberately one exception for all four, the same reasoning
+    :class:`VerificationCodeExpired` is held to.
+    """
+
+
+class TooManyPasswordResetRequests(Exception):
+    """Raised when an address has requested a password reset too often
+    recently. See ``app/accounts/password_reset_throttle.py``.
     """
