@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
-from httpx import AsyncClient, Response
+from httpx import ASGITransport, AsyncClient, Response
 
+from herhealth_backend.app import Database, create_app
+from herhealth_backend.app.accounts.google_identity import (
+    GoogleIdentity,
+    UnconfiguredGoogleTokenVerifier,
+)
+from herhealth_backend.app.accounts.password_reset_throttle import (
+    MAX_SENDS as MAX_PASSWORD_RESET_SENDS,
+)
 from herhealth_backend.app.accounts.sign_in_throttle import MAX_FAILURES
 from herhealth_backend.app.accounts.verification_send_throttle import MAX_SENDS
 
@@ -369,3 +377,286 @@ async def test_repeated_resend_requests_are_rate_limited(
         "/accounts/verify-email/resend", json={"email": "resend-lockout@example.com"}
     )
     assert locked_out.status_code == 429
+
+
+async def test_sign_in_google_on_an_unknown_address_creates_a_user(
+    client: AsyncClient, google_verifier
+) -> None:
+    google_verifier.identity = GoogleIdentity(
+        sub="route-google-sub-1", email="route-new-google@example.com", email_verified=True
+    )
+
+    response = await client.post("/accounts/sign-in/google", json={"id_token": "whatever"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email"] == "route-new-google@example.com"
+    assert body["email_verified"] is True
+    assert "access_token" in response.cookies
+    assert "refresh_token" in response.cookies
+
+    me = await client.get("/accounts/me")
+    assert me.json()["email"] == "route-new-google@example.com"
+
+
+async def test_sign_in_google_with_an_invalid_token_is_unauthorized(client: AsyncClient) -> None:
+    # The client fixture's google_verifier starts with no identity configured,
+    # so any token is treated as invalid.
+    response = await client.post("/accounts/sign-in/google", json={"id_token": "garbage"})
+
+    assert response.status_code == 401
+
+
+async def test_sign_in_google_without_email_verified_is_refused(
+    client: AsyncClient, google_verifier
+) -> None:
+    """An address that already has an account (verified or not — this one
+    is left unverified by registering and stopping there) must not be
+    touched when Google does not assert it controls the address.
+    """
+    await client.post(
+        "/accounts/register",
+        json={"email": "route-careful@example.com", "password": "correcthorse1"},
+    )
+
+    google_verifier.identity = GoogleIdentity(
+        sub="route-google-sub-2", email="route-careful@example.com", email_verified=False
+    )
+
+    response = await client.post("/accounts/sign-in/google", json={"id_token": "whatever"})
+
+    assert response.status_code == 409
+
+
+async def _register_and_verify(client: AsyncClient, email_sender, email: str) -> None:
+    await _register(client, email)
+    code = email_sender.code_for(email)
+    response = await client.post("/accounts/verify-email", json={"email": email, "code": code})
+    assert response.status_code == 200
+
+
+async def test_reset_password_request_sends_a_code_for_a_verified_address(
+    client: AsyncClient, email_sender
+) -> None:
+    await _register_and_verify(client, email_sender, "reset-request-success@example.com")
+
+    response = await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-request-success@example.com"}
+    )
+
+    assert response.status_code == 204
+    code = email_sender.password_reset_code_for("reset-request-success@example.com")
+    assert len(code) == 6 and code.isdigit()
+
+
+async def test_reset_password_request_for_an_unknown_address_looks_like_success(
+    client: AsyncClient, email_sender
+) -> None:
+    response = await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-request-unknown@example.com"}
+    )
+
+    assert response.status_code == 204
+    assert email_sender.password_reset_sent == []
+
+
+async def test_reset_password_request_for_an_unverified_address_looks_like_success(
+    client: AsyncClient, email_sender
+) -> None:
+    await _register(client, "reset-request-unverified@example.com")
+
+    response = await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-request-unverified@example.com"}
+    )
+
+    assert response.status_code == 204
+    assert email_sender.password_reset_sent == []
+
+
+async def test_reset_password_request_for_a_google_only_account_says_so(
+    client: AsyncClient, google_verifier
+) -> None:
+    google_verifier.identity = GoogleIdentity(
+        sub="route-google-sub-reset", email="reset-request-google@example.com", email_verified=True
+    )
+    await client.post("/accounts/sign-in/google", json={"id_token": "whatever"})
+
+    response = await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-request-google@example.com"}
+    )
+
+    assert response.status_code == 409
+    assert "Google" in response.json()["detail"]
+
+
+async def test_reset_password_request_for_an_unverified_google_only_account_looks_like_success(
+    client: AsyncClient, google_verifier
+) -> None:
+    google_verifier.identity = GoogleIdentity(
+        sub="route-google-sub-reset-unverified",
+        email="reset-request-google-unverified@example.com",
+        email_verified=False,
+    )
+    await client.post("/accounts/sign-in/google", json={"id_token": "whatever"})
+
+    response = await client.post(
+        "/accounts/reset-password/request",
+        json={"email": "reset-request-google-unverified@example.com"},
+    )
+
+    assert response.status_code == 204
+
+
+async def test_reset_password_requests_are_rate_limited(
+    client: AsyncClient, email_sender
+) -> None:
+    await _register_and_verify(client, email_sender, "reset-request-lockout@example.com")
+
+    for _ in range(MAX_PASSWORD_RESET_SENDS):
+        response = await client.post(
+            "/accounts/reset-password/request", json={"email": "reset-request-lockout@example.com"}
+        )
+        assert response.status_code == 204
+
+    locked_out = await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-request-lockout@example.com"}
+    )
+    assert locked_out.status_code == 429
+
+
+async def test_reset_password_with_the_correct_code_replaces_the_password(
+    client: AsyncClient, email_sender
+) -> None:
+    await _register_and_verify(client, email_sender, "reset-complete-success@example.com")
+    await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-complete-success@example.com"}
+    )
+    code = email_sender.password_reset_code_for("reset-complete-success@example.com")
+
+    response = await client.post(
+        "/accounts/reset-password",
+        json={
+            "email": "reset-complete-success@example.com",
+            "code": code,
+            "new_password": "brandnewpassword1",
+        },
+    )
+    assert response.status_code == 204
+
+    old_password_sign_in = await client.post(
+        "/accounts/sign-in",
+        json={"email": "reset-complete-success@example.com", "password": "correcthorse1"},
+    )
+    assert old_password_sign_in.status_code == 401
+
+    new_password_sign_in = await client.post(
+        "/accounts/sign-in",
+        json={"email": "reset-complete-success@example.com", "password": "brandnewpassword1"},
+    )
+    assert new_password_sign_in.status_code == 200
+
+
+async def test_reset_password_ends_every_existing_session(
+    client: AsyncClient, email_sender
+) -> None:
+    await _register_and_verify(client, email_sender, "reset-ends-sessions@example.com")
+    sign_in_response = await client.post(
+        "/accounts/sign-in",
+        json={"email": "reset-ends-sessions@example.com", "password": "correcthorse1"},
+    )
+    refresh_token = sign_in_response.cookies["refresh_token"]
+
+    await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-ends-sessions@example.com"}
+    )
+    code = email_sender.password_reset_code_for("reset-ends-sessions@example.com")
+    await client.post(
+        "/accounts/reset-password",
+        json={
+            "email": "reset-ends-sessions@example.com",
+            "code": code,
+            "new_password": "brandnewpassword1",
+        },
+    )
+
+    refresh_after_reset = await client.post(
+        "/accounts/refresh", headers={"Cookie": f"refresh_token={refresh_token}"}
+    )
+    assert refresh_after_reset.status_code == 401
+
+
+async def test_reset_password_with_the_wrong_code_is_refused(
+    client: AsyncClient, email_sender
+) -> None:
+    await _register_and_verify(client, email_sender, "reset-wrong-code@example.com")
+    await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-wrong-code@example.com"}
+    )
+    code = email_sender.password_reset_code_for("reset-wrong-code@example.com")
+    wrong_code = "0" * 6 if code != "0" * 6 else "1" * 6
+
+    response = await client.post(
+        "/accounts/reset-password",
+        json={
+            "email": "reset-wrong-code@example.com",
+            "code": wrong_code,
+            "new_password": "brandnewpassword1",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "That code is incorrect."
+
+
+async def test_reset_password_a_used_code_reads_as_expired_not_incorrect(
+    client: AsyncClient, email_sender
+) -> None:
+    await _register_and_verify(client, email_sender, "reset-replay@example.com")
+    await client.post(
+        "/accounts/reset-password/request", json={"email": "reset-replay@example.com"}
+    )
+    code = email_sender.password_reset_code_for("reset-replay@example.com")
+    await client.post(
+        "/accounts/reset-password",
+        json={
+            "email": "reset-replay@example.com",
+            "code": code,
+            "new_password": "brandnewpassword1",
+        },
+    )
+
+    replayed = await client.post(
+        "/accounts/reset-password",
+        json={
+            "email": "reset-replay@example.com",
+            "code": code,
+            "new_password": "anotherbrandnewpassword1",
+        },
+    )
+
+    assert replayed.status_code == 400
+    assert replayed.json()["detail"] == "This code has expired. Request a new one."
+
+
+async def test_google_sign_in_not_configured_is_service_unavailable(database_url: str) -> None:
+    """A deployment with no ``HERHEALTH_GOOGLE_CLIENT_ID`` set gets an
+    ``UnconfiguredGoogleTokenVerifier`` (see ``main.py``'s ``_build_google_verifier``)
+    rather than the app failing to boot over an optional feature — exercised
+    directly here since httpx's ``ASGITransport`` never runs the app's own
+    lifespan, the same reason the ``client`` fixture always passes every
+    piece of state in explicitly rather than letting the app construct it.
+    """
+    database = Database(database_url)
+    app = create_app(
+        database=database,
+        session_secret="test-only-session-secret-do-not-use",
+        google_verifier=UnconfiguredGoogleTokenVerifier(),
+    )
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="https://test") as unconfigured_client:
+        response = await unconfigured_client.post(
+            "/accounts/sign-in/google", json={"id_token": "whatever"}
+        )
+    await database.dispose()
+
+    assert response.status_code == 503

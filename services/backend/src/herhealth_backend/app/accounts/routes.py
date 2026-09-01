@@ -29,7 +29,11 @@ from herhealth_backend.app.accounts.email_verification import (
     verify_email,
 )
 from herhealth_backend.app.accounts.errors import InvalidSession
+from herhealth_backend.app.accounts.google_identity import GoogleTokenVerifier
+from herhealth_backend.app.accounts.google_sign_in import sign_in_with_google
 from herhealth_backend.app.accounts.models import User
+from herhealth_backend.app.accounts.password_reset import request_password_reset, reset_password
+from herhealth_backend.app.accounts.password_reset_policy import CODE_LENGTH as RESET_CODE_LENGTH
 from herhealth_backend.app.accounts.registration import register_user
 from herhealth_backend.app.accounts.sessions import (
     end_all_sessions,
@@ -87,6 +91,32 @@ class ResendVerificationRequest(BaseModel):
     email: EmailStr
 
 
+class GoogleSignInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id_token: str
+
+
+class RequestPasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    #: Fixed-length, like VerifyEmailRequest.code — a code is not a secret in
+    #: the same sense a password is, so echoing an oversized value back in a
+    #: 422 carries none of RegisterRequest.password's risk.
+    code: str = Field(min_length=RESET_CODE_LENGTH, max_length=RESET_CODE_LENGTH)
+    #: No length constraints here, deliberately — see RegisterRequest.password's
+    #: own comment. check_password_strength enforces both the floor and the
+    #: ceiling before hash_password ever runs.
+    new_password: str
+
+
 class UserSummary(BaseModel):
     id: uuid.UUID
     email: str
@@ -127,6 +157,22 @@ async def sign_in(payload: SignInRequest, request: Request, response: Response) 
     async with database.session() as session:
         user, access_token, refresh_token = await sign_in_user(
             session, secret, email=payload.email, password=payload.password
+        )
+
+    set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)
+    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+
+
+@router.post("/sign-in/google", response_model=UserSummary)
+async def sign_in_google(
+    payload: GoogleSignInRequest, request: Request, response: Response
+) -> UserSummary:
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    google_verifier: GoogleTokenVerifier = request.app.state.google_verifier
+    async with database.session() as session:
+        user, access_token, refresh_token = await sign_in_with_google(
+            session, secret, google_verifier, id_token=payload.id_token
         )
 
     set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)
@@ -198,3 +244,35 @@ async def resend_verification(payload: ResendVerificationRequest, request: Reque
     email_sender: EmailSender = request.app.state.email_sender
     async with database.session() as session:
         await request_verification_resend(session, secret, email_sender, email=payload.email)
+
+
+@router.post("/reset-password/request", status_code=status.HTTP_204_NO_CONTENT)
+async def request_password_reset_route(
+    payload: RequestPasswordResetRequest, request: Request
+) -> None:
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    email_sender: EmailSender = request.app.state.email_sender
+    async with database.session() as session:
+        await request_password_reset(session, secret, email_sender, email=payload.email)
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_password_route(
+    payload: ResetPasswordRequest, request: Request, response: Response
+) -> None:
+    database: Database = request.app.state.database
+    secret: str = request.app.state.session_secret
+    async with database.session() as session:
+        await reset_password(
+            session,
+            secret,
+            email=payload.email,
+            code=payload.code,
+            new_password=payload.new_password,
+        )
+    # Every session on the account was just ended (#12's fourth criterion) —
+    # clear whatever auth cookies this browser happens to be holding too, the
+    # same as sign_out does, in case she completed the reset from a device
+    # that was still signed in under the password someone else knew.
+    clear_auth_cookies(response)

@@ -44,6 +44,11 @@ api = [
     # sync, run off the event loop the same way passwords.py runs argon2id.
     # ConsoleEmailSender needs none of this; only selecting HERHEALTH_EMAIL_SENDER=ses does.
     "boto3>=1.34",
+    # Verifying a Google ID token's signature and audience (Accounts, #11) —
+    # Google's own recommended library for exactly this. Needed even when
+    # Google sign-in is unconfigured, since UnconfiguredGoogleTokenVerifier
+    # lives beside GoogleOAuthTokenVerifier in the same module.
+    "google-auth>=2.30",
 ]
 
 [tool.uv.sources]

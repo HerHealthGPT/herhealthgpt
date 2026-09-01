@@ -1,9 +1,9 @@
 """The seam between Accounts and wherever a verification email actually goes.
 
-One narrow method, not a generic "send an email" API — there is exactly one
-kind of message Accounts sends today. When #12 (password reset) needs one
-too, it gets its own method here, the way ``CredentialKind`` grows one member
-at a time rather than up front.
+One method per kind of message, not a generic "send an email" API — #12
+(password reset) is the second one, added here rather than generalised into
+a single parametrised method, the way ``CredentialKind`` grows one member at
+a time rather than up front.
 
 Two implementations. ``ConsoleEmailSender`` never touches a network, so the
 test suite and any environment without AWS credentials can still run the
@@ -26,6 +26,7 @@ from typing import Protocol
 import boto3
 from anyio import to_thread
 
+from herhealth_backend.app.accounts.password_reset_policy import CODE_TTL as PASSWORD_RESET_CODE_TTL
 from herhealth_backend.app.accounts.verification_code_policy import CODE_TTL
 
 __all__ = ["EmailSender", "ConsoleEmailSender", "SesEmailSender"]
@@ -35,6 +36,7 @@ _logger = logging.getLogger(__name__)
 
 class EmailSender(Protocol):
     async def send_verification_code(self, *, to: str, code: str) -> None: ...
+    async def send_password_reset_code(self, *, to: str, code: str) -> None: ...
 
 
 class ConsoleEmailSender:
@@ -42,6 +44,9 @@ class ConsoleEmailSender:
 
     async def send_verification_code(self, *, to: str, code: str) -> None:
         _logger.info("verification code for %s: %s", to, code)
+
+    async def send_password_reset_code(self, *, to: str, code: str) -> None:
+        _logger.info("password reset code for %s: %s", to, code)
 
 
 #: The identity #6 provisioned in SES — see
@@ -75,26 +80,35 @@ class SesEmailSender:
     def __init__(self, *, region: str = SES_REGION) -> None:
         self._client = boto3.client("ses", region_name=region)
 
-    def _send(self, *, to: str, code: str) -> None:
-        minutes = int(CODE_TTL.total_seconds() // 60)
+    def _send(self, *, to: str, subject: str, body: str) -> None:
         self._client.send_email(
             Source=SES_FROM_ADDRESS,
             Destination={"ToAddresses": [to]},
             ReplyToAddresses=[SES_REPLY_TO_ADDRESS],
             Message={
-                "Subject": {"Data": "Your HerHealthGPT verification code", "Charset": "UTF-8"},
-                "Body": {
-                    "Text": {
-                        "Charset": "UTF-8",
-                        "Data": (
-                            f"Your verification code is: {code}\n\n"
-                            f"This code expires in {minutes} minutes. If you did not "
-                            "request this, you can ignore this email."
-                        ),
-                    }
-                },
+                "Subject": {"Data": subject, "Charset": "UTF-8"},
+                "Body": {"Text": {"Charset": "UTF-8", "Data": body}},
             },
         )
 
     async def send_verification_code(self, *, to: str, code: str) -> None:
-        await to_thread.run_sync(lambda: self._send(to=to, code=code))
+        minutes = int(CODE_TTL.total_seconds() // 60)
+        body = (
+            f"Your verification code is: {code}\n\n"
+            f"This code expires in {minutes} minutes. If you did not "
+            "request this, you can ignore this email."
+        )
+        await to_thread.run_sync(
+            lambda: self._send(to=to, subject="Your HerHealthGPT verification code", body=body)
+        )
+
+    async def send_password_reset_code(self, *, to: str, code: str) -> None:
+        minutes = int(PASSWORD_RESET_CODE_TTL.total_seconds() // 60)
+        body = (
+            f"Your password reset code is: {code}\n\n"
+            f"This code expires in {minutes} minutes. If you did not "
+            "request this, you can ignore this email — your password has not changed."
+        )
+        await to_thread.run_sync(
+            lambda: self._send(to=to, subject="Reset your HerHealthGPT password", body=body)
+        )

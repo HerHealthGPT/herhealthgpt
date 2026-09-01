@@ -590,6 +590,282 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Resetting a password",
+      "description": "Issue #12: she forgot her password and gets back in without losing her history. Register and verify an address first (the folders above) — a reset code is only ever sent to a verified address with a password credential. There is no `ConsoleEmailSender` HTTP endpoint, so read the code from the terminal running `make serve`: a line like `password reset code for woman@example.com: 123456`.",
+      "item": [
+        {
+          "name": "Request a password reset",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/reset-password/request",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "reset-password", "request"]
+            },
+            "description": "Issues a fresh reset code for a verified address with a password credential — check the server console for it. Does nothing (but still returns 204) for an unknown or unverified address, and does not say which."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request a password reset — unknown address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody-registered@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/reset-password/request",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "reset-password", "request"]
+            },
+            "description": "An address nobody registered. Must return the same 204 as a real address — nothing is actually sent, but the response cannot say so, or it would confirm the address is unregistered."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "pm.test('body is empty either way', function () {",
+                  "    pm.expect(pm.response.text()).to.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request a password reset — Google-only account",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"PASTE_A_GOOGLE_ONLY_ACCOUNT_ADDRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/reset-password/request",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "reset-password", "request"]
+            },
+            "description": "Run 'Sign in with Google' (in the folder below) with a fresh address first, then request a reset for that same address here. The one deliberate exception to looking like an unknown address — #12 asks that she be told plainly rather than mailed a code that cannot help."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('says it signs in with Google', function () {",
+                  "    pm.expect(pm.response.json().detail).to.include('Google');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete a password reset",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\",\n  \"code\": \"PASTE_THE_CODE_FROM_THE_SERVER_CONSOLE\",\n  \"new_password\": \"correcthorse2\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "reset-password"]
+            },
+            "description": "Run 'Request a password reset' with this address first. Replaces the password credential and ends every session on the account — sign in again afterwards with new_password, not the old one."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete a password reset — wrong code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"woman@example.com\",\n  \"code\": \"000000\",\n  \"new_password\": \"correcthorse2\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/reset-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "reset-password"]
+            },
+            "description": "A code that is (almost certainly) not the real one. Counts as one of MAX_ATTEMPTS wrong guesses against whatever reset code is currently live for this address."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('reads as incorrect, not expired', function () {",
+                  "    pm.expect(pm.response.json().detail).to.eql('That code is incorrect.');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Google sign-in",
+      "description": "Issue #11: sign in with Google, linking to or taking over an existing account only when it's genuinely hers. Needs HERHEALTH_GOOGLE_CLIENT_ID set (see docs/runbooks/google-oauth-client.md) — with it unset, every request in this folder gets a 503. `id_token` has to be a real, currently-valid Google ID token: get one from https://developers.google.com/oauthplayground (gear icon → \"Use your own OAuth credentials\" → your Client ID/secret → scopes `openid email profile` → Authorize → Exchange authorization code for tokens → copy `id_token`). Tokens from the Playground expire in about an hour — get a fresh one if requests start failing with 401.",
+      "item": [
+        {
+          "name": "Sign in with Google",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"PASTE_A_REAL_ID_TOKEN_FROM_THE_OAUTH_PLAYGROUND\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/sign-in/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "sign-in", "google"]
+            },
+            "description": "First run against a token for an address nobody has registered: creates a user with a Google credential and no password. Run again with the same token (or a fresh one for the same Google account) and it signs into the same user instead of creating a second one. Sets access_token/refresh_token cookies exactly like 'Sign in' in the folder above."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('access_token cookie is set', function () {",
+                  "    pm.expect(pm.cookies.has('access_token')).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('refresh_token cookie is set', function () {",
+                  "    pm.expect(pm.cookies.has('refresh_token')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me (signed in via Google)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/accounts/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "me"]
+            },
+            "description": "Run 'Sign in with Google' first. Same /accounts/me the password/session flow uses — proves a Google sign-in reaches an ordinary, otherwise-identical session."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign in with Google — invalid token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_token\": \"not-a-real-token\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/accounts/sign-in/google",
+              "host": ["{{baseUrl}}"],
+              "path": ["accounts", "sign-in", "google"]
+            },
+            "description": "No real token needed for this one — anything that fails Google's signature/audience check reads the same way."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }
