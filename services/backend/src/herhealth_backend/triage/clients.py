@@ -54,20 +54,56 @@ def _render_context(context: Sequence[RetrievedPassage]) -> str:
     return "\n".join(lines)
 
 
+#: Verified empirically (2026-09-01, against OpenRouter's Venice and
+#: SiliconFlow routes for this model): ``response_format: {"type":
+#: "json_schema", "json_schema": {"strict": true, "schema": <the full
+#: TriageDecision schema>}}`` does not fail fast — it hangs indefinitely
+#: (killed after 10+ minutes in testing). ``strict: false`` against the same
+#: schema avoids the hang but the model spends thousands of tokens
+#: "reasoning" about the request instead of answering, and
+#: ``chat_template_kwargs.enable_thinking: false`` is inconsistently honoured
+#: across OpenRouter's backing providers regardless of which strict setting
+#: is used. Plain ``{"type": "json_object"}`` plus an explicit, direct
+#: shape instruction in the prompt returned correctly in ~7 seconds in the
+#: same testing. This is the documented reason this client does not use
+#: ``json_schema``/``strict`` mode even though ADR 0011 describes guided
+#: decoding as the intended contract — that guarantee assumed a self-hosted
+#: vLLM server's own ``guided_json``, a single first-party implementation,
+#: not a heterogeneous aggregation of third-party ones. Pydantic validation
+#: on receipt (see :meth:`OpenRouterReasoningClient.decide`) is what actually
+#: enforces the schema against this provider.
+_JSON_SHAPE_INSTRUCTION = (
+    "\n\nRespond with ONLY a single JSON object, no other text, matching this shape: "
+    '{"type": "ask" or "conclude", "rationale": "why, required always", '
+    '"next_feature_id": "a feature id, required only if type is ask, else null", '
+    '"question_text": "the question, required only if type is ask, else null", '
+    '"action_code": "one of SELF_CARE|ROUTINE_APPOINTMENT|URGENT_SAME_DAY|EMERGENCY, '
+    'required only if type is conclude, else null", '
+    '"matching_conditions": ["array of condition ids, at most 5, only if type is conclude '
+    'and red_flag_id is null, else empty"], '
+    '"citations": ["array of retrieved-passage ids this decision is grounded on"], '
+    '"red_flag_id": "a red_flags.yaml id if this decision is driven by one, else null"}. '
+    "MANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
+    "an ask as much as a conclude. If you are asking a question because of something a "
+    "retrieved passage suggests, cite that passage's id even though you have not "
+    "concluded yet. A decision with empty citations and no red_flag_id is invalid and "
+    "will be rejected."
+)
+
+
 class OpenRouterReasoningClient:
     """Implements ``herhealth_backend.triage.agent.ReasoningClient`` against
-    OpenRouter's chat-completions API, requesting structured output
-    constrained to ``TriageDecision.model_json_schema()`` — the same
-    guided-decoding contract ADR 0011 specifies, enforced by a different
-    server than the self-hosted vLLM it originally described (ADR 0012).
-
-    Whether OpenRouter's various backing providers honour ``strict`` mode
-    against the *full* schema Pydantic generates (nested ``$defs``, tuple
-    ``max_length`` constraints, ``StrEnum`` members) is not yet verified
-    empirically — only that OpenRouter advertises structured-output support
-    for this model in general. :meth:`decide` re-validates with Pydantic on
-    receipt regardless, so a provider that only partially enforces the
-    schema fails here, legibly, rather than deeper inside ``TriageAgent``.
+    OpenRouter's chat-completions API. Requests plain JSON-object output
+    (not schema-constrained ``json_schema``/``strict`` mode — see
+    ``_JSON_SHAPE_INSTRUCTION``'s comment for why that hangs in practice)
+    with the required shape spelled out directly in the prompt.
+    ``TriageDecision.model_validate`` on receipt is what actually enforces
+    the schema here, not the provider — this is a real gap against ADR
+    0011's "guided decoding" guarantee, which assumed a self-hosted vLLM
+    server's own constrained decoding, not a plain-JSON request to a
+    third-party aggregator. A malformed or out-of-vocabulary response fails
+    here, legibly, as a ``pydantic.ValidationError`` — it is not silently
+    accepted.
     """
 
     def __init__(
@@ -96,20 +132,21 @@ class OpenRouterReasoningClient:
         context: Sequence[RetrievedPassage],
     ) -> TriageDecision:
         messages = [
-            {"role": "system", "content": f"{system_prompt}\n\n{_render_context(context)}"},
+            {
+                "role": "system",
+                "content": f"{system_prompt}\n\n{_render_context(context)}{_JSON_SHAPE_INSTRUCTION}",
+            },
             *({"role": m.role, "content": m.content} for m in history),
         ]
         body = {
             "model": self._model,
             "messages": messages,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "TriageDecision",
-                    "strict": True,
-                    "schema": TriageDecision.model_json_schema(),
-                },
-            },
+            "response_format": {"type": "json_object"},
+            # Inconsistently honoured across OpenRouter's backing providers
+            # (see _JSON_SHAPE_INSTRUCTION's comment) but harmless and cheap
+            # to keep — when it is honoured, it skips a slow, unneeded
+            # reasoning block for a turn that just needs to answer.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         response = self._client.post(_OPENROUTER_URL, headers=self._headers, json=body)
         response.raise_for_status()
