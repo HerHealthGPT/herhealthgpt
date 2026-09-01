@@ -46,11 +46,32 @@ DEFAULT_MODEL = "qwen/qwen3.5-9b"
 def _render_context(context: Sequence[RetrievedPassage]) -> str:
     """Retrieved passages, rendered into the system prompt. Mirrors
     ``agent.render_red_flags``'s role for red flags: red flags are injected
-    unconditionally, this is injected only when retrieval found something."""
+    unconditionally, this is injected only when retrieval found something.
+
+    Labelled ``passage_id=`` rather than a bare ``[hash]``, and evidence
+    statements' own ``feature_id``/``condition_id`` are surfaced explicitly
+    when present — both changes made after a live test
+    (2026-09-01) returned a passage's hash where a real feature id
+    belonged: ``next_feature_id="14ebb1e7a2e19149"``. A hex hash and a real
+    feature id look similar enough in a wall of retrieved text that the
+    model conflated the two namespaces; this makes the difference visible
+    rather than relying on the instruction text alone to prevent it.
+    """
     if not context:
         return "No retrieved passages matched this turn."
-    lines = ["Retrieved passages — cite one by its id in `citations` if you use it:"]
-    lines.extend(f'- [{p.id}] ({p.citation}): "{p.text}"' for p in context)
+    lines = [
+        "Retrieved passages. passage_id is ONLY for `citations` — it is a "
+        "content hash, never a feature or condition id, even though both "
+        "are lowercase strings."
+    ]
+    for p in context:
+        line = f'- passage_id={p.id} ({p.citation}): "{p.text}"'
+        if p.feature_id is not None or p.condition_id is not None:
+            line += (
+                f" [this row: feature_id={p.feature_id}, condition_id={p.condition_id}"
+                f", value={p.value}]"
+            )
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -87,7 +108,17 @@ _JSON_SHAPE_INSTRUCTION = (
     "an ask as much as a conclude. If you are asking a question because of something a "
     "retrieved passage suggests, cite that passage's id even though you have not "
     "concluded yet. A decision with empty citations and no red_flag_id is invalid and "
-    "will be rejected."
+    "will be rejected.\n\n"
+    "THREE DIFFERENT KINDS OF ID — do not mix them up: "
+    "(1) passage_id, shown on each retrieved passage above — use these ONLY in "
+    "`citations`, never in `next_feature_id` or `matching_conditions`. "
+    "(2) feature_id — a real one is shown only when a retrieved passage's own line "
+    "says `feature_id=...`; if none of the retrieved passages show a feature_id, you "
+    "do not have a real one available and must not invent one — conclude instead of "
+    "asking, or ask a general question and pick the closest real feature_id you "
+    "already know from earlier in this conversation. "
+    "(3) condition_id — same rule: only use one a retrieved passage's `condition_id=` "
+    "field actually showed you, never a passage_id or an invented name."
 )
 
 

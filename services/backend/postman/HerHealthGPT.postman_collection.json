@@ -9,6 +9,12 @@
       "key": "baseUrl",
       "value": "http://localhost:8000",
       "type": "string"
+    },
+    {
+      "key": "triageSessionId",
+      "value": "",
+      "type": "string",
+      "description": "Set by 'Triage turn — opening message''s test script; read by the requests that continue or re-hit that same session."
     }
   ],
   "item": [
@@ -849,6 +855,237 @@
               "path": ["accounts", "sign-in", "google"]
             },
             "description": "No real token needed for this one — anything that fails Google's signature/audience check reads the same way."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Triage",
+      "description": "Issue #20 items 6-7 / ADR 0012: one retrieve-then-reason turn of the agentic triage loop, now with server-side session/message persistence. Run 'Sign in' (in the folder above) first — every request here needs a session. The server owns the transcript: send only session_id (null to start) and her newest message — see 'Triage turn — opening message' below, whose test script saves the returned session_id into {{triageSessionId}} so 'Triage turn — continuing a session' can use it. Returns 503 if OPENROUTER_API_KEY is unset on the server (triage is optional configuration, the app still boots without it — see app/config.py); 502 if the reasoning model itself returned something invalid (a real, observed failure mode — see triage/clients.py and triage/vocabulary.py, both written after this was caught live); 404 for a session_id that does not exist or belongs to someone else (never a 403, matching issue #13's own convention); 409 for a turn against an already-concluded session.",
+      "item": [
+        {
+          "name": "Triage turn — opening message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": null,\n  \"message\": \"I have been having irregular periods for 3 months, what should I do?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/triage/turn",
+              "host": ["{{baseUrl}}"],
+              "path": ["triage", "turn"]
+            },
+            "description": "session_id null starts a new consultation. The response is either an 'ask' (next_feature_id/question_text set, action_code null) or a 'conclude' (action_code set, next_feature_id/question_text null) — which one is not deterministic, the reasoning model decides it live against real retrieved evidence, so do not expect the same shape every run."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "",
+                  "pm.test('a session_id is returned', function () {",
+                  "    pm.expect(body.session_id).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('triageSessionId', body.session_id);",
+                  "",
+                  "const decision = body.decision;",
+                  "",
+                  "pm.test('type is ask or conclude', function () {",
+                  "    pm.expect(['ask', 'conclude']).to.include(decision.type);",
+                  "});",
+                  "",
+                  "pm.test('rationale is a non-empty string', function () {",
+                  "    pm.expect(decision.rationale).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "pm.test('grounded in a citation or a red flag', function () {",
+                  "    pm.expect(decision.citations.length > 0 || decision.red_flag_id !== null).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('ask/conclude fields are mutually exclusive', function () {",
+                  "    if (decision.type === 'ask') {",
+                  "        pm.expect(decision.next_feature_id).to.not.be.null;",
+                  "        pm.expect(decision.question_text).to.not.be.null;",
+                  "        pm.expect(decision.action_code).to.be.null;",
+                  "    } else {",
+                  "        pm.expect(decision.action_code).to.not.be.null;",
+                  "        pm.expect(decision.next_feature_id).to.be.null;",
+                  "        pm.expect(decision.question_text).to.be.null;",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Triage turn — continuing a session",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{triageSessionId}}\",\n  \"message\": \"No, I don't think so.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/triage/turn",
+              "host": ["{{baseUrl}}"],
+              "path": ["triage", "turn"]
+            },
+            "description": "Run 'Triage turn — opening message' first — it saves {{triageSessionId}}. The server loads every prior message of that session and replays the full transcript to the reasoning model; only her newest message is sent here. If the opening turn already concluded, this gets a 409 instead of 200 — that is expected, not a bug (see 'Triage turn — a concluded session is refused')."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    pm.test('type is ask or conclude', function () {",
+                  "        pm.expect(['ask', 'conclude']).to.include(pm.response.json().decision.type);",
+                  "    });",
+                  "} else {",
+                  "    pm.test('otherwise the session had already concluded', function () {",
+                  "        pm.response.to.have.status(409);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Triage turn — a concluded session is refused (expect 409)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"{{triageSessionId}}\",\n  \"message\": \"one more thing...\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/triage/turn",
+              "host": ["{{baseUrl}}"],
+              "path": ["triage", "turn"]
+            },
+            "description": "Run the two requests above first. By now {{triageSessionId}} has very likely concluded (directly on the first turn, or on the second) — a turn against a concluded session is refused rather than silently continuing a finished consultation."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Triage turn — someone else's session_id (expect 404)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": \"00000000-0000-0000-0000-000000000000\",\n  \"message\": \"let me in\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/triage/turn",
+              "host": ["{{baseUrl}}"],
+              "path": ["triage", "turn"]
+            },
+            "description": "Run 'Sign in' first. A well-formed but nonexistent session_id — reads identically to one that exists but belongs to someone else, so neither response confirms which (same discipline issue #13 established for its own conversations)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Triage turn — empty message (expect 422)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": null,\n  \"message\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/triage/turn",
+              "host": ["{{baseUrl}}"],
+              "path": ["triage", "turn"]
+            },
+            "description": "Run 'Sign in' first. message has a min_length of 1 — rejected before the route ever runs, the standard FastAPI/Pydantic validation-error shape (compare to 'Register — weak password' above)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 422', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Triage turn — not signed in (expect 401)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"session_id\": null,\n  \"message\": \"I have been having irregular periods for 3 months, what should I do?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/triage/turn",
+              "host": ["{{baseUrl}}"],
+              "path": ["triage", "turn"]
+            },
+            "description": "Run 'Sign out' (in the Signing in folder) first so no session cookie is attached. Same auth dependency (get_current_user) every other protected route in this collection uses."
           },
           "response": [],
           "event": [
