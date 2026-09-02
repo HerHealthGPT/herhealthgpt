@@ -3,95 +3,85 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  BookOpen,
-  Heart,
-  MessageCircle,
-  Shield,
-  Sparkles,
-} from "lucide-react";
+import { ArrowRight, Sparkles, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
+import { ONBOARDING_STEPS } from "@/lib/onboarding-content";
 import { markOnboardingComplete } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
-const STEPS: Array<{
-  id: string;
-  icon: typeof Heart;
-  title: string;
-  body: string | null;
-  bullets?: string[];
-}> = [
-  {
-    id: "welcome",
-    icon: Heart,
-    title: "Welcome to HerHealthGPT",
-    body: "A health companion for when you're not sure what to do next. Describe how you feel in your own words — we'll help you work out how urgently to seek care.",
-  },
-  {
-    id: "how",
-    icon: MessageCircle,
-    title: "How it works",
-    body: null,
-    bullets: [
-      "You describe your symptoms in a chat",
-      "We ask a few clarifying questions if needed",
-      "We suggest how soon to see someone, with links to trusted sources",
-    ],
-  },
-  {
-    id: "safety",
-    icon: Shield,
-    title: "Important to know",
-    body: "HerHealthGPT provides urgency guidance and information — it never diagnoses. If something feels urgent, seek care right away rather than waiting for a chat reply.",
-    bullets: [
-      "We may suggest conditions your symptoms could match — that's not a diagnosis",
-      "Red-flag symptoms trigger immediate escalation",
-      "Always see a clinician if you're worried",
-    ],
-  },
-  {
-    id: "sources",
-    icon: BookOpen,
-    title: "Trusted sources",
-    body: "Every claim traces back to reviewed pages from MedlinePlus, Office on Women's Health, NICHD, CDC, and the NHS. Your dashboard will surface articles based on what you discuss.",
-    bullets: [
-      "Articles open on the original source site",
-      "Chat citations quote sources verbatim",
-      "We bias toward caution when unsure",
-    ],
-  },
-];
+type OnboardingWizardProps = {
+  /** First-time intro vs optional review from the menu. */
+  mode?: "first-time" | "review";
+};
 
-export function OnboardingWizard() {
+export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps) {
   const router = useRouter();
   const { user } = useAuth();
   const [step, setStep] = useState(0);
+  const isReview = mode === "review";
 
-  const current = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  const current = ONBOARDING_STEPS[step];
+  const isLast = step === ONBOARDING_STEPS.length - 1;
   const Icon = current.icon;
 
-  function finish() {
+  function finishFirstTime() {
     if (user) markOnboardingComplete(user.id);
+    router.replace(routes.chat);
+  }
+
+  function closeReview() {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
     router.replace(routes.dashboard);
+  }
+
+  function handlePrimaryAction() {
+    if (isReview) {
+      if (isLast) {
+        closeReview();
+        return;
+      }
+      setStep((currentStep) => currentStep + 1);
+      return;
+    }
+
+    if (isLast) {
+      finishFirstTime();
+      return;
+    }
+    setStep((currentStep) => currentStep + 1);
   }
 
   return (
     <div className="flex min-h-dvh flex-col bg-gradient-to-b from-primary/8 via-background to-background">
       <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14">
+        {isReview ? (
+          <div className="mb-4 flex justify-end">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={closeReview}
+              aria-label="Close"
+            >
+              <X className="size-5" />
+            </Button>
+          </div>
+        ) : null}
+
         <div className="mb-8 flex items-center justify-center gap-2">
-          {STEPS.map((s, i) => (
+          {ONBOARDING_STEPS.map((item, index) => (
             <span
-              key={s.id}
+              key={item.id}
               className={cn(
                 "h-1.5 rounded-full transition-all",
-                i === step
+                index === step
                   ? "w-8 bg-primary"
-                  : i < step
+                  : index < step
                     ? "w-4 bg-primary/40"
                     : "w-4 bg-border",
               )}
@@ -103,6 +93,10 @@ export function OnboardingWizard() {
           <span className="mb-6 flex size-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
             <Icon className="size-8" />
           </span>
+
+          {isReview && step === 0 ? (
+            <p className="mb-2 text-sm font-medium text-primary">About HerHealthGPT</p>
+          ) : null}
 
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
             {current.title}
@@ -116,13 +110,13 @@ export function OnboardingWizard() {
 
           {current.bullets ? (
             <ul className="mt-6 w-full max-w-sm space-y-3 text-left">
-              {current.bullets.map((bullet, i) => (
+              {current.bullets.map((bullet, index) => (
                 <li
                   key={bullet}
                   className="flex items-start gap-3 rounded-xl border border-border/60 bg-card/60 px-4 py-3 text-sm"
                 >
                   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                    {i + 1}
+                    {index + 1}
                   </span>
                   <span>{bullet}</span>
                 </li>
@@ -136,7 +130,7 @@ export function OnboardingWizard() {
             <Button
               variant="outline"
               className="sm:min-w-[120px]"
-              onClick={() => setStep((s) => s - 1)}
+              onClick={() => setStep((currentStep) => currentStep - 1)}
             >
               Back
             </Button>
@@ -144,44 +138,53 @@ export function OnboardingWizard() {
             <div className="hidden sm:block" />
           )}
 
-          {isLast ? (
-            <Button size="lg" className="sm:min-w-[200px]" onClick={finish}>
-              <Sparkles className="size-4" />
-              Go to your dashboard
-            </Button>
-          ) : (
-            <Button
-              size="lg"
-              className="sm:ml-auto sm:min-w-[160px]"
-              onClick={() => setStep((s) => s + 1)}
-            >
-              Continue
-              <ArrowRight className="size-4" />
-            </Button>
-          )}
+          <Button
+            size="lg"
+            className="sm:ml-auto sm:min-w-[160px]"
+            onClick={handlePrimaryAction}
+          >
+            {isReview ? (
+              isLast ? (
+                "Got it"
+              ) : (
+                <>
+                  Continue
+                  <ArrowRight className="size-4" />
+                </>
+              )
+            ) : isLast ? (
+              <>
+                <Sparkles className="size-4" />
+                Start your first chat
+              </>
+            ) : (
+              <>
+                Continue
+                <ArrowRight className="size-4" />
+              </>
+            )}
+          </Button>
         </div>
 
-        {step === 0 ? (
+        {!isReview ? (
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Already know the basics?{" "}
+            Ready to go?{" "}
             <button
               type="button"
-              onClick={finish}
+              onClick={finishFirstTime}
               className="font-medium text-primary hover:underline"
             >
-              Skip to dashboard
+              Skip intro — start chatting
             </button>
           </p>
-        ) : null}
-
-        {isLast ? (
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Or jump straight in —{" "}
+        ) : (
+          <p className="mt-6 text-center text-xs text-muted-foreground">
+            Ready to chat?{" "}
             <Link href={routes.chat} className="font-medium text-primary hover:underline">
-              start your first chat
+              Open health chat
             </Link>
           </p>
-        ) : null}
+        )}
       </div>
     </div>
   );

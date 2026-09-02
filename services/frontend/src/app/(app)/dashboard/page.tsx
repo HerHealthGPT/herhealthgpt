@@ -6,18 +6,19 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CalendarDays,
-  CheckCircle2,
   MessageCircle,
   Sparkles,
 } from "lucide-react";
 
-import { GettingStartedCard } from "@/components/dashboard/getting-started-card";
+import { GettingStartedSection } from "@/components/dashboard/getting-started-card";
 import { RecentChatsSection } from "@/components/dashboard/recent-chats-section";
 import { RecommendedArticlesSection } from "@/components/dashboard/recommended-articles-section";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PageLoading } from "@/components/ui/page-loading";
 import {
   Card,
   CardContent,
@@ -29,31 +30,38 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { conditionLabel } from "@/lib/condition-labels";
-import { hasCompletedOnboarding } from "@/lib/onboarding";
+import { userDisplayName } from "@/lib/display-name";
+import { needsFirstTimeOnboarding } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
 
 function DashboardContent() {
   const router = useRouter();
   const { user } = useAuth();
-  const { data, loading } = useDashboardData();
+  const { data, loading, error, reload } = useDashboardData();
 
-  const firstName = user?.email?.split("@")[0];
+  const greetingName = userDisplayName(user);
 
   useEffect(() => {
-    if (user && !hasCompletedOnboarding(user.id)) {
+    if (!user || loading) {
+      return;
+    }
+
+    if (needsFirstTimeOnboarding(user.id, data.hasChats)) {
       router.replace(routes.onboarding);
     }
-  }, [user, router]);
+  }, [user, router, loading, data.hasChats]);
 
-  if (user && !hasCompletedOnboarding(user.id)) {
-    return null;
+  if (user && !loading && needsFirstTimeOnboarding(user.id, data.hasChats)) {
+    return <PageLoading message="One moment…" />;
   }
 
-  const heroSubtitle = data.hasChats
-    ? data.concludedCount > 0
-      ? `You've completed ${data.concludedCount} consultation${data.concludedCount === 1 ? "" : "s"}. Pick up where you left off or start fresh.`
-      : "You have a chat in progress. Continue when you're ready."
-    : "Tell us how you're feeling — we'll ask a few questions and help you decide what to do next.";
+  const heroSubtitle = data.activeSession
+    ? "You have a chat in progress. Pick up where you left off, or start fresh."
+    : data.hasChats
+      ? data.concludedCount > 0
+        ? `You've completed ${data.concludedCount} consultation${data.concludedCount === 1 ? "" : "s"}. Start a new chat anytime.`
+        : "Your chats are saved here. Open one or start something new."
+      : "Tell us how you're feeling — we'll ask a few questions and help you decide what to do next.";
 
   return (
     <div className="flex flex-1 flex-col">
@@ -64,13 +72,42 @@ function DashboardContent() {
         <div className="relative mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
           <p className="text-sm text-muted-foreground">Your home</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
-            {firstName ? `Hi, ${firstName}` : "Hi there"}
+            {greetingName ? `Hi, ${greetingName}` : "Hi there"}
           </h1>
           <p className="mt-3 max-w-2xl text-muted-foreground">{heroSubtitle}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            <Link
+              href={routes.howItWorks}
+              className="font-medium text-primary hover:underline"
+            >
+              How this works
+            </Link>
+            {" · "}
+            What HerHealthGPT is, and what it isn&apos;t.
+          </p>
         </div>
       </section>
 
       <div className="mx-auto w-full max-w-6xl flex-1 space-y-10 px-4 py-8 sm:px-6 sm:py-10">
+        {error ? (
+          <Alert variant="destructive">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+              <span>{error}</span>
+              <Button size="sm" variant="outline" onClick={reload}>
+                Try again
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {user ? (
+          <GettingStartedSection
+            userId={user.id}
+            hasChats={data.hasChats}
+            loading={loading}
+          />
+        ) : null}
+
         <Card className="overflow-hidden border-primary/25 shadow-lg shadow-primary/5">
           <div className="grid lg:grid-cols-[1fr_auto] lg:items-center">
             <CardHeader className="space-y-4 pb-4 lg:pb-6">
@@ -89,10 +126,10 @@ function DashboardContent() {
                 </div>
               </div>
               <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Something on your mind? Start a chat. We&apos;ll ask a few
-                questions along the way, suggest conditions your symptoms might
-                match, and tell you whether to wait, book a visit, or get seen
-                sooner. We&apos;re not a doctor, and this isn&apos;t a diagnosis.
+                Something on your mind? Describe it in your own words. We&apos;ll
+                ask a few follow-up questions if needed, then suggest how soon to
+                see someone — with links to trusted sources. This isn&apos;t a
+                diagnosis.
               </p>
             </CardHeader>
             <CardContent className="border-t border-border/60 bg-muted/30 px-6 py-5 lg:border-t-0 lg:border-l lg:py-8">
@@ -103,10 +140,10 @@ function DashboardContent() {
                     {data.hasChats ? "Open health chat" : "Start a chat"}
                   </Link>
                 </Button>
-                {data.hasChats && data.sessions[0]?.status === "active" ? (
+                {data.activeSession ? (
                   <Button variant="outline" size="sm" className="w-full" asChild>
-                    <Link href={`${routes.chat}?session=${data.sessions[0].id}`}>
-                      Continue last chat
+                    <Link href={`${routes.chat}?session=${data.activeSession.id}`}>
+                      Continue your chat
                       <ArrowRight className="size-4" />
                     </Link>
                   </Button>
@@ -130,10 +167,11 @@ function DashboardContent() {
         {data.exploredTopics.length > 0 ? (
           <section>
             <h2 className="mb-3 text-lg font-semibold tracking-tight">
-              Topics from your chats
+              Topics you&apos;ve explored
             </h2>
             <p className="mb-4 text-sm text-muted-foreground">
-              Patterns our sources associate with symptoms you&apos;ve discussed — not a diagnosis.
+              Patterns our sources connect to symptoms you&apos;ve discussed — not
+              a diagnosis.
             </p>
             <div className="flex flex-wrap gap-2">
               {data.exploredTopics.map((topic) => (
@@ -145,52 +183,21 @@ function DashboardContent() {
           </section>
         ) : null}
 
-        <div className="grid gap-8 lg:grid-cols-2">
-          <GettingStartedCard hasChats={data.hasChats} />
-
-          <div className="space-y-5">
-            <Card className="border-border/70 transition-shadow hover:shadow-md">
-              <CardHeader>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <span className="flex size-10 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-                    <CalendarDays className="size-5" />
-                  </span>
-                  <StatusBadge>Opening soon</StatusBadge>
-                </div>
-                <CardTitle>Health log</CardTitle>
-                <CardDescription className="text-base leading-relaxed">
-                  Track your cycle, symptoms, and patterns over time. Useful to
-                  bring along to an appointment.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <Card className="border-border/70 bg-gradient-to-br from-secondary/50 to-card">
-              <CardHeader>
-                <CardTitle className="text-base font-medium text-muted-foreground">
-                  Your account
-                </CardTitle>
-                <CardDescription className="space-y-3 text-base leading-relaxed text-foreground">
-                  {loading ? (
-                    <Skeleton className="h-5 w-48" />
-                  ) : (
-                    <span className="block font-medium break-all">{user?.email}</span>
-                  )}
-                  <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2 className="size-4 text-primary" />
-                    Email verified
-                  </span>
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  We share information to help you decide what to do. We&apos;re
-                  not a doctor. See one if you&apos;re worried.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
+        <Card className="border-border/50 bg-muted/10 opacity-80">
+          <CardHeader>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                <CalendarDays className="size-5" />
+              </span>
+              <StatusBadge>Coming later</StatusBadge>
+            </div>
+            <CardTitle className="text-base">Health log</CardTitle>
+            <CardDescription className="text-sm leading-relaxed">
+              Track your cycle and symptoms over time — we&apos;re building this
+              next.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
     </div>
   );

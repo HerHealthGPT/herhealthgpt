@@ -8,8 +8,10 @@ import {
   useMemo,
   useState,
 } from "react";
+import { toast } from "sonner";
 
 import { ApiError } from "@/lib/api/errors";
+import { onSessionExpired } from "@/lib/api/session-events";
 import * as accountsApi from "@/lib/api/accounts";
 import type { UserSummary } from "@/lib/api/types";
 
@@ -34,20 +36,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return currentUser;
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
-        try {
-          await accountsApi.refreshSession();
-          const currentUser = await accountsApi.getCurrentUser();
-          setUser(currentUser);
-          return currentUser;
-        } catch {
-          setUser(null);
-          return null;
-        }
+        setUser(null);
+        return null;
       }
-
-      setUser(null);
+      // Transient failure (network, 503) — keep existing user if we have one.
       return null;
     }
+  }, []);
+
+  useEffect(() => {
+    return onSessionExpired(() => {
+      setUser(null);
+      toast.error("Your session ended. Please sign in again.");
+    });
   }, []);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { LayoutDashboard, Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { routes } from "@/lib/routes";
@@ -31,8 +31,16 @@ export function ChatHeader({ onToggleSidebar, sidebarOpen }: ChatHeaderProps) {
         </p>
       </div>
 
-      <Button variant="ghost" size="sm" className="hidden shrink-0 sm:inline-flex" asChild>
-        <Link href={routes.dashboard}>Dashboard</Link>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="shrink-0"
+        asChild
+        title="Home"
+      >
+        <Link href={routes.dashboard} aria-label="Home">
+          <LayoutDashboard className="size-5" />
+        </Link>
       </Button>
     </header>
   );

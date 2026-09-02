@@ -16,6 +16,7 @@ import uuid
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from herhealth_backend.app.accounts.account_deletion import delete_user_account
 from herhealth_backend.app.accounts.cookies import (
     REFRESH_TOKEN_COOKIE,
     clear_auth_cookies,
@@ -34,6 +35,7 @@ from herhealth_backend.app.accounts.google_sign_in import sign_in_with_google
 from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.password_reset import request_password_reset, reset_password
 from herhealth_backend.app.accounts.password_reset_policy import CODE_LENGTH as RESET_CODE_LENGTH
+from herhealth_backend.app.accounts.profile import update_display_name
 from herhealth_backend.app.accounts.registration import register_user
 from herhealth_backend.app.accounts.sessions import (
     end_all_sessions,
@@ -121,6 +123,22 @@ class UserSummary(BaseModel):
     id: uuid.UUID
     email: str
     email_verified: bool
+    display_name: str | None = None
+
+
+class UpdateProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = None
+
+
+def _user_summary(user: User) -> UserSummary:
+    return UserSummary(
+        id=user.id,
+        email=user.email,
+        email_verified=user.email_verified,
+        display_name=user.display_name,
+    )
 
 
 def _require_refresh_token(request: Request) -> str:
@@ -147,7 +165,7 @@ async def register(payload: RegisterRequest, request: Request) -> UserSummary:
         user = await register_user(session, email=payload.email, password=payload.password)
         await send_verification_code(session, secret, email_sender, user)
 
-    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+    return _user_summary(user)
 
 
 @router.post("/sign-in", response_model=UserSummary)
@@ -160,7 +178,7 @@ async def sign_in(payload: SignInRequest, request: Request, response: Response) 
         )
 
     set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)
-    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+    return _user_summary(user)
 
 
 @router.post("/sign-in/google", response_model=UserSummary)
@@ -176,7 +194,7 @@ async def sign_in_google(
         )
 
     set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)
-    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+    return _user_summary(user)
 
 
 @router.post("/refresh", status_code=status.HTTP_204_NO_CONTENT)
@@ -222,9 +240,40 @@ async def sign_out_everywhere(request: Request, response: Response) -> None:
 
 @router.get("/me", response_model=UserSummary)
 async def me(current_user: User = Depends(get_current_user)) -> UserSummary:  # noqa: B008
-    return UserSummary(
-        id=current_user.id, email=current_user.email, email_verified=current_user.email_verified
-    )
+    return _user_summary(current_user)
+
+
+@router.patch("/me", response_model=UserSummary)
+async def update_me(
+    payload: UpdateProfileRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> UserSummary:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        updated = await update_display_name(
+            session, current_user.id, display_name=payload.display_name
+        )
+    return _user_summary(updated)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Permanently delete the signed-in user and all of her data.
+
+    Every auth session ends when the user row is removed; clear this browser's
+    cookies so access stops on the next request rather than when the short-
+    lived access token happens to expire.
+    """
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        await delete_user_account(session, current_user.id)
+        await session.commit()
+    clear_auth_cookies(response)
 
 
 @router.post("/verify-email", response_model=UserSummary)
@@ -234,7 +283,7 @@ async def verify_email_route(payload: VerifyEmailRequest, request: Request) -> U
     async with database.session() as session:
         user = await verify_email(session, secret, email=payload.email, code=payload.code)
 
-    return UserSummary(id=user.id, email=user.email, email_verified=user.email_verified)
+    return _user_summary(user)
 
 
 @router.post("/verify-email/resend", status_code=status.HTTP_204_NO_CONTENT)

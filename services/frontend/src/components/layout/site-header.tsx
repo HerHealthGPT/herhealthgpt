@@ -43,6 +43,9 @@ export function SiteHeader() {
           <Link href={routes.dashboard}>Dashboard</Link>
         </Button>
       ) : null}
+      <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
+        <Link href={routes.howItWorks}>How this works</Link>
+      </Button>
       <Button variant="outline" size="sm" onClick={() => void handleSignOut()}>
         Sign out
       </Button>

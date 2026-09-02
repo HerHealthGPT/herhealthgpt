@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/triage", tags=["triage"])
 
+_USER_FACING_ERROR = "Something went wrong. Please try again."
+
 #: Observed real latency ranged from a few seconds to ~90s across manual
 #: testing (2026-09-01, OpenRouter routing this model across several
 #: backing providers with visibly different speeds). Comfortably above
@@ -140,14 +142,12 @@ async def triage_turn(
         ) from error
     except (HTTPException, ValidationError, ClosedVocabularyViolation, httpx.HTTPError, ValueError):
         raise
-    except Exception:
-        # Belt and braces: an unhandled exception here would otherwise
-        # surface only as Starlette's bare "Internal Server Error" with
-        # nothing in this process's own log to explain it — exactly what
-        # happened while diagnosing the session-held-open bug _run_turn's
-        # docstring describes. Re-raised unchanged; this only adds a log line.
+    except Exception as error:
         logger.exception("unhandled exception in triage_turn")
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
+        ) from error
 
 
 async def _run_turn(
@@ -206,9 +206,10 @@ async def _run_turn(
                 detail="the reasoning model did not respond in time",
             ) from error
         except httpx.HTTPError as error:
+            logger.warning("triage dependency HTTP failure: %s", error)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"a dependency of triage (OpenRouter or services/model) failed: {error}",
+                detail="A service we rely on is temporarily unavailable. Please try again.",
             ) from error
         except (ValidationError, ClosedVocabularyViolation, ValueError) as error:
             last_retryable_error = error
@@ -223,10 +224,7 @@ async def _run_turn(
             if isinstance(error, ValidationError):
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=(
-                        "reasoning model returned a decision that failed schema validation: "
-                        f"{error}"
-                    ),
+                    detail="We had trouble understanding the response. Please try again.",
                 ) from error
             if isinstance(error, ClosedVocabularyViolation):
                 raise HTTPException(
@@ -428,6 +426,14 @@ async def list_sessions(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="triage storage is unavailable — check database migrations",
         ) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("unexpected error in list_sessions")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
+        ) from error
 
 
 @router.get("/sessions/{session_id}")
@@ -475,6 +481,12 @@ async def get_session(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="triage storage is unavailable — check database migrations",
         ) from error
+    except Exception as error:
+        logger.exception("unexpected error in get_session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
+        ) from error
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -503,4 +515,10 @@ async def delete_session(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="triage storage is unavailable — check database migrations",
+        ) from error
+    except Exception as error:
+        logger.exception("unexpected error in delete_session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
         ) from error

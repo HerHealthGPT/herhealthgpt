@@ -9,24 +9,28 @@ type ChatShellProps = {
   children: React.ReactNode;
   sessions: TriageSessionSummary[];
   sessionsLoading: boolean;
+  sessionsError?: string | null;
   activeSessionId: string | null;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onCloseSidebar: () => void;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
+  onDeleteSession: (sessionId: string) => void | Promise<void>;
 };
 
 export function ChatShell({
   children,
   sessions,
   sessionsLoading,
+  sessionsError,
   activeSessionId,
   sidebarOpen,
   onToggleSidebar,
   onCloseSidebar,
   onSelectSession,
   onNewChat,
+  onDeleteSession,
 }: ChatShellProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -50,6 +54,7 @@ export function ChatShell({
             sessions={sessions}
             activeSessionId={activeSessionId}
             isLoading={sessionsLoading}
+            sessionsError={sessionsError}
             onSelectSession={(sessionId) => {
               onSelectSession(sessionId);
               onCloseSidebar();
@@ -58,6 +63,7 @@ export function ChatShell({
               onNewChat();
               onCloseSidebar();
             }}
+            onDeleteSession={onDeleteSession}
           />
         </aside>
 

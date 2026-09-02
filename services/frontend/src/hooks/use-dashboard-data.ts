@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { friendlyApiError } from "@/lib/api/errors";
 import { getTriageSession, listTriageSessions } from "@/lib/api/triage";
 import type { TriageSessionDetail, TriageSessionSummary } from "@/lib/api/types";
 import {
@@ -17,6 +18,8 @@ export type DashboardData = {
   exploredTopics: string[];
   hasChats: boolean;
   concludedCount: number;
+  /** Most recent session still in progress, if any. */
+  activeSession: TriageSessionSummary | null;
 };
 
 const EMPTY: DashboardData = {
@@ -26,25 +29,34 @@ const EMPTY: DashboardData = {
   exploredTopics: [],
   hasChats: false,
   concludedCount: 0,
+  activeSession: null,
 };
 
 async function fetchDashboardData(): Promise<DashboardData> {
   const sessions = await listTriageSessions();
   const sorted = [...sessions].sort(
     (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      new Date(b.created_at).getTime() - new Date(b.created_at).getTime(),
   );
 
   const detailTargets = sorted
     .filter((s) => s.status === "concluded")
     .slice(0, 5);
 
-  const sessionDetails = await Promise.all(
+  const detailResults = await Promise.allSettled(
     detailTargets.map((s) => getTriageSession(s.id)),
   );
+  const sessionDetails = detailResults
+    .filter(
+      (result): result is PromiseFulfilledResult<TriageSessionDetail> =>
+        result.status === "fulfilled",
+    )
+    .map((result) => result.value);
 
   const exploredTopics = collectExploredTopics(sessionDetails);
   const articles = buildArticleRecommendations(sessionDetails);
+  const activeSession =
+    sorted.find((session) => session.status === "active") ?? null;
 
   return {
     sessions: sorted,
@@ -53,6 +65,7 @@ async function fetchDashboardData(): Promise<DashboardData> {
     exploredTopics,
     hasChats: sorted.length > 0,
     concludedCount: sorted.filter((s) => s.status === "concluded").length,
+    activeSession,
   };
 }
 
@@ -63,6 +76,7 @@ export function useDashboardData() {
   const [reloadToken, setReloadToken] = useState(0);
 
   const reload = useCallback(() => {
+    setLoading(true);
     setReloadToken((t) => t + 1);
   }, []);
 
@@ -76,9 +90,9 @@ export function useDashboardData() {
           setError(null);
         }
       })
-      .catch(() => {
+      .catch((caught) => {
         if (!cancelled) {
-          setError("Could not load your dashboard data.");
+          setError(friendlyApiError(caught));
           setData({ ...EMPTY, articles: buildArticleRecommendations([]) });
         }
       })

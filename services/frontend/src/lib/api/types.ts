@@ -2,6 +2,7 @@ export type UserSummary = {
   id: string;
   email: string;
   email_verified: boolean;
+  display_name: string | null;
 };
 
 export type PasswordWeakDetail = {

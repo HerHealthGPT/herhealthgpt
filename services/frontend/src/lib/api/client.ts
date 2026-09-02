@@ -1,32 +1,56 @@
-import { parseApiError } from "./errors";
+import { ApiError, NETWORK_ERROR_MESSAGE, parseApiError } from "./errors";
+import { emitSessionExpired } from "./session-events";
+import {
+  AUTH_PATHS_WITHOUT_SILENT_REFRESH,
+  refreshAccessToken,
+} from "./session-refresh";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "/api";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
   json?: boolean;
+  /** Internal: set after one silent refresh attempt to avoid loops. */
+  _retryAfterRefresh?: boolean;
 };
 
 export async function apiRequest<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { body, json = true, headers, ...rest } = options;
+  const { body, json = true, headers, _retryAfterRefresh, ...rest } = options;
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...rest,
-    credentials: "include",
-    headers: {
-      ...(json && body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...headers,
-    },
-    body:
-      body === undefined
-        ? undefined
-        : json
-          ? JSON.stringify(body)
-          : (body as BodyInit),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...rest,
+      credentials: "include",
+      headers: {
+        ...(json && body !== undefined ? { "Content-Type": "application/json" } : {}),
+        ...headers,
+      },
+      body:
+        body === undefined
+          ? undefined
+          : json
+            ? JSON.stringify(body)
+            : (body as BodyInit),
+    });
+  } catch {
+    throw new ApiError(0, NETWORK_ERROR_MESSAGE);
+  }
+
+  if (
+    response.status === 401 &&
+    !_retryAfterRefresh &&
+    !AUTH_PATHS_WITHOUT_SILENT_REFRESH.has(path)
+  ) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      return apiRequest<T>(path, { ...options, _retryAfterRefresh: true });
+    }
+    emitSessionExpired();
+  }
 
   if (!response.ok) {
     throw await parseApiError(response);
@@ -36,5 +60,9 @@ export async function apiRequest<T>(
     return undefined as T;
   }
 
-  return (await response.json()) as T;
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new ApiError(500, "Something went wrong. Please try again.");
+  }
 }

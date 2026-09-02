@@ -2,11 +2,11 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { RotateCcw } from "lucide-react";
+import { MessageSquarePlus, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { ChatComposer } from "@/components/chat/chat-composer";
-import { ChatConcludedBanner } from "@/components/chat/chat-concluded-banner";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { ChatShell } from "@/components/chat/chat-shell";
 import { ChatStarterPrompts } from "@/components/chat/chat-starter-prompts";
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { friendlyTriageError } from "@/lib/api/errors";
 import {
+  deleteTriageSession,
   getTriageSession,
   listTriageSessions,
   sendTriageTurn,
@@ -118,6 +119,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const [sessionStatus, setSessionStatus] = useState<"active" | "concluded" | null>(null);
   const [sessions, setSessions] = useState<TriageSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(Boolean(requestedSessionId));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -148,8 +150,9 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     try {
       const nextSessions = await listTriageSessions();
       setSessions(nextSessions);
-    } catch {
-      // Sidebar failure should not block the chat itself.
+      setSessionsError(null);
+    } catch (error) {
+      setSessionsError(friendlyTriageError(error));
     } finally {
       setSessionsLoading(false);
     }
@@ -163,9 +166,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         const nextSessions = await listTriageSessions();
         if (!cancelled) {
           setSessions(nextSessions);
+          setSessionsError(null);
         }
-      } catch {
-        // Sidebar failure should not block the chat itself.
+      } catch (error) {
+        if (!cancelled) {
+          setSessionsError(friendlyTriageError(error));
+        }
       } finally {
         if (!cancelled) {
           setSessionsLoading(false);
@@ -208,10 +214,13 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         setLastFailedMessage(null);
       } catch (error) {
         if (!cancelled) {
-          setErrorMessage(friendlyTriageError(error));
+          setErrorMessage(
+            "We couldn't open that chat. Start a new one below — we're still here to help.",
+          );
           setSessionId(null);
           setSessionStatus(null);
           setEntries([GREETING]);
+          router.replace(routes.chat);
         }
       } finally {
         if (!cancelled) {
@@ -225,7 +234,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     return () => {
       cancelled = true;
     };
-  }, [requestedSessionId]);
+  }, [requestedSessionId, router]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -288,16 +297,34 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     router.push(`${routes.chat}?session=${nextSessionId}`);
   }
 
+  const handleDeleteSession = useCallback(
+    async (sessionIdToDelete: string) => {
+      try {
+        await deleteTriageSession(sessionIdToDelete);
+        setSessions((current) => current.filter((session) => session.id !== sessionIdToDelete));
+        if (sessionId === sessionIdToDelete || requestedSessionId === sessionIdToDelete) {
+          router.push(routes.chat);
+        }
+        toast.success("Chat deleted");
+      } catch (error) {
+        toast.error(friendlyTriageError(error));
+      }
+    },
+    [requestedSessionId, router, sessionId],
+  );
+
   return (
     <ChatShell
       sessions={sessions}
       sessionsLoading={sessionsLoading}
+      sessionsError={sessionsError}
       activeSessionId={sessionId}
       sidebarOpen={sidebarOpen}
       onToggleSidebar={() => setSidebarOpen((open) => !open)}
       onCloseSidebar={() => setSidebarOpen(false)}
       onSelectSession={handleSelectSession}
       onNewChat={handleNewChat}
+      onDeleteSession={handleDeleteSession}
     >
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <ScrollArea className="flex-1">
@@ -345,19 +372,28 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           </div>
         </ScrollArea>
 
-        {isConcluded ? <ChatConcludedBanner onStartNewChat={handleNewChat} /> : null}
-
-        <ChatComposer
-          disabled={isSending || isConcluded || isLoadingSession}
-          placeholder={
-            isConcluded
-              ? "Start a new chat to keep talking"
-              : entries.length <= 1
+        {isConcluded ? (
+          <div className="border-t border-border/60 bg-muted/20 p-4">
+            <p className="mb-3 text-center text-sm text-muted-foreground">
+              This chat is complete. Start a new one if something else comes up.
+            </p>
+            <Button size="lg" className="w-full" onClick={handleNewChat}>
+              <MessageSquarePlus className="size-4" />
+              Start a new chat
+            </Button>
+          </div>
+        ) : (
+          <ChatComposer
+            disabled={isSending || isLoadingSession}
+            placeholder={
+              entries.length <= 1
                 ? "Tell me what's going on…"
                 : "Type your reply…"
-          }
-          onSend={handleSend}
-        />
+            }
+            showWaitHint={userTurnCount === 0 && !isSending && !isLoadingSession}
+            onSend={handleSend}
+          />
+        )}
       </div>
     </ChatShell>
   );

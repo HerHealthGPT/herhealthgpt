@@ -5,9 +5,11 @@ import Link from "next/link";
 import {
   ChevronsUpDown,
   Heart,
+  Info,
   LayoutDashboard,
   LogOut,
   MessageSquarePlus,
+  Settings,
   Trash2,
 } from "lucide-react";
 
@@ -24,9 +26,10 @@ type ConversationSidebarProps = {
   sessions: TriageSessionSummary[];
   activeSessionId: string | null;
   isLoading: boolean;
+  sessionsError?: string | null;
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
-  onDeleteSession: (sessionId: string) => void;
+  onDeleteSession: (sessionId: string) => void | Promise<void>;
 };
 
 type SessionGroup = {
@@ -118,6 +121,27 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
             </Button>
             <Button
               variant="ghost"
+              className="h-10 w-full justify-start gap-2 px-3"
+              asChild
+              onClick={closeMenu}
+            >
+              <Link href={routes.howItWorks}>
+                <Info className="size-4" />
+                How this works
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
+              className="h-10 w-full justify-start gap-2 px-3 text-destructive hover:text-destructive"
+              asChild
+            >
+              <Link href={`${routes.dashboard}#delete-account`} onClick={closeMenu}>
+                <UserX className="size-4" />
+                Delete account
+              </Link>
+            </Button>
+            <Button
+              variant="ghost"
               className="h-10 w-full justify-start gap-2 px-3 text-destructive hover:text-destructive"
               onClick={() => {
                 closeMenu();
@@ -160,6 +184,7 @@ export function ConversationSidebar({
   sessions,
   activeSessionId,
   isLoading,
+  sessionsError,
   onSelectSession,
   onNewChat,
   onDeleteSession,
@@ -204,6 +229,11 @@ export function ConversationSidebar({
 
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-4 px-2 pb-2">
+          {sessionsError ? (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs leading-relaxed text-destructive">
+              {sessionsError}
+            </p>
+          ) : null}
           {isLoading ? (
             <div className="space-y-2">
               <Skeleton className="h-3 w-16 rounded bg-sidebar-accent/40" />

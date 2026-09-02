@@ -106,8 +106,8 @@ function VerifyEmailForm() {
               required
             />
             <FieldDescription>
-              Check your email. If you&apos;re running this locally, the code
-              may show up in the server console.
+              Check your inbox and spam folder. Codes expire after a short time —
+              tap resend below if yours ran out.
             </FieldDescription>
           </Field>
         </FieldGroup>

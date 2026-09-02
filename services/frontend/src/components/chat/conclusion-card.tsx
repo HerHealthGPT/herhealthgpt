@@ -69,7 +69,7 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
         {decision.matching_conditions.length > 0 ? (
           <div>
             <p className="mb-2 text-xs font-medium text-muted-foreground">
-              May be related to
+              Possible patterns from our sources (not a diagnosis)
             </p>
             <div className="flex flex-wrap gap-1.5">
               {decision.matching_conditions.map((conditionId) => (
