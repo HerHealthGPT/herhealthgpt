@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, PhoneCall, Siren } from "lucide-react";
 
+import { CitedSources } from "@/components/chat/cited-sources";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,7 +41,7 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
   const Icon = toneIcon[display.tone];
 
   return (
-    <Card className={cn("border shadow-sm", surfaceClassesForTone(display.tone))}>
+    <Card className={cn("border shadow-sm animate-in fade-in slide-in-from-bottom-3 duration-500", surfaceClassesForTone(display.tone))}>
       <CardHeader>
         <div className="flex items-start gap-3">
           <span
@@ -68,7 +69,7 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
         {decision.matching_conditions.length > 0 ? (
           <div>
             <p className="mb-2 text-xs font-medium text-muted-foreground">
-              May be related to
+              Possible patterns from our sources (not a diagnosis)
             </p>
             <div className="flex flex-wrap gap-1.5">
               {decision.matching_conditions.map((conditionId) => (
@@ -80,10 +81,12 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
           </div>
         ) : null}
 
-        {decision.citations.length > 0 ? (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Grounded in {decision.citations.length} cited source
-            {decision.citations.length === 1 ? "" : "s"} from our health library.
+        <CitedSources passages={decision.cited_passages ?? []} />
+
+        {decision.red_flag_id !== null ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            This is a symptom pattern doctors check promptly, because it has
+            several possible causes and some need ruling out quickly.
           </p>
         ) : null}
 

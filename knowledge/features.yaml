@@ -260,15 +260,71 @@ features:
     note: >-
       Added 2026-08-04 to separate the two benign causes of discharge from each
       other. abnormal_discharge is a yes/no, so it cannot distinguish thrush
-      ("like cottage cheese, does not usually smell") from bacterial vaginosis
-      ("a strong fishy smell") — but itching can: the Office on Women's Health
-      calls "extreme itchiness" the most common symptom of thrush.
+      ("white vaginal discharge (often like cottage cheese), which does not
+      usually smell") from bacterial vaginosis ("an unusual vaginal discharge
+      that has a strong fishy smell, particularly after sex") — but itching
+      can: the Office on Women's Health calls "extreme itchiness" the most
+      common symptom of thrush.
+
+      The two NHS quotations above were corrected on 2026-09-02. They had been
+      compressed — "like cottage cheese, does not usually smell" closed a
+      "), which" gap with a comma, and "a strong fishy smell" was a fragment —
+      so both read as contiguous source text when neither was. The wording now
+      matches the pages exactly.
 
       It also matters for what it does NOT do. NHS says bacterial vaginosis
       "does not usually cause any soreness or itching", which would be an
       explicit argues_against row — except the Office on Women's Health lists
       itching among BV symptoms. The two sources contradict each other outright,
-      so no row was written either way. See build/conflicts.jsonl.
+      so no row was written either way. The conflict is recorded here and in
+      batch_24. build/conflicts.jsonl exists but is gitignored and written by
+      no pipeline stage, so it survives no fresh clone and appears in no diff;
+      this note is the durable record.
+
+      Re-checked 2026-09-02 against freshly fetched copies of both bacterial
+      vaginosis pages: the contradiction stands, unchanged and word for word.
+      Do not attempt this row again without a third source resolving it.
+
+  - id: discharge_smell
+    label: Whether the discharge has a smell
+    kind: categorical
+    allowed_values: [none, fishy, other]
+    burden: 2
+    probe:
+      en: Does the discharge have a smell, such as a strong fishy one?
+    note: >-
+      Added 2026-09-02. vulval_itching was supposed to separate thrush from
+      bacterial vaginosis and only half worked: it raises thrush, but the row
+      that would have distinguished BV was blocked by the source conflict
+      recorded above. So BV kept a single evidence row — abnormal_discharge,
+      the same row thrush and STI both carry — and could never be raised above
+      them. Smell is the discriminator the sources actually agree on.
+
+      "fishy" is BV and "none" is thrush. Both sources state each, in their own
+      wording rather than identical wording — NHS "a strong fishy smell" beside
+      womenshealth "a strong fish-like odor", NHS "does not usually smell"
+      beside womenshealth "does not have a bad smell". "other" carries no
+      evidence row on purpose: it is a landing place for an answer neither
+      source describes, so the model is never forced to record a smell as
+      fishy to make it fit.
+
+  - id: discharge_appearance
+    label: What the discharge looks like
+    kind: categorical
+    allowed_values: [thick_white, thin_watery, other]
+    burden: 2
+    probe:
+      en: What does the discharge look like — thick and white, or thin and watery?
+    note: >-
+      Added 2026-09-02 alongside discharge_smell, and for the same reason. The
+      two are asked separately because the sources state them separately: NHS
+      gives BV's smell and its consistency as two distinct symptom bullets.
+      That is an observation about how the pages are written, and nothing more
+      is claimed here about how the two findings co-occur — no source consulted
+      states that.
+
+      Absence of discharge is abnormal_discharge: no, not a value here. "other"
+      carries no evidence row, as above.
 
   - id: urinary_symptoms
     label: Urinary symptoms

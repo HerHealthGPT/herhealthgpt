@@ -31,6 +31,10 @@ __all__ = [
     "openrouter_api_key",
     "TRIAGE_MODE_ENV",
     "triage_mode",
+    "VLLM_MODEL_ENV",
+    "VLLM_URL_ENV",
+    "vllm_model",
+    "vllm_url",
     "COOKIE_SECURE_ENV",
     "cookie_secure",
     "CORS_ORIGINS_ENV",
@@ -138,8 +142,15 @@ OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 
 #: How triage is wired at boot. ``demo`` uses offline scripted clients (no
 #: OpenRouter, no services/model) for local MVP testing. ``openrouter`` needs
-#: OPENROUTER_API_KEY and a running services/model. ``off`` disables triage.
+#: OPENROUTER_API_KEY and a running services/model. ``vllm`` tries a
+#: self-hosted vLLM server (HERHEALTH_VLLM_URL) and falls back to OpenRouter
+#: when OPENROUTER_API_KEY is also set. ``off`` disables triage.
 TRIAGE_MODE_ENV = "HERHEALTH_TRIAGE_MODE"
+
+#: Self-hosted vLLM OpenAI-compatible API (see docs/runbooks/dev-vllm-lora-endpoint.md).
+#: Port 8002 by default — services/model retrieval uses 8001.
+VLLM_URL_ENV = "HERHEALTH_VLLM_URL"
+VLLM_MODEL_ENV = "HERHEALTH_VLLM_MODEL"
 
 #: Auth cookies' ``secure`` flag. Defaults to true; set ``false`` for plain-HTTP
 #: local dev (http://localhost) so browsers store and send session cookies.
@@ -173,16 +184,26 @@ def openrouter_api_key() -> str | None:
 
 
 def triage_mode() -> str:
-    """``demo``, ``openrouter``, or ``off``. Defaults to ``openrouter`` when a
+    """``demo``, ``openrouter``, ``vllm``, or ``off``. Defaults to ``openrouter`` when a
     key is set, otherwise ``off``. Set ``HERHEALTH_TRIAGE_MODE=demo`` explicitly
     for local MVP testing without OpenRouter or services/model.
     """
     explicit = os.environ.get(TRIAGE_MODE_ENV, "").strip().lower()
-    if explicit in {"demo", "openrouter", "off"}:
+    if explicit in {"demo", "openrouter", "vllm", "off"}:
         return explicit
     if openrouter_api_key():
         return "openrouter"
     return "off"
+
+
+def vllm_url() -> str:
+    """Base URL for the self-hosted vLLM server (no path suffix)."""
+    return os.environ.get(VLLM_URL_ENV, "http://127.0.0.1:8002")
+
+
+def vllm_model() -> str:
+    """The ``model`` field sent to vLLM — typically the LoRA module name."""
+    return os.environ.get(VLLM_MODEL_ENV, "herhealth")
 
 
 def cookie_secure() -> bool:

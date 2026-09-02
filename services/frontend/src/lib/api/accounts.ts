@@ -31,7 +31,7 @@ export function signInWithGoogle(idToken: string) {
   });
 }
 
-/** POST /accounts/verify-email → 200 */
+/** POST /accounts/verify-email → 200 + access_token / refresh_token cookies */
 export function verifyEmail(email: string, code: string) {
   return apiRequest<UserSummary>("/accounts/verify-email", {
     method: "POST",
@@ -72,6 +72,14 @@ export function getCurrentUser() {
   return apiRequest<UserSummary>("/accounts/me");
 }
 
+/** PATCH /accounts/me → 200 */
+export function updateProfile(displayName: string | null) {
+  return apiRequest<UserSummary>("/accounts/me", {
+    method: "PATCH",
+    body: { display_name: displayName },
+  });
+}
+
 /** POST /accounts/refresh → 204 */
 export function refreshSession() {
   return apiRequest<void>("/accounts/refresh", { method: "POST" });
@@ -87,4 +95,9 @@ export function signOutEverywhere() {
   return apiRequest<void>("/accounts/sign-out-everywhere", {
     method: "POST",
   });
+}
+
+/** DELETE /accounts/me → 204, permanently deletes the signed-in user */
+export function deleteAccount() {
+  return apiRequest<void>("/accounts/me", { method: "DELETE" });
 }

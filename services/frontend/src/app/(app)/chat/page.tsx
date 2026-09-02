@@ -2,12 +2,14 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { RotateCcw } from "lucide-react";
+import { MessageSquarePlus, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { ChatShell } from "@/components/chat/chat-shell";
+import { ChatStarterPrompts } from "@/components/chat/chat-starter-prompts";
 import { ConclusionCard } from "@/components/chat/conclusion-card";
 import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -15,11 +17,13 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { friendlyTriageError } from "@/lib/api/errors";
 import {
+  deleteTriageSession,
   getTriageSession,
   listTriageSessions,
   sendTriageTurn,
 } from "@/lib/api/triage";
 import type {
+  CitedPassage,
   TriageDecision,
   TriageSessionMessage,
   TriageSessionSummary,
@@ -27,7 +31,16 @@ import type {
 import { routes } from "@/lib/routes";
 
 type ChatEntry =
-  | { id: string; kind: "message"; role: "user" | "assistant"; text: string }
+  | {
+      id: string;
+      kind: "message";
+      role: "user" | "assistant";
+      text: string;
+      /** Present on an assistant question: the passages that prompted it.
+       *  A question is a grounded decision too, not just filler between
+       *  the opening message and a conclusion. */
+      citedPassages?: CitedPassage[];
+    }
   | { id: string; kind: "conclusion"; decision: TriageDecision };
 
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
@@ -76,6 +89,7 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
       kind: "message",
       role: "assistant",
       text: decision.question_text,
+      citedPassages: decision.cited_passages,
     };
   }
 
@@ -105,23 +119,40 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const [sessionStatus, setSessionStatus] = useState<"active" | "concluded" | null>(null);
   const [sessions, setSessions] = useState<TriageSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(Boolean(requestedSessionId));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isConcluded =
     sessionStatus === "concluded" || entries.some((entry) => entry.kind === "conclusion");
 
+  const userTurnCount = entries.filter(
+    (entry) => entry.kind === "message" && entry.role === "user",
+  ).length;
+
+  const showStarters =
+    !isLoadingSession &&
+    !isSending &&
+    !isConcluded &&
+    userTurnCount === 0 &&
+    entries.length === 1;
+
+  const thinkingTurnLabel =
+    userTurnCount === 0
+      ? "First question — this usually takes 15–60 seconds"
+      : `Follow-up ${userTurnCount + 1} — still checking sources`;
+
   const reloadSessions = useCallback(async () => {
     try {
       const nextSessions = await listTriageSessions();
       setSessions(nextSessions);
-    } catch {
-      // Sidebar failure should not block the chat itself.
+      setSessionsError(null);
+    } catch (error) {
+      setSessionsError(friendlyTriageError(error));
     } finally {
       setSessionsLoading(false);
     }
@@ -135,9 +166,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         const nextSessions = await listTriageSessions();
         if (!cancelled) {
           setSessions(nextSessions);
+          setSessionsError(null);
         }
-      } catch {
-        // Sidebar failure should not block the chat itself.
+      } catch (error) {
+        if (!cancelled) {
+          setSessionsError(friendlyTriageError(error));
+        }
       } finally {
         if (!cancelled) {
           setSessionsLoading(false);
@@ -157,6 +191,11 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       return;
     }
 
+    // Captured into a const before the closure: TypeScript drops the
+    // narrowing from the guard above once a parameter is read inside a
+    // nested function, since it cannot prove the value is unchanged by
+    // the time that function runs.
+    const sessionToLoad = requestedSessionId;
     let cancelled = false;
 
     async function loadSession() {
@@ -164,7 +203,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       setErrorMessage(null);
 
       try {
-        const detail = await getTriageSession(requestedSessionId);
+        const detail = await getTriageSession(sessionToLoad);
         if (cancelled) {
           return;
         }
@@ -175,10 +214,13 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         setLastFailedMessage(null);
       } catch (error) {
         if (!cancelled) {
-          setErrorMessage(friendlyTriageError(error));
+          setErrorMessage(
+            "We couldn't open that chat. Start a new one below — we're still here to help.",
+          );
           setSessionId(null);
           setSessionStatus(null);
           setEntries([GREETING]);
+          router.replace(routes.chat);
         }
       } finally {
         if (!cancelled) {
@@ -192,7 +234,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     return () => {
       cancelled = true;
     };
-  }, [requestedSessionId]);
+  }, [requestedSessionId, router]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -216,6 +258,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           kind: "message",
           role: "assistant",
           text: response.decision.question_text,
+          citedPassages: response.decision.cited_passages,
         });
       } else {
         appendEntry({ kind: "conclusion", decision: response.decision });
@@ -254,28 +297,52 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     router.push(`${routes.chat}?session=${nextSessionId}`);
   }
 
+  const handleDeleteSession = useCallback(
+    async (sessionIdToDelete: string) => {
+      try {
+        await deleteTriageSession(sessionIdToDelete);
+        setSessions((current) => current.filter((session) => session.id !== sessionIdToDelete));
+        if (sessionId === sessionIdToDelete || requestedSessionId === sessionIdToDelete) {
+          router.push(routes.chat);
+        }
+        toast.success("Chat deleted");
+      } catch (error) {
+        toast.error(friendlyTriageError(error));
+      }
+    },
+    [requestedSessionId, router, sessionId],
+  );
+
   return (
     <ChatShell
       sessions={sessions}
       sessionsLoading={sessionsLoading}
+      sessionsError={sessionsError}
       activeSessionId={sessionId}
       sidebarOpen={sidebarOpen}
-      profileOpen={profileOpen}
       onToggleSidebar={() => setSidebarOpen((open) => !open)}
       onCloseSidebar={() => setSidebarOpen(false)}
-      onOpenProfile={() => setProfileOpen(true)}
-      onCloseProfile={() => setProfileOpen(false)}
       onSelectSession={handleSelectSession}
       onNewChat={handleNewChat}
+      onDeleteSession={handleDeleteSession}
     >
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <ScrollArea className="flex-1">
           <div className="flex flex-col gap-4 px-4 py-6 sm:px-6">
             {isLoadingSession ? <ThinkingIndicator label="Loading conversation…" /> : null}
 
+            {showStarters ? (
+              <ChatStarterPrompts disabled={isSending} onSelect={handleSend} />
+            ) : null}
+
             {entries.map((entry) =>
               entry.kind === "message" ? (
-                <ChatMessage key={entry.id} role={entry.role} text={entry.text} />
+                <ChatMessage
+                  key={entry.id}
+                  role={entry.role}
+                  text={entry.text}
+                  citedPassages={entry.citedPassages}
+                />
               ) : (
                 <ConclusionCard
                   key={entry.id}
@@ -285,7 +352,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
               ),
             )}
 
-            {isSending ? <ThinkingIndicator /> : null}
+            {isSending ? <ThinkingIndicator turnLabel={thinkingTurnLabel} /> : null}
 
             {errorMessage ? (
               <Alert variant="destructive">
@@ -305,17 +372,28 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           </div>
         </ScrollArea>
 
-        <ChatComposer
-          disabled={isSending || isConcluded || isLoadingSession}
-          placeholder={
-            isConcluded
-              ? "Start a new chat to keep talking"
-              : entries.length <= 1
+        {isConcluded ? (
+          <div className="border-t border-border/60 bg-muted/20 p-4">
+            <p className="mb-3 text-center text-sm text-muted-foreground">
+              This chat is complete. Start a new one if something else comes up.
+            </p>
+            <Button size="lg" className="w-full" onClick={handleNewChat}>
+              <MessageSquarePlus className="size-4" />
+              Start a new chat
+            </Button>
+          </div>
+        ) : (
+          <ChatComposer
+            disabled={isSending || isLoadingSession}
+            placeholder={
+              entries.length <= 1
                 ? "Tell me what's going on…"
                 : "Type your reply…"
-          }
-          onSend={handleSend}
-        />
+            }
+            showWaitHint={userTurnCount === 0 && !isSending && !isLoadingSession}
+            onSend={handleSend}
+          />
+        )}
       </div>
     </ChatShell>
   );

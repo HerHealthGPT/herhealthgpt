@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { routes } from "@/lib/routes";
+import { PageLoading } from "@/components/ui/page-loading";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -39,7 +40,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user || !user.email_verified) {
-    return null;
+    return <PageLoading message="Almost there…" />;
   }
 
   return <>{children}</>;

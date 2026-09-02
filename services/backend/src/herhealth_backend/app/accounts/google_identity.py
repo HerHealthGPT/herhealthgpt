@@ -63,7 +63,7 @@ class GoogleOAuthTokenVerifier:
             )
             sub = claims["sub"]
             email = claims["email"]
-        except (GoogleAuthError, ValueError, KeyError) as exc:
+        except (GoogleAuthError, ValueError, KeyError, OSError) as exc:
             raise GoogleTokenInvalid() from exc
         return GoogleIdentity(
             sub=sub, email=email, email_verified=bool(claims.get("email_verified", False))

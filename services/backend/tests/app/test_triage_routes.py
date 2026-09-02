@@ -373,3 +373,39 @@ async def test_get_someone_elses_session_is_not_found(database_url: str) -> None
         response = await client.get(f"/triage/sessions/{session_id}")
 
     assert response.status_code == 404
+
+
+async def test_delete_session_removes_it_from_the_list(database_url: str) -> None:
+    async for client in _build_client(database_url, _scripted_agent(_A_CONCLUDE_DECISION)):
+        await _register_and_sign_in(client, "triage-delete@example.com")
+        opening = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "I have had irregular periods for 3 months."},
+        )
+        session_id = opening.json()["session_id"]
+
+        response = await client.delete(f"/triage/sessions/{session_id}")
+        assert response.status_code == 204, response.text
+
+        listed = await client.get("/triage/sessions")
+        assert listed.status_code == 200, listed.text
+        assert listed.json() == []
+
+        missing = await client.get(f"/triage/sessions/{session_id}")
+        assert missing.status_code == 404
+
+
+async def test_delete_someone_elses_session_is_not_found(database_url: str) -> None:
+    async for client in _build_client(database_url, _scripted_agent(_A_CONCLUDE_DECISION)):
+        await _register_and_sign_in(client, "triage-delete-owner@example.com")
+        opening = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "I have had irregular periods for 3 months."},
+        )
+        session_id = opening.json()["session_id"]
+        await client.post("/accounts/sign-out")
+
+        await _register_and_sign_in(client, "triage-delete-intruder@example.com")
+        response = await client.delete(f"/triage/sessions/{session_id}")
+
+    assert response.status_code == 404

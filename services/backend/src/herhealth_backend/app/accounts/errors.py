@@ -18,6 +18,7 @@ __all__ = [
     "IncorrectPasswordResetCode",
     "PasswordResetCodeExpired",
     "TooManyPasswordResetRequests",
+    "InvalidDisplayName",
 ]
 
 
@@ -142,3 +143,7 @@ class TooManyPasswordResetRequests(Exception):
     """Raised when an address has requested a password reset too often
     recently. See ``app/accounts/password_reset_throttle.py``.
     """
+
+
+class InvalidDisplayName(Exception):
+    """Raised when a display name is empty after normalisation or too long."""

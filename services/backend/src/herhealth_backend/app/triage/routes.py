@@ -21,12 +21,14 @@ import asyncio
 import functools
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from herhealth_contracts.decision import DecisionType, TriageDecision
+from herhealth_contracts.retrieval import RetrievedPassage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -49,6 +51,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/triage", tags=["triage"])
 
+_USER_FACING_ERROR = "Something went wrong. Please try again."
+
 #: Observed real latency ranged from a few seconds to ~90s across manual
 #: testing (2026-09-01, OpenRouter routing this model across several
 #: backing providers with visibly different speeds). Comfortably above
@@ -56,6 +60,10 @@ router = APIRouter(prefix="/triage", tags=["triage"])
 #: at all (containment for an intermittent hang, not a normal request
 #: budget).
 REASONING_TIMEOUT_SECONDS = 150.0
+#: OpenRouter occasionally returns schema-valid JSON with invented feature ids
+#: or bad citations. One silent retry before surfacing 502 to the client —
+#: observed live 2026-09-02: first attempt 502, identical second attempt 200.
+MAX_REASONING_ATTEMPTS = 2
 
 
 class TriageTurnRequest(BaseModel):
@@ -118,7 +126,9 @@ async def triage_turn(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
                 "triage is not configured on this deployment "
-                "(set HERHEALTH_TRIAGE_MODE=demo for local testing, or OPENROUTER_API_KEY for real)"
+                "(set HERHEALTH_TRIAGE_MODE=demo for local testing, "
+                "openrouter or vllm for real reasoning, "
+                "or OPENROUTER_API_KEY for openrouter/vllm fallback)"
             ),
         )
 
@@ -133,14 +143,12 @@ async def triage_turn(
         ) from error
     except (HTTPException, ValidationError, ClosedVocabularyViolation, httpx.HTTPError, ValueError):
         raise
-    except Exception:
-        # Belt and braces: an unhandled exception here would otherwise
-        # surface only as Starlette's bare "Internal Server Error" with
-        # nothing in this process's own log to explain it — exactly what
-        # happened while diagnosing the session-held-open bug _run_turn's
-        # docstring describes. Re-raised unchanged; this only adds a log line.
+    except Exception as error:
         logger.exception("unhandled exception in triage_turn")
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
+        ) from error
 
 
 async def _run_turn(
@@ -173,57 +181,114 @@ async def _run_turn(
     session_id, history = await _load_session(request, user, database)
     history.append(Message(role="user", content=request.message))
 
-    try:
-        loop = asyncio.get_running_loop()
-        turn = await asyncio.wait_for(
-            loop.run_in_executor(
-                None, functools.partial(agent.run_turn, history, query=history[-1].content)
-            ),
-            timeout=REASONING_TIMEOUT_SECONDS,
+    turn = None
+    last_retryable_error: Exception | None = None
+    for attempt in range(1, MAX_REASONING_ATTEMPTS + 1):
+        try:
+            loop = asyncio.get_running_loop()
+            turn = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, functools.partial(agent.run_turn, history, query=history[-1].content)
+                ),
+                timeout=REASONING_TIMEOUT_SECONDS,
+            )
+            validate_against_knowledge_base(turn.decision, agent.base, turn.retrieved)
+            break
+        except TimeoutError as error:
+            # Containment for the still-unexplained intermittent hang this
+            # function's docstring describes — not a fix for it. The stuck
+            # executor thread is not cancelled (Python threads cannot be
+            # forced to stop) and is abandoned; it will not be returned to the
+            # executor's pool. A deployment that hits this repeatedly is
+            # leaking worker threads until the process is restarted — a real,
+            # named cost of containing rather than fixing this.
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="the reasoning model did not respond in time",
+            ) from error
+        except httpx.HTTPError as error:
+            logger.warning("triage dependency HTTP failure: %s", error)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="A service we rely on is temporarily unavailable. Please try again.",
+            ) from error
+        except (ValidationError, ClosedVocabularyViolation, ValueError) as error:
+            last_retryable_error = error
+            if attempt < MAX_REASONING_ATTEMPTS:
+                logger.warning(
+                    "reasoning attempt %s/%s failed (%s) — retrying",
+                    attempt,
+                    MAX_REASONING_ATTEMPTS,
+                    error,
+                )
+                continue
+            if isinstance(error, ValidationError):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail="We had trouble understanding the response. Please try again.",
+                ) from error
+            if isinstance(error, ClosedVocabularyViolation):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"reasoning model returned an invalid decision: {error}",
+                ) from error
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(error),
+            ) from error
+
+    if turn is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"reasoning model failed after {MAX_REASONING_ATTEMPTS} attempts: "
+            f"{last_retryable_error}",
         )
-        validate_against_knowledge_base(turn.decision, agent.base, turn.retrieved)
-    except TimeoutError as error:
-        # Containment for the still-unexplained intermittent hang this
-        # function's docstring describes — not a fix for it. The stuck
-        # executor thread is not cancelled (Python threads cannot be
-        # forced to stop) and is abandoned; it will not be returned to the
-        # executor's pool. A deployment that hits this repeatedly is
-        # leaking worker threads until the process is restarted — a real,
-        # named cost of containing rather than fixing this.
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="the reasoning model did not respond in time",
-        ) from error
-    except ValidationError as error:
-        # Raised inside OpenRouterReasoningClient.decide() (clients.py) when
-        # the model's JSON is syntactically valid but violates
-        # TriageDecision's own schema — e.g. putting a retrieved-passage hash
-        # where a real feature/condition id belongs, observed live in testing
-        # (2026-09-01). Upstream's fault, never a bare 500.
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"reasoning model returned a decision that failed schema validation: {error}",
-        ) from error
-    except ClosedVocabularyViolation as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"reasoning model returned an invalid decision: {error}",
-        ) from error
-    except httpx.HTTPError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"a dependency of triage (OpenRouter or services/model) failed: {error}",
-        ) from error
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(error),
-        ) from error
 
     decision = enforce_provenance_cap(turn.decision, turn.retrieved)
-    await _persist_turn(session_id, request.message, decision, database)
+    payload = _decision_payload(decision, turn.retrieved)
+    await _persist_turn(session_id, request.message, decision, payload, database)
 
-    return {"session_id": str(session_id), "decision": decision.model_dump(mode="json")}
+    return {"session_id": str(session_id), "decision": payload}
+
+
+def _decision_payload(
+    decision: TriageDecision, retrieved: Sequence[RetrievedPassage]
+) -> dict[str, Any]:
+    """``TriageDecision`` as JSON, plus the passages its ``citations`` name.
+
+    ``citations`` on its own is a list of 16-hex-character content hashes —
+    meaningful to :func:`validate_against_knowledge_base`, meaningless to a
+    person. Resolving them here, against the very passages this turn
+    retrieved, is what lets the UI show the sentence a conclusion actually
+    rests on and a link to the page it came from, rather than a hash or a
+    vague "grounded in 3 sources".
+
+    Resolved eagerly rather than looked up later on purpose: retrieval is a
+    live similarity search, so the same citation id is not guaranteed to
+    come back from a future search. The passages are captured with the turn
+    or not at all.
+
+    The extra key rides alongside ``TriageDecision``'s own fields rather
+    than inside them — the model is ``extra="forbid"``, and it should stay
+    that way: what the reasoning model may emit and what this API renders
+    are different contracts, and only the first one is the safety net.
+    """
+    by_id = {passage.id: passage for passage in retrieved}
+    cited = [by_id[citation] for citation in decision.citations if citation in by_id]
+    return {
+        **decision.model_dump(mode="json"),
+        "cited_passages": [
+            {
+                "id": passage.id,
+                "text": passage.text,
+                "citation": passage.citation,
+                "source_id": passage.source_id,
+                "url": passage.url,
+                "passage_type": passage.passage_type.value,
+            }
+            for passage in cited
+        ],
+    }
 
 
 async def _load_session(
@@ -264,10 +329,21 @@ async def _load_session(
 
 
 async def _persist_turn(
-    session_id: uuid.UUID, user_message: str, decision: TriageDecision, database: Database
+    session_id: uuid.UUID,
+    user_message: str,
+    decision: TriageDecision,
+    payload: dict[str, Any],
+    database: Database,
 ) -> None:
     """A second short-lived session: write this turn's two messages, and
-    close out the consultation if it concluded."""
+    close out the consultation if it concluded.
+
+    Stores ``payload`` — the decision *with* its resolved
+    ``cited_passages`` (see :func:`_decision_payload`) — not the bare
+    decision. Reopening an old consultation from the sidebar therefore
+    shows the same quoted sources it showed live, without re-running a
+    retrieval that might not return the same passages today.
+    """
     assistant_content = (
         decision.question_text if decision.type is DecisionType.ASK else decision.rationale
     )
@@ -278,7 +354,7 @@ async def _persist_turn(
                 session_id=session_id,
                 role="assistant",
                 content=assistant_content,
-                decision=decision.model_dump(mode="json"),
+                decision=payload,
             )
         )
         if decision.type is DecisionType.CONCLUDE:
@@ -351,6 +427,14 @@ async def list_sessions(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="triage storage is unavailable — check database migrations",
         ) from error
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("unexpected error in list_sessions")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
+        ) from error
 
 
 @router.get("/sessions/{session_id}")
@@ -397,4 +481,45 @@ async def get_session(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="triage storage is unavailable — check database migrations",
+        ) from error
+    except Exception as error:
+        logger.exception("unexpected error in get_session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
+        ) from error
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(
+    session_id: uuid.UUID,
+    http_request: Request,
+    user: User = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Permanently remove one consultation and its messages.
+
+    Messages cascade via the FK on ``messages.session_id``. Same ownership
+    discipline as ``get_session``: not-found, never a 403.
+    """
+    database: Database = http_request.app.state.database
+    try:
+        async with database.session() as session:
+            consultation = await session.get(ConsultationSession, session_id)
+            if consultation is None or consultation.user_id != user.id:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such session")
+            await session.delete(consultation)
+            await session.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        logger.exception("database error in delete_session")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="triage storage is unavailable — check database migrations",
+        ) from error
+    except Exception as error:
+        logger.exception("unexpected error in delete_session")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_USER_FACING_ERROR,
         ) from error

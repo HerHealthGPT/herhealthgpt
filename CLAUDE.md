@@ -124,36 +124,52 @@ Nothing is ever edited directly on the server.
 Seven files under `knowledge/`. Five are hand-authored and reviewed, kept as
 plain text in git so every change appears as a reviewable diff.
 
-Counts are **as built on 2026-08-19**, read from the files. They are not targets.
+Counts are **as built on 2026-09-02**, read from the files. They are not targets.
 If you change a file, change the number here in the same commit.
 
-**These counts reflect only APPROVED batches.** A larger dataset-generation pass
-landed 2026-08-19 with 11 more batches (`batch_13` through `batch_23`, ~30 rows,
-7 new conditions) still awaiting the second-reviewer approval the protocol
-requires — see `services/data/evidence_batches/`. Re-run `make evidence` and
-update this table again once they are reviewed; do not treat the numbers below
-as final.
+**Batches 13–24 have landed.** Batches 13–23 (drafted 2026-08-19) completed
+review, taking `evidence.csv` 98 → 135 rows and giving the seven conditions
+added that day their evidence. Batch 24 followed on 2026-09-02: two new
+features and 5 rows, 135 → 140. The numbers below are read from the files and
+count every approved batch in `services/data/evidence_batches/` (`batch_04`
+through `batch_24`).
 
 | File | Rows | What it is |
 |---|---|---|
-| `features.yaml` | 37 | Everything the system may ask about |
+| `features.yaml` | 39 | Everything the system may ask about |
 | `conditions.yaml` | 19 | Everything the system may suspect |
-| `evidence.csv` | 98 | The sparse grid connecting them |
+| `evidence.csv` | 140 | The sparse grid connecting them |
 | `red_flags.yaml` | 16 | Deterministic escalation rules |
 | `sources.yaml` | 5 | Provenance, licence, precedence |
 | `weights.yaml` | — | Ordinal-to-log-odds mapping, tunable |
 | `actions.yaml` | 4 | Four action codes, resolved per locale |
 
-`evidence.csv` rows by source: NHS 42, womenshealth 30, MedlinePlus 17, NICHD 8,
-CDC 1. By strength: `weak_support` 55, `strong_support` 34, `argues_against` 9,
+`evidence.csv` rows by source: womenshealth 57, NHS 47, MedlinePlus 26, NICHD 8,
+CDC 2. By strength: `weak_support` 85, `strong_support` 45, `argues_against` 10,
 and **no `rules_out` row has ever been authored** — see ADR 0009, which must be
 revisited before the first one is.
 
-**7 of 19 conditions currently have zero evidence** (`hypothyroidism`,
-`primary_ovarian_insufficiency`, `inherited_bleeding_disorder`, `bladder_pain`,
-`pelvic_organ_prolapse`, `iron_deficiency_anaemia`, `infertility`) — each is
-schema-valid and its evidence is drafted in a pending batch, but `make validate`
-correctly warns that nothing can raise them until that batch is approved.
+**Every condition now carries at least one evidence row.** The thinnest are
+`bacterial_vaginosis`, `infertility`, `inherited_bleeding_disorder` and
+`iron_deficiency_anaemia` (3 each), then `pelvic_organ_prolapse` (4) — these are
+where the differential is most likely to be weak, and where the next authoring
+pass should go before any new condition is added.
+
+**`make verify-quotes` is the check that makes the protocol real, and it needs a
+complete `build/clean`.** It reads the cleaned corpus, which is gitignored and
+absent on a fresh clone, so it reports `NOT_FOUND` for any row whose source page
+has not been fetched and cleaned locally — indistinguishable at a glance from a
+fabricated quote. On 2026-09-02 it failed on 31 quotes for exactly this reason:
+`build/clean` held 49 of 67 documents, all 18 missing ones belonging to the
+conditions added on 2026-08-19. After re-fetching them, **all 156 quotes verify
+verbatim**. Run `make fetch && make clean` before trusting a failure.
+
+**Seven features carry no evidence row, and that is correct.**
+`pregnancy_status`, `bleeding_after_menopause`, `feeling_faint`,
+`shoulder_tip_pain`, `right_upper_quadrant_pain`, `difficulty_breathing` and
+`sudden_confusion` appear only in `red_flags.yaml`. They exist to fire
+escalation rules, not to raise a condition in the roster — the same discipline
+that keeps cancers out of `conditions.yaml`. Do not "fill them in".
 
 Counting `evidence.csv` with `wc -l` gives the wrong answer. `source_quote` and
 `note` contain embedded newlines; parse it as CSV.
@@ -246,16 +262,31 @@ rather than escalated. That stale row was deleted the same day the red flag was
 added; see `services/data/evidence_batches/batch_07_perimenopause_sti.yaml`'s
 amended note.
 
+**Red-flag conclusions name no condition — except at `EMERGENCY`.** ADR 0011
+generalised the cancer rule above to every red flag: escalate on the symptom
+pattern, never assert what it is.
+[ADR 0013](docs/adr/0013-emergency-conclusions-may-name-conditions.md)
+(**proposed**, 2026-09-02) narrows that to allow `matching_conditions`
+alongside `red_flag_id` **only** when the action is `EMERGENCY` — so a woman
+being sent to an emergency department is told what patterns the warning sign
+relates to. `URGENT_SAME_DAY` red flags (most of `red_flags.yaml`, including
+`severe_pelvic_pain`) keep the original restriction unchanged. This is a
+product judgement, not a finding that the old rule was wrong, and ADR 0013's
+risk register says so plainly. It does not touch "never diagnoses": a named
+condition is still *"may match patterns our sources associate with…"*, never
+*"you have…"*. Cancer stays unmodelled and therefore unnameable — it is not in
+`conditions.yaml`, so the closed vocabulary still cannot produce it.
+
 ### The five evidence weights, and nothing else
 
 `strong_support` `weak_support` `neutral` `argues_against` `rules_out`
 
 `neutral` means **omit the row**. The file is sparse, and much sparser than it
-looks: 19 conditions × 37 features is 703 possible cells, and 98 carry meaning —
-**14% filled**, sparser than before despite more rows, because seven new
-conditions arrived with no evidence yet (see the pending-batches note above). A
-missing row is not a gap to be filled in; it is the correct
-representation of "this source does not connect these two things".
+looks: 19 conditions × 39 features is 741 possible cells, and 140 carry meaning —
+**19% filled**. Seven of those 39 features are red-flag-only and will never carry
+an evidence row (see above), so the reachable grid is smaller than 741 and the
+real fill is higher than 19%. A missing row is not a gap to be filled in; it is
+the correct representation of "this source does not connect these two things".
 
 ### The four action codes, and nothing else
 
@@ -353,12 +384,15 @@ it.
 | CDC | `cdc` | 4 | US federal, public domain *(unverified)* | **available** |
 | NHS website | `nhs` | 2 | Crown copyright, no reuse grant | **citable_only** |
 
-**`womenshealth` (womenshealth.gov) carries 30 of the 98 evidence rows** — the
-second-largest contributor after NHS, and the largest that may actually be
-ingested. NHS supplies more rows but none of them may enter `passages.parquet`,
-which is why the ingestable corpus is smaller than the row count suggests.
-MedlinePlus grew from 13 to 17 rows in the 2026-08-19 pass — still third, but
-narrowing the gap.
+**`womenshealth` (womenshealth.gov) carries 57 of the 140 evidence rows and has
+overtaken NHS (47) as the largest contributor.** That reversal matters more than
+the count: womenshealth is public domain and ingestable, NHS is `citable_only`
+and none of its rows may enter `passages.parquet`. So the ingestable corpus is
+still smaller than the row count suggests, but the gap is closing from the right
+side. MedlinePlus grew 17 → 26 across batches 13–23, CDC 1 → 2. **Prefer
+womenshealth and MedlinePlus when a fact is available from more than one source
+at equal precedence** — an NHS-only row is citable but unretrievable, so it
+strengthens the differential without strengthening RAG.
 
 **MedlinePlus has a split licence and it matters.** Health topic summaries are
 public domain. The A.D.A.M. Medical Encyclopedia (`medlineplus.gov/ency/*`) and
@@ -402,8 +436,21 @@ inheriting an assumption.
 womenshealth 3, then CDC 4. Numbering gaps are the removed sources, so the
 ordering stays stable if a licence is ever cleared. Three sources share
 precedence 3, so a conflict among them is **not resolvable by precedence** and
-must go to `build/conflicts.jsonl` with the higher urgency taken. Never resolve a
-conflict silently.
+is recorded in the relevant row's, feature's or condition's own `note` with the
+higher urgency taken. Never resolve a conflict silently.
+
+`build/conflicts.jsonl` is **not** that record, and the sentence above is
+deliberately not phrased in terms of it. The file does exist and holds real
+hand-written entries, but `build/` is gitignored and no pipeline stage writes
+it — so its contents reach no reviewer, survive no fresh clone, and appear in
+no diff. Recording a conflict only there loses it. Write the note in the
+tracked file and treat `conflicts.jsonl` as scratch.
+
+Precedence resolves which source *wins*; it does not license writing the
+losing side out. Where two sources contradict each other on whether a symptom
+occurs at all — as NHS and womenshealth do on itching in bacterial vaginosis —
+the safe move is to write no row in either direction and record why, because a
+missing row is neutral. See `discharge_smell`'s note in `features.yaml`.
 
 Raw fetches are immutable: `raw/{source}/{YYYY-MM-DD}/`, never overwritten.
 Every record stores `url`, `fetched_at`, `content_hash`, `licence`.

@@ -48,14 +48,18 @@ __all__ = [
     "ScriptedReasoningClient",
     "TriageAgent",
     "render_red_flags",
+    "render_feature_vocabulary",
 ]
 
 #: The canonical system prompt. Owns the one framing rule that matters most:
 #: the model may say what she described MATCHES a cited pattern, and may
 #: name which authored conditions match — but must never say she HAS a
-#: condition, and must never name one at all when a red flag is the reason
-#: (TriageDecision.matching_conditions enforces that second half in code,
-#: not just here — see decision.py). "Never diagnose" is CLAUDE.md's binding
+#: condition. A red-flag-driven conclusion names no condition either —
+#: EXCEPT at EMERGENCY, the one deliberate exception (a product decision,
+#: 2026-09-02 — see decision.py's docstring and ADR 0013), where naming the
+#: matching patterns is allowed alongside the red flag.
+#: TriageDecision.matching_conditions enforces all of that in code, not
+#: just here — see decision.py. "Never diagnose" is CLAUDE.md's binding
 #: rule; this is what enforcing it in the prompt actually looks like, in
 #: words a model is asked to follow rather than code that can check it.
 #: `bootstrap_dataset.py` imports this rather than defining its own, so the
@@ -63,25 +67,36 @@ __all__ = [
 DEFAULT_SYSTEM_PROMPT = (
     "You are an AI triage assistant for reproductive-health questions, not a "
     "clinician, and you must never diagnose — never tell her she \"has\" a "
-    "condition. When you conclude for a reason OTHER than a red-flag rule, "
-    "you may name which of our authored conditions her answers match, always "
-    "phrased as a possibility grounded in evidence, never as a conclusion "
-    "about what is wrong with her — for example: \"Based on your answers, "
-    "this may match patterns our sources associate with PCOS or "
+    "condition. Be genuinely thorough before you conclude: a single message "
+    "is almost never enough to conclude safely, so in most consultations ask "
+    "at least two or three clarifying questions — one per turn — about the "
+    "things that would actually change your guidance (how long, how severe, "
+    "how sudden, her age, pregnancy possibility, related symptoms) before "
+    "giving an urgency level. Conclude on the first turn only when a red-flag "
+    "warning sign below clearly applies, or when what she describes is so "
+    "clearly minor that asking more would not change the guidance. When you "
+    "conclude, you may name which of our authored conditions her answers "
+    "match, always phrased as a possibility grounded in evidence, never as a "
+    "conclusion about what is wrong with her — for example: \"Based on your "
+    "answers, this may match patterns our sources associate with PCOS or "
     "perimenopause.\" Name only a handful of the closest matches (at most "
     "five, and usually fewer) — a long list of everything not yet ruled out "
-    "is not useful guidance. Never name a specific disease when a red-flag warning "
-    "sign is the reason for concluding — red flags exist to escalate on a "
-    "symptom pattern without asserting what it is. Every citation, whether "
-    "for a matched condition or an urgency level, is tied to a cited source. "
-    "Ask one clarifying question at a time, or give urgency guidance — "
-    "exactly one of SELF_CARE, ROUTINE_APPOINTMENT, URGENT_SAME_DAY, or "
-    "EMERGENCY. Remind her plainly, in your own words, that you are an AI "
-    "tool, not a clinician, and that this is based on her answers and the "
-    "cited evidence, not a diagnosis. End every reply, question or final "
-    "answer alike, with: \"Urgency guidance only, from cited sources. Not a "
+    "is not useful guidance. When a red-flag warning sign is the reason for "
+    "concluding, name a specific condition only if the urgency is EMERGENCY — "
+    "at EMERGENCY, do name the matching conditions so she knows what patterns "
+    "the warning sign relates to; at any lesser urgency a red-flag conclusion "
+    "names no condition, because red flags escalate on a symptom pattern "
+    "without asserting what it is. Every citation, whether for a matched "
+    "condition or an urgency level, is tied to a cited source. Ask one "
+    "clarifying question at a time, or give urgency guidance — exactly one "
+    "of SELF_CARE, ROUTINE_APPOINTMENT, URGENT_SAME_DAY, or EMERGENCY. "
+    "Remind her plainly, in your own words, that you are an AI tool, not a "
+    "clinician, and that this is based on her answers and the cited "
+    "evidence, not a diagnosis. End every reply, question or final answer "
+    "alike, with: \"Urgency guidance only, from cited sources. Not a "
     "diagnosis.\" Under-triage is the dominant failure mode: when in doubt, "
-    "prefer sending her to care sooner rather than later."
+    "prefer sending her to care sooner rather than later — and when in "
+    "doubt between asking and concluding, ask."
 )
 
 
@@ -121,6 +136,17 @@ class MaxTurnsExceeded(RuntimeError):
     Python. The caller (the API layer) decides what the user sees, and must
     decide it knowing this is not a triage outcome, just a budget running out.
     """
+
+
+def render_feature_vocabulary(base: KnowledgeBase) -> str:
+    """Every feature id the model may put in ``next_feature_id`` — injected
+    so OpenRouter's plain-JSON mode cannot plausibly claim no id was available.
+    """
+    ids = ", ".join(sorted(base.features_by_id.keys()))
+    return (
+        "Closed vocabulary for next_feature_id (ASK decisions only — pick one, "
+        f"never invent): {ids}"
+    )
 
 
 def render_red_flags(red_flags: Sequence[RedFlagRule]) -> str:
@@ -172,7 +198,11 @@ class TriageAgent:
     def run_turn(self, history: Sequence[Message], *, query: str, k: int = 8) -> AgentTurn:
         """One retrieve-then-reason step. Does not mutate ``history``."""
         hits = self.retrieval.search(query, k=k)
-        system = f"{self.system_prompt}\n\n{render_red_flags(self.base.red_flags)}"
+        system = (
+            f"{self.system_prompt}\n\n"
+            f"{render_feature_vocabulary(self.base)}\n\n"
+            f"{render_red_flags(self.base.red_flags)}"
+        )
         decision = self.reasoning.decide(system_prompt=system, history=history, context=hits)
         return AgentTurn(history_before=tuple(history), retrieved=tuple(hits), decision=decision)
 
