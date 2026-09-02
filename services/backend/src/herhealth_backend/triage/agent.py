@@ -48,6 +48,7 @@ __all__ = [
     "ScriptedReasoningClient",
     "TriageAgent",
     "render_red_flags",
+    "render_feature_vocabulary",
 ]
 
 #: The canonical system prompt. Owns the one framing rule that matters most:
@@ -137,6 +138,17 @@ class MaxTurnsExceeded(RuntimeError):
     """
 
 
+def render_feature_vocabulary(base: KnowledgeBase) -> str:
+    """Every feature id the model may put in ``next_feature_id`` — injected
+    so OpenRouter's plain-JSON mode cannot plausibly claim no id was available.
+    """
+    ids = ", ".join(sorted(base.features_by_id.keys()))
+    return (
+        "Closed vocabulary for next_feature_id (ASK decisions only — pick one, "
+        f"never invent): {ids}"
+    )
+
+
 def render_red_flags(red_flags: Sequence[RedFlagRule]) -> str:
     """Every red flag, verbatim, as the block injected into every turn.
 
@@ -186,7 +198,11 @@ class TriageAgent:
     def run_turn(self, history: Sequence[Message], *, query: str, k: int = 8) -> AgentTurn:
         """One retrieve-then-reason step. Does not mutate ``history``."""
         hits = self.retrieval.search(query, k=k)
-        system = f"{self.system_prompt}\n\n{render_red_flags(self.base.red_flags)}"
+        system = (
+            f"{self.system_prompt}\n\n"
+            f"{render_feature_vocabulary(self.base)}\n\n"
+            f"{render_red_flags(self.base.red_flags)}"
+        )
         decision = self.reasoning.decide(system_prompt=system, history=history, context=hits)
         return AgentTurn(history_before=tuple(history), retrieved=tuple(hits), decision=decision)
 

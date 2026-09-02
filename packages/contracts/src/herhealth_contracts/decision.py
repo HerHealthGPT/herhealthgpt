@@ -128,6 +128,20 @@ class TriageDecision(BaseModel):
     #: Why, in the model's own words. Logged verbatim alongside the decision.
     rationale: NonEmptyText
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_null_collections(cls, data: object) -> object:
+        """OpenRouter often emits ``null`` for empty array fields; Pydantic
+        tuple fields reject that. Coerce before shape validation runs.
+        """
+        if not isinstance(data, dict):
+            return data
+        patched = dict(data)
+        for key in ("matching_conditions", "citations"):
+            if patched.get(key) is None:
+                patched[key] = []
+        return patched
+
     @model_validator(mode="after")
     def _shape_matches_type(self) -> Self:
         if not self.citations and self.red_flag_id is None:

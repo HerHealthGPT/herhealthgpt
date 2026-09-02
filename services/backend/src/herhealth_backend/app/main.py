@@ -45,10 +45,17 @@ from herhealth_backend.app.config import model_service_url as configured_model_s
 from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.config import triage_mode as configured_triage_mode
+from herhealth_backend.app.config import vllm_model as configured_vllm_model
+from herhealth_backend.app.config import vllm_url as configured_vllm_url
 from herhealth_backend.app.db import Database
 from herhealth_backend.app.triage.routes import router as triage_router
 from herhealth_backend.triage.agent import TriageAgent
-from herhealth_backend.triage.clients import HttpRetrievalClient, OpenRouterReasoningClient
+from herhealth_backend.triage.clients import (
+    FallbackReasoningClient,
+    HttpRetrievalClient,
+    OpenRouterReasoningClient,
+    VllmReasoningClient,
+)
 from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient, StaticRetrievalClient
 
 __all__ = ["create_app"]
@@ -75,10 +82,12 @@ def _build_triage_agent() -> TriageAgent | None:
     ``HERHEALTH_TRIAGE_MODE=demo`` (the local-MVP default when no OpenRouter
     key is set) wires offline scripted clients — no network, no GPU. ``off``
     disables triage entirely. ``openrouter`` needs ``OPENROUTER_API_KEY`` and
-    a running ``services/model``.
+    a running ``services/model``. ``vllm`` tries ``HERHEALTH_VLLM_URL`` first
+    and falls back to OpenRouter when ``OPENROUTER_API_KEY`` is also set.
     """
     mode = configured_triage_mode()
     base = load_knowledge_base(configured_knowledge_dir())
+    retrieval = HttpRetrievalClient(base_url=configured_model_service_url())
 
     if mode == "off":
         return None
@@ -89,13 +98,28 @@ def _build_triage_agent() -> TriageAgent | None:
             retrieval=StaticRetrievalClient(),
         )
 
+    if mode == "vllm":
+        primary = VllmReasoningClient(
+            base_url=configured_vllm_url(),
+            model=configured_vllm_model(),
+        )
+        api_key = configured_openrouter_api_key()
+        if api_key is None:
+            reasoning = primary
+        else:
+            reasoning = FallbackReasoningClient(
+                primary=primary,
+                fallback=OpenRouterReasoningClient(api_key=api_key),
+            )
+        return TriageAgent(base=base, reasoning=reasoning, retrieval=retrieval)
+
     api_key = configured_openrouter_api_key()
     if api_key is None:
         return None
     return TriageAgent(
         base=base,
         reasoning=OpenRouterReasoningClient(api_key=api_key),
-        retrieval=HttpRetrievalClient(base_url=configured_model_service_url()),
+        retrieval=retrieval,
     )
 
 

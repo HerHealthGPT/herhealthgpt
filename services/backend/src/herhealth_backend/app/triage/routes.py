@@ -58,6 +58,10 @@ router = APIRouter(prefix="/triage", tags=["triage"])
 #: at all (containment for an intermittent hang, not a normal request
 #: budget).
 REASONING_TIMEOUT_SECONDS = 150.0
+#: OpenRouter occasionally returns schema-valid JSON with invented feature ids
+#: or bad citations. One silent retry before surfacing 502 to the client —
+#: observed live 2026-09-02: first attempt 502, identical second attempt 200.
+MAX_REASONING_ATTEMPTS = 2
 
 
 class TriageTurnRequest(BaseModel):
@@ -120,7 +124,8 @@ async def triage_turn(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
                 "triage is not configured on this deployment "
-                "(set HERHEALTH_TRIAGE_MODE=demo for local testing, or OPENROUTER_API_KEY for real)"
+                "(set HERHEALTH_TRIAGE_MODE=demo for local testing, "
+                "openrouter or vllm for real reasoning, or OPENROUTER_API_KEY for openrouter/vllm fallback)"
             ),
         )
 
@@ -175,52 +180,70 @@ async def _run_turn(
     session_id, history = await _load_session(request, user, database)
     history.append(Message(role="user", content=request.message))
 
-    try:
-        loop = asyncio.get_running_loop()
-        turn = await asyncio.wait_for(
-            loop.run_in_executor(
-                None, functools.partial(agent.run_turn, history, query=history[-1].content)
-            ),
-            timeout=REASONING_TIMEOUT_SECONDS,
+    turn = None
+    last_retryable_error: Exception | None = None
+    for attempt in range(1, MAX_REASONING_ATTEMPTS + 1):
+        try:
+            loop = asyncio.get_running_loop()
+            turn = await asyncio.wait_for(
+                loop.run_in_executor(
+                    None, functools.partial(agent.run_turn, history, query=history[-1].content)
+                ),
+                timeout=REASONING_TIMEOUT_SECONDS,
+            )
+            validate_against_knowledge_base(turn.decision, agent.base, turn.retrieved)
+            break
+        except TimeoutError as error:
+            # Containment for the still-unexplained intermittent hang this
+            # function's docstring describes — not a fix for it. The stuck
+            # executor thread is not cancelled (Python threads cannot be
+            # forced to stop) and is abandoned; it will not be returned to the
+            # executor's pool. A deployment that hits this repeatedly is
+            # leaking worker threads until the process is restarted — a real,
+            # named cost of containing rather than fixing this.
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail="the reasoning model did not respond in time",
+            ) from error
+        except httpx.HTTPError as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"a dependency of triage (OpenRouter or services/model) failed: {error}",
+            ) from error
+        except (ValidationError, ClosedVocabularyViolation, ValueError) as error:
+            last_retryable_error = error
+            if attempt < MAX_REASONING_ATTEMPTS:
+                logger.warning(
+                    "reasoning attempt %s/%s failed (%s) — retrying",
+                    attempt,
+                    MAX_REASONING_ATTEMPTS,
+                    error,
+                )
+                continue
+            if isinstance(error, ValidationError):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "reasoning model returned a decision that failed schema validation: "
+                        f"{error}"
+                    ),
+                ) from error
+            if isinstance(error, ClosedVocabularyViolation):
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"reasoning model returned an invalid decision: {error}",
+                ) from error
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=str(error),
+            ) from error
+
+    if turn is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"reasoning model failed after {MAX_REASONING_ATTEMPTS} attempts: "
+            f"{last_retryable_error}",
         )
-        validate_against_knowledge_base(turn.decision, agent.base, turn.retrieved)
-    except TimeoutError as error:
-        # Containment for the still-unexplained intermittent hang this
-        # function's docstring describes — not a fix for it. The stuck
-        # executor thread is not cancelled (Python threads cannot be
-        # forced to stop) and is abandoned; it will not be returned to the
-        # executor's pool. A deployment that hits this repeatedly is
-        # leaking worker threads until the process is restarted — a real,
-        # named cost of containing rather than fixing this.
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail="the reasoning model did not respond in time",
-        ) from error
-    except ValidationError as error:
-        # Raised inside OpenRouterReasoningClient.decide() (clients.py) when
-        # the model's JSON is syntactically valid but violates
-        # TriageDecision's own schema — e.g. putting a retrieved-passage hash
-        # where a real feature/condition id belongs, observed live in testing
-        # (2026-09-01). Upstream's fault, never a bare 500.
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"reasoning model returned a decision that failed schema validation: {error}",
-        ) from error
-    except ClosedVocabularyViolation as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"reasoning model returned an invalid decision: {error}",
-        ) from error
-    except httpx.HTTPError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"a dependency of triage (OpenRouter or services/model) failed: {error}",
-        ) from error
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(error),
-        ) from error
 
     decision = enforce_provenance_cap(turn.decision, turn.retrieved)
     payload = _decision_payload(decision, turn.retrieved)

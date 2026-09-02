@@ -62,6 +62,21 @@ def test_an_emergency_red_flag_conclusion_may_name_conditions() -> None:
     assert decision.matching_conditions == ("ovarian_cyst",)
 
 
+def test_null_matching_conditions_coerces_to_empty_tuple() -> None:
+    """OpenRouter emits null for empty arrays — must not 502 the turn."""
+    decision = TriageDecision.model_validate(
+        {
+            "type": "ask",
+            "next_feature_id": "pregnancy_status",
+            "question_text": "Are you pregnant?",
+            "matching_conditions": None,
+            "citations": [A_PASSAGE_ID],
+            "rationale": "testing",
+        }
+    )
+    assert decision.matching_conditions == ()
+
+
 def test_a_red_flag_alone_still_grounds_a_decision() -> None:
     """A red-flag-driven decision with no citations stays valid — red flags
     are injected, never retrieved, so there is nothing to cite (the reason

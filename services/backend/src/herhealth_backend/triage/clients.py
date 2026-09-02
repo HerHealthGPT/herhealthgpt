@@ -12,25 +12,37 @@ reason.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 from collections.abc import Sequence
 
 import httpx
 from herhealth_contracts.decision import TriageDecision
 from herhealth_contracts.retrieval import RetrievedPassage
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError
 
 from herhealth_backend.triage.agent import Message
 
 __all__ = [
     "DEFAULT_MODEL",
-    "OPENROUTER_API_KEY_ENV",
+    "DEFAULT_VLLM_MODEL",
+    "FallbackReasoningClient",
     "HttpRetrievalClient",
+    "OPENROUTER_API_KEY_ENV",
     "OpenRouterReasoningClient",
+    "VLLM_MODEL_ENV",
+    "VLLM_URL_ENV",
+    "VllmReasoningClient",
 ]
 
+logger = logging.getLogger(__name__)
+
 OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
+VLLM_URL_ENV = "HERHEALTH_VLLM_URL"
+VLLM_MODEL_ENV = "HERHEALTH_VLLM_MODEL"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+_CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 
 #: The base model, unadapted. NOT the fine-tuned LoRA adapter — OpenRouter
 #: serves published models, not this project's private one. Swapping to the
@@ -41,6 +53,17 @@ _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 #: Protocol is what makes that swap a new class instead of a rewrite of
 #: TriageAgent.
 DEFAULT_MODEL = "qwen/qwen3.5-9b"
+
+#: The LoRA adapter name as registered with ``vllm serve --lora-modules``.
+DEFAULT_VLLM_MODEL = "herhealth"
+
+#: Per-call retries when OpenRouter returns JSON that fails ``TriageDecision``
+#: validation — same prompt twice often repeats the mistake; feedback helps.
+MAX_DECISION_ATTEMPTS = 3
+
+#: Qwen3.5 thinking blocks may appear in ``content`` when thinking mode is
+#: left on — see docs/runbooks/dev-vllm-lora-endpoint.md.
+_THINKING_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 def _render_context(context: Sequence[RetrievedPassage]) -> str:
@@ -96,15 +119,16 @@ def _render_context(context: Sequence[RetrievedPassage]) -> str:
 _JSON_SHAPE_INSTRUCTION = (
     "\n\nRespond with ONLY a single JSON object, no other text, matching this shape: "
     '{"type": "ask" or "conclude", "rationale": "why, required always", '
-    '"next_feature_id": "a feature id, required only if type is ask, else null", '
-    '"question_text": "the question, required only if type is ask, else null", '
+    '"next_feature_id": "REQUIRED string when type is ask — must be a real feature id from the list in the system prompt; null only when type is conclude", '
+    '"question_text": "REQUIRED non-empty string when type is ask — the clarifying question for the user; null only when type is conclude", '
     '"action_code": "one of SELF_CARE|ROUTINE_APPOINTMENT|URGENT_SAME_DAY|EMERGENCY, '
     'required only if type is conclude, else null", '
     '"matching_conditions": ["array of condition ids, at most 5, only if type is conclude; '
+    'use [] not null when empty; '
     'allowed together with red_flag_id ONLY when action_code is EMERGENCY, and required '
     "then if any retrieved passage showed a matching condition_id; at any other urgency a "
     'red-flag-driven conclusion leaves this empty"], '
-    '"citations": ["array of retrieved-passage ids this decision is grounded on"], '
+    '"citations": ["array of retrieved-passage ids this decision is grounded on; use [] not null"], '
     '"red_flag_id": "a red_flags.yaml id if this decision is driven by one, else null"}. '
     "MANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
     "an ask as much as a conclude. If you are asking a question because of something a "
@@ -120,8 +144,96 @@ _JSON_SHAPE_INSTRUCTION = (
     "asking, or ask a general question and pick the closest real feature_id you "
     "already know from earlier in this conversation. "
     "(3) condition_id — same rule: only use one a retrieved passage's `condition_id=` "
-    "field actually showed you, never a passage_id or an invented name."
+    "field actually showed you, never a passage_id or an invented name. "
+    "If type is ask, next_feature_id and question_text are BOTH mandatory — "
+    "never send ask with only rationale and citations. "
+    "If you cannot pick a real feature id, use type conclude instead."
 )
+
+
+def _build_messages(
+    *,
+    system_prompt: str,
+    history: Sequence[Message],
+    context: Sequence[RetrievedPassage],
+    retry_feedback: str = "",
+) -> list[dict[str, str]]:
+    system_content = (
+        f"{system_prompt}\n\n{_render_context(context)}{_JSON_SHAPE_INSTRUCTION}{retry_feedback}"
+    )
+    return [
+        {"role": "system", "content": system_content},
+        *({"role": m.role, "content": m.content} for m in history),
+    ]
+
+
+def _strip_thinking_blocks(content: str) -> str:
+    return _THINKING_BLOCK.sub("", content).strip()
+
+
+def _parse_chat_completion_payload(payload: object) -> TriageDecision:
+    try:
+        assert isinstance(payload, dict)
+        content = payload["choices"][0]["message"]["content"]
+        assert isinstance(content, str)
+        cleaned = _strip_thinking_blocks(content)
+        return TriageDecision.model_validate(json.loads(cleaned))
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as error:
+        raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
+
+
+def _chat_completions_body(*, model: str, messages: list[dict[str, str]]) -> dict[str, object]:
+    return {
+        "model": model,
+        "messages": messages,
+        "response_format": {"type": "json_object"},
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+
+
+def _decide_via_chat_completions(
+    *,
+    client: httpx.Client,
+    url: str,
+    headers: dict[str, str],
+    model: str,
+    system_prompt: str,
+    history: Sequence[Message],
+    context: Sequence[RetrievedPassage],
+) -> TriageDecision:
+    """POST /v1/chat/completions with validation retries and error feedback."""
+    retry_feedback = ""
+    last_error: Exception | None = None
+    for attempt in range(1, MAX_DECISION_ATTEMPTS + 1):
+        messages = _build_messages(
+            system_prompt=system_prompt,
+            history=history,
+            context=context,
+            retry_feedback=retry_feedback,
+        )
+        body = _chat_completions_body(model=model, messages=messages)
+        response = client.post(url, headers=headers, json=body)
+        response.raise_for_status()
+        try:
+            return _parse_chat_completion_payload(response.json())
+        except ValueError as error:
+            last_error = error
+            if attempt >= MAX_DECISION_ATTEMPTS:
+                raise
+            retry_feedback = (
+                f"\n\nYOUR PREVIOUS JSON WAS REJECTED: {error}\n"
+                "Fix it. If type is ask, include BOTH next_feature_id (a real "
+                "feature id from the system prompt list) AND question_text. "
+                "Use [] not null for empty arrays. If you cannot ask a valid "
+                "question, use type conclude with action_code instead."
+            )
+            logger.warning(
+                "decision attempt %s/%s failed (%s) — retrying with feedback",
+                attempt,
+                MAX_DECISION_ATTEMPTS,
+                error,
+            )
+    raise ValueError(str(last_error))
 
 
 class OpenRouterReasoningClient:
@@ -164,29 +276,111 @@ class OpenRouterReasoningClient:
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
     ) -> TriageDecision:
-        system_content = f"{system_prompt}\n\n{_render_context(context)}{_JSON_SHAPE_INSTRUCTION}"
-        messages = [
-            {"role": "system", "content": system_content},
-            *({"role": m.role, "content": m.content} for m in history),
-        ]
-        body = {
-            "model": self._model,
-            "messages": messages,
-            "response_format": {"type": "json_object"},
-            # Inconsistently honoured across OpenRouter's backing providers
-            # (see _JSON_SHAPE_INSTRUCTION's comment) but harmless and cheap
-            # to keep — when it is honoured, it skips a slow, unneeded
-            # reasoning block for a turn that just needs to answer.
-            "chat_template_kwargs": {"enable_thinking": False},
-        }
-        response = self._client.post(_OPENROUTER_URL, headers=self._headers, json=body)
-        response.raise_for_status()
+        return _decide_via_chat_completions(
+            client=self._client,
+            url=_OPENROUTER_URL,
+            headers=self._headers,
+            model=self._model,
+            system_prompt=system_prompt,
+            history=history,
+            context=context,
+        )
+
+
+class VllmReasoningClient:
+    """Self-hosted vLLM with the project's LoRA adapter (``herhealth``).
+
+    See ``docs/runbooks/dev-vllm-lora-endpoint.md`` and
+    ``docs/runbooks/friend-pc-vllm-setup.md``. Uses the same plain-JSON
+    contract as :class:`OpenRouterReasoningClient` until guided decoding is
+    wired (ADR 0011 migration checklist item 7).
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        model: str | None = None,
+        client: httpx.Client | None = None,
+        timeout: float = 120.0,
+    ) -> None:
+        raw_url = base_url or os.environ.get(VLLM_URL_ENV, "http://127.0.0.1:8002")
+        self._url = f"{raw_url.rstrip('/')}{_CHAT_COMPLETIONS_PATH}"
+        self._model = model or os.environ.get(VLLM_MODEL_ENV, DEFAULT_VLLM_MODEL)
+        self._client = client or httpx.Client(timeout=timeout)
+        self._headers = {"Content-Type": "application/json"}
+
+    def decide(
+        self,
+        *,
+        system_prompt: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> TriageDecision:
+        return _decide_via_chat_completions(
+            client=self._client,
+            url=self._url,
+            headers=self._headers,
+            model=self._model,
+            system_prompt=system_prompt,
+            history=history,
+            context=context,
+        )
+
+
+class FallbackReasoningClient:
+    """Try a primary ``ReasoningClient`` (typically vLLM), then a fallback
+    (typically OpenRouter) when the primary is unreachable.
+
+  Only connectivity and upstream availability errors trigger the fallback —
+  a malformed model response from the primary is re-raised, because that is
+  not something a different server can fix.
+    """
+
+    def __init__(
+        self,
+        *,
+        primary: OpenRouterReasoningClient | VllmReasoningClient,
+        fallback: OpenRouterReasoningClient | VllmReasoningClient,
+        primary_name: str = "vllm",
+        fallback_name: str = "openrouter",
+    ) -> None:
+        self._primary = primary
+        self._fallback = fallback
+        self._primary_name = primary_name
+        self._fallback_name = fallback_name
+
+    def decide(
+        self,
+        *,
+        system_prompt: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> TriageDecision:
         try:
-            payload = response.json()
-            content = payload["choices"][0]["message"]["content"]
-            return TriageDecision.model_validate(json.loads(content))
-        except (KeyError, IndexError, TypeError, json.JSONDecodeError) as error:
-            raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
+            return self._primary.decide(
+                system_prompt=system_prompt, history=history, context=context
+            )
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code not in {502, 503, 504}:
+                raise
+            logger.warning(
+                "%s returned HTTP %s — falling back to %s",
+                self._primary_name,
+                error.response.status_code,
+                self._fallback_name,
+            )
+        except (httpx.ConnectError, httpx.TimeoutException) as error:
+            logger.warning(
+                "%s unreachable (%s) — falling back to %s",
+                self._primary_name,
+                error,
+                self._fallback_name,
+            )
+
+        return self._fallback.decide(
+            system_prompt=system_prompt, history=history, context=context
+        )
 
 
 class HttpRetrievalClient:
