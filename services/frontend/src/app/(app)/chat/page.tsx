@@ -6,8 +6,10 @@ import { RotateCcw } from "lucide-react";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { ChatComposer } from "@/components/chat/chat-composer";
+import { ChatConcludedBanner } from "@/components/chat/chat-concluded-banner";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { ChatShell } from "@/components/chat/chat-shell";
+import { ChatStarterPrompts } from "@/components/chat/chat-starter-prompts";
 import { ConclusionCard } from "@/components/chat/conclusion-card";
 import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -121,11 +123,26 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const isConcluded =
     sessionStatus === "concluded" || entries.some((entry) => entry.kind === "conclusion");
+
+  const userTurnCount = entries.filter(
+    (entry) => entry.kind === "message" && entry.role === "user",
+  ).length;
+
+  const showStarters =
+    !isLoadingSession &&
+    !isSending &&
+    !isConcluded &&
+    userTurnCount === 0 &&
+    entries.length === 1;
+
+  const thinkingTurnLabel =
+    userTurnCount === 0
+      ? "First question — this usually takes 15–60 seconds"
+      : `Follow-up ${userTurnCount + 1} — still checking sources`;
 
   const reloadSessions = useCallback(async () => {
     try {
@@ -277,11 +294,8 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       sessionsLoading={sessionsLoading}
       activeSessionId={sessionId}
       sidebarOpen={sidebarOpen}
-      profileOpen={profileOpen}
       onToggleSidebar={() => setSidebarOpen((open) => !open)}
       onCloseSidebar={() => setSidebarOpen(false)}
-      onOpenProfile={() => setProfileOpen(true)}
-      onCloseProfile={() => setProfileOpen(false)}
       onSelectSession={handleSelectSession}
       onNewChat={handleNewChat}
     >
@@ -289,6 +303,10 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         <ScrollArea className="flex-1">
           <div className="flex flex-col gap-4 px-4 py-6 sm:px-6">
             {isLoadingSession ? <ThinkingIndicator label="Loading conversation…" /> : null}
+
+            {showStarters ? (
+              <ChatStarterPrompts disabled={isSending} onSelect={handleSend} />
+            ) : null}
 
             {entries.map((entry) =>
               entry.kind === "message" ? (
@@ -307,7 +325,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
               ),
             )}
 
-            {isSending ? <ThinkingIndicator /> : null}
+            {isSending ? <ThinkingIndicator turnLabel={thinkingTurnLabel} /> : null}
 
             {errorMessage ? (
               <Alert variant="destructive">
@@ -326,6 +344,8 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
             <div ref={bottomRef} />
           </div>
         </ScrollArea>
+
+        {isConcluded ? <ChatConcludedBanner onStartNewChat={handleNewChat} /> : null}
 
         <ChatComposer
           disabled={isSending || isConcluded || isLoadingSession}

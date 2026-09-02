@@ -41,7 +41,7 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
   const Icon = toneIcon[display.tone];
 
   return (
-    <Card className={cn("border shadow-sm", surfaceClassesForTone(display.tone))}>
+    <Card className={cn("border shadow-sm animate-in fade-in slide-in-from-bottom-3 duration-500", surfaceClassesForTone(display.tone))}>
       <CardHeader>
         <div className="flex items-start gap-3">
           <span

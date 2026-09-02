@@ -475,3 +475,32 @@ async def get_session(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="triage storage is unavailable — check database migrations",
         ) from error
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_session(
+    session_id: uuid.UUID,
+    http_request: Request,
+    user: User = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Permanently remove one consultation and its messages.
+
+    Messages cascade via the FK on ``messages.session_id``. Same ownership
+    discipline as ``get_session``: not-found, never a 403.
+    """
+    database: Database = http_request.app.state.database
+    try:
+        async with database.session() as session:
+            consultation = await session.get(ConsultationSession, session_id)
+            if consultation is None or consultation.user_id != user.id:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no such session")
+            await session.delete(consultation)
+            await session.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError as error:
+        logger.exception("database error in delete_session")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="triage storage is unavailable — check database migrations",
+        ) from error

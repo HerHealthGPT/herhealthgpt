@@ -29,3 +29,7 @@ export function listTriageSessions() {
 export function getTriageSession(sessionId: string) {
   return apiRequest<TriageSessionDetail>(`/triage/sessions/${sessionId}`);
 }
+
+export function deleteTriageSession(sessionId: string) {
+  return apiRequest<void>(`/triage/sessions/${sessionId}`, { method: "DELETE" });
+}

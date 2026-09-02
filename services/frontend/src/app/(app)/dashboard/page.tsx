@@ -1,16 +1,22 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
-  Circle,
   MessageCircle,
   Sparkles,
 } from "lucide-react";
 
+import { GettingStartedCard } from "@/components/dashboard/getting-started-card";
+import { RecentChatsSection } from "@/components/dashboard/recent-chats-section";
+import { RecommendedArticlesSection } from "@/components/dashboard/recommended-articles-section";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { AuthGuard } from "@/components/auth/auth-guard";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -19,12 +25,35 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
+import { useDashboardData } from "@/hooks/use-dashboard-data";
+import { conditionLabel } from "@/lib/condition-labels";
+import { hasCompletedOnboarding } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
 
 function DashboardContent() {
+  const router = useRouter();
   const { user } = useAuth();
+  const { data, loading } = useDashboardData();
+
   const firstName = user?.email?.split("@")[0];
+
+  useEffect(() => {
+    if (user && !hasCompletedOnboarding(user.id)) {
+      router.replace(routes.onboarding);
+    }
+  }, [user, router]);
+
+  if (user && !hasCompletedOnboarding(user.id)) {
+    return null;
+  }
+
+  const heroSubtitle = data.hasChats
+    ? data.concludedCount > 0
+      ? `You've completed ${data.concludedCount} consultation${data.concludedCount === 1 ? "" : "s"}. Pick up where you left off or start fresh.`
+      : "You have a chat in progress. Continue when you're ready."
+    : "Tell us how you're feeling — we'll ask a few questions and help you decide what to do next.";
 
   return (
     <div className="flex flex-1 flex-col">
@@ -37,15 +66,11 @@ function DashboardContent() {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
             {firstName ? `Hi, ${firstName}` : "Hi there"}
           </h1>
-          <p className="mt-3 max-w-2xl text-muted-foreground">
-            Welcome to{" "}
-            <span className="font-semibold text-foreground">HerHealthGPT</span>.
-            When the health chat opens, this is where you&apos;ll start.
-          </p>
+          <p className="mt-3 max-w-2xl text-muted-foreground">{heroSubtitle}</p>
         </div>
       </section>
 
-      <div className="mx-auto w-full max-w-6xl flex-1 space-y-8 px-4 py-8 sm:px-6 sm:py-10">
+      <div className="mx-auto w-full max-w-6xl flex-1 space-y-10 px-4 py-8 sm:px-6 sm:py-10">
         <Card className="overflow-hidden border-primary/25 shadow-lg shadow-primary/5">
           <div className="grid lg:grid-cols-[1fr_auto] lg:items-center">
             <CardHeader className="space-y-4 pb-4 lg:pb-6">
@@ -59,7 +84,7 @@ function DashboardContent() {
                     <StatusBadge variant="ready">Ready</StatusBadge>
                   </div>
                   <CardDescription className="mt-1 text-base">
-                    Your main way to use HerHealthGPT
+                    {data.hasChats ? "Continue or start a new conversation" : "Your main way to use HerHealthGPT"}
                   </CardDescription>
                 </div>
               </div>
@@ -71,12 +96,22 @@ function DashboardContent() {
               </p>
             </CardHeader>
             <CardContent className="border-t border-border/60 bg-muted/30 px-6 py-5 lg:border-t-0 lg:border-l lg:py-8">
-              <Button size="lg" className="w-full min-w-[200px]" asChild>
-                <Link href={routes.chat}>
-                  <Sparkles className="size-4" />
-                  Start a chat
-                </Link>
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button size="lg" className="w-full min-w-[200px]" asChild>
+                  <Link href={routes.chat}>
+                    <Sparkles className="size-4" />
+                    {data.hasChats ? "Open health chat" : "Start a chat"}
+                  </Link>
+                </Button>
+                {data.hasChats && data.sessions[0]?.status === "active" ? (
+                  <Button variant="outline" size="sm" className="w-full" asChild>
+                    <Link href={`${routes.chat}?session=${data.sessions[0].id}`}>
+                      Continue last chat
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
               <p className="mt-3 text-center text-xs text-muted-foreground">
                 Usually takes a few minutes.
               </p>
@@ -84,11 +119,36 @@ function DashboardContent() {
           </div>
         </Card>
 
-        <div>
-          <h2 className="mb-4 text-lg font-semibold tracking-tight">
-            More coming soon
-          </h2>
-          <div className="grid gap-5 sm:grid-cols-2">
+        <RecentChatsSection sessions={data.sessions} loading={loading} />
+
+        <RecommendedArticlesSection
+          articles={data.articles}
+          loading={loading}
+          personalized={data.exploredTopics.length > 0}
+        />
+
+        {data.exploredTopics.length > 0 ? (
+          <section>
+            <h2 className="mb-3 text-lg font-semibold tracking-tight">
+              Topics from your chats
+            </h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Patterns our sources associate with symptoms you&apos;ve discussed — not a diagnosis.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {data.exploredTopics.map((topic) => (
+                <Badge key={topic} variant="secondary" className="px-3 py-1">
+                  {conditionLabel(topic)}
+                </Badge>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <div className="grid gap-8 lg:grid-cols-2">
+          <GettingStartedCard hasChats={data.hasChats} />
+
+          <div className="space-y-5">
             <Card className="border-border/70 transition-shadow hover:shadow-md">
               <CardHeader>
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -111,7 +171,11 @@ function DashboardContent() {
                   Your account
                 </CardTitle>
                 <CardDescription className="space-y-3 text-base leading-relaxed text-foreground">
-                  <span className="block font-medium">{user?.email}</span>
+                  {loading ? (
+                    <Skeleton className="h-5 w-48" />
+                  ) : (
+                    <span className="block font-medium break-all">{user?.email}</span>
+                  )}
                   <span className="flex items-center gap-2 text-sm text-muted-foreground">
                     <CheckCircle2 className="size-4 text-primary" />
                     Email verified
@@ -127,28 +191,6 @@ function DashboardContent() {
             </Card>
           </div>
         </div>
-
-        <Card className="border-dashed border-border bg-muted/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Getting started</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ol className="space-y-3">
-              <li className="flex items-start gap-3 text-sm">
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-                <span>Account created</span>
-              </li>
-              <li className="flex items-start gap-3 text-sm">
-                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
-                <span>Email verified</span>
-              </li>
-              <li className="flex items-start gap-3 text-sm text-muted-foreground">
-                <Circle className="mt-0.5 size-4 shrink-0" />
-                <span>Start your first health chat</span>
-              </li>
-            </ol>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

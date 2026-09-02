@@ -1,21 +1,7 @@
 import { BookOpen, ExternalLink } from "lucide-react";
 
 import type { CitedPassage } from "@/lib/api/types";
-
-/** Human names for the five sources in knowledge/sources.yaml. Kept here
- *  rather than fetched: these are five fixed, licence-reviewed sources, not
- *  data that varies at runtime (see CLAUDE.md's sources table). */
-const SOURCE_LABELS: Record<string, string> = {
-  nhs: "NHS",
-  medlineplus: "MedlinePlus",
-  womenshealth: "Office on Women's Health",
-  nichd: "NICHD",
-  cdc: "CDC",
-};
-
-function sourceLabel(sourceId: string): string {
-  return SOURCE_LABELS[sourceId] ?? sourceId;
-}
+import { sourceLabel } from "@/lib/source-labels";
 
 type CitedSourcesProps = {
   passages: CitedPassage[];

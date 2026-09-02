@@ -36,6 +36,7 @@ export function ChatMessage({ role, text, citedPassages }: ChatMessageProps) {
       <div
         className={cn(
           "max-w-[75%] space-y-2.5 rounded-2xl px-4 py-2.5 text-sm leading-relaxed break-words",
+          "animate-in fade-in slide-in-from-bottom-2 duration-300",
           isAssistant
             ? "rounded-bl-sm bg-muted text-foreground"
             : "rounded-br-sm bg-primary text-primary-foreground",
