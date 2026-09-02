@@ -49,7 +49,7 @@ from herhealth_backend.app.config import vllm_model as configured_vllm_model
 from herhealth_backend.app.config import vllm_url as configured_vllm_url
 from herhealth_backend.app.db import Database
 from herhealth_backend.app.triage.routes import router as triage_router
-from herhealth_backend.triage.agent import TriageAgent
+from herhealth_backend.triage.agent import ReasoningClient, TriageAgent
 from herhealth_backend.triage.clients import (
     FallbackReasoningClient,
     HttpRetrievalClient,
@@ -104,6 +104,7 @@ def _build_triage_agent() -> TriageAgent | None:
             model=configured_vllm_model(),
         )
         api_key = configured_openrouter_api_key()
+        reasoning: ReasoningClient
         if api_key is None:
             reasoning = primary
         else:

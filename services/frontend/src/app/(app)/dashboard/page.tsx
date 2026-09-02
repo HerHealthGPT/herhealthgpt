@@ -26,7 +26,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { useDashboardData } from "@/hooks/use-dashboard-data";
 import { conditionLabel } from "@/lib/condition-labels";
@@ -83,7 +82,12 @@ function DashboardContent() {
               How this works
             </Link>
             {" · "}
-            What HerHealthGPT is, and what it isn&apos;t.
+            <Link
+              href={routes.settings}
+              className="font-medium text-primary hover:underline"
+            >
+              Account settings
+            </Link>
           </p>
         </div>
       </section>

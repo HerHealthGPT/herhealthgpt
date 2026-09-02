@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
-import type { TriageSessionSummary } from "@/lib/api/types";
+import type { TriageSessionSummary, UserSummary } from "@/lib/api/types";
+import { userDisplayName } from "@/lib/display-name";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
@@ -73,19 +74,15 @@ function groupSessions(sessions: TriageSessionSummary[]): SessionGroup[] {
     .map(([label, items]) => ({ label, sessions: items }));
 }
 
-function userInitial(email: string | undefined): string {
-  if (!email) {
+function avatarInitial(user: UserSummary | null | undefined): string {
+  const name = userDisplayName(user);
+  if (name) {
+    return name[0]?.toUpperCase() ?? "?";
+  }
+  if (!user?.email) {
     return "?";
   }
-  return email[0]?.toUpperCase() ?? "?";
-}
-
-function displayName(email: string | undefined): string {
-  if (!email) {
-    return "Account";
-  }
-  const local = email.split("@")[0];
-  return local.length > 20 ? `${local.slice(0, 18)}…` : local;
+  return user.email[0]?.toUpperCase() ?? "?";
 }
 
 function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
@@ -132,17 +129,18 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
             </Button>
             <Button
               variant="ghost"
-              className="h-10 w-full justify-start gap-2 px-3 text-destructive hover:text-destructive"
+              className="h-10 w-full justify-start gap-2 px-3"
               asChild
+              onClick={closeMenu}
             >
-              <Link href={`${routes.dashboard}#delete-account`} onClick={closeMenu}>
-                <UserX className="size-4" />
-                Delete account
+              <Link href={routes.settings}>
+                <Settings className="size-4" />
+                Account
               </Link>
             </Button>
             <Button
               variant="ghost"
-              className="h-10 w-full justify-start gap-2 px-3 text-destructive hover:text-destructive"
+              className="h-10 w-full justify-start gap-2 px-3"
               onClick={() => {
                 closeMenu();
                 void signOut();
@@ -167,12 +165,14 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
       >
         <Avatar size="sm">
           <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
-            {userInitial(user?.email)}
+            {avatarInitial(user)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{displayName(user?.email)}</p>
-          <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+          <p className="truncate text-sm font-medium">
+            {userDisplayName(user) ?? "Your account"}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">Manage profile</p>
         </div>
         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </button>

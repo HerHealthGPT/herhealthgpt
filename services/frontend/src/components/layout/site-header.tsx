@@ -21,6 +21,7 @@ export function SiteHeader() {
 
   const isDashboard = pathname === routes.dashboard;
   const isChat = pathname.startsWith(routes.chat);
+  const isSettings = pathname === routes.settings;
 
   function closeMenu() {
     setMenuOpen(false);
@@ -41,6 +42,11 @@ export function SiteHeader() {
       {!isDashboard ? (
         <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
           <Link href={routes.dashboard}>Dashboard</Link>
+        </Button>
+      ) : null}
+      {!isSettings ? (
+        <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
+          <Link href={routes.settings}>Account</Link>
         </Button>
       ) : null}
       <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
@@ -121,6 +127,14 @@ export function SiteHeader() {
                   <Link href={routes.dashboard}>Dashboard</Link>
                 </Button>
               ) : null}
+              {!isSettings ? (
+                <Button variant="ghost" className="justify-start" asChild onClick={closeMenu}>
+                  <Link href={routes.settings}>Account</Link>
+                </Button>
+              ) : null}
+              <Button variant="ghost" className="justify-start" asChild onClick={closeMenu}>
+                <Link href={routes.howItWorks}>How this works</Link>
+              </Button>
               <Button
                 variant="outline"
                 className="justify-start"

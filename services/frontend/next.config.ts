@@ -3,6 +3,15 @@ import type { NextConfig } from "next";
 const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
 
 const nextConfig: NextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "womenshealth.gov",
+        pathname: "/sites/default/files/**",
+      },
+    ],
+  },
   async rewrites() {
     return [
       {

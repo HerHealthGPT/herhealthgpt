@@ -6,7 +6,6 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-import pytest
 import pytest_asyncio
 from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.knowledge import ActionCode
@@ -100,7 +99,8 @@ async def deletion_client(database_url: str) -> AsyncIterator[AsyncClient]:
 
 
 async def _count_for_user(session, model, user_id: uuid.UUID) -> int:
-    return await session.scalar(select(func.count()).select_from(model).where(model.user_id == user_id))
+    stmt = select(func.count()).select_from(model).where(model.user_id == user_id)
+    return await session.scalar(stmt)
 
 
 async def _count_messages_for_user(session, user_id: uuid.UUID) -> int:
@@ -138,7 +138,10 @@ async def test_delete_account_removes_every_user_referencing_row(
 
     database = Database(database_url)
     async with database.session() as session:
-        assert await session.scalar(select(func.count()).select_from(User).where(User.id == user_id)) == 0
+        user_count = await session.scalar(
+            select(func.count()).select_from(User).where(User.id == user_id)
+        )
+        assert user_count == 0
         assert await _count_for_user(session, Credential, user_id) == 0
         assert await _count_for_user(session, Session, user_id) == 0
         assert await _count_for_user(session, EmailVerificationCode, user_id) == 0

@@ -42,6 +42,7 @@ from herhealth_backend.app.accounts.sessions import (
     end_session,
     get_active_session,
     refresh_session,
+    start_session,
 )
 from herhealth_backend.app.accounts.sign_in import sign_in as sign_in_user
 from herhealth_backend.app.accounts.verification_code_policy import CODE_LENGTH
@@ -277,12 +278,21 @@ async def delete_me(
 
 
 @router.post("/verify-email", response_model=UserSummary)
-async def verify_email_route(payload: VerifyEmailRequest, request: Request) -> UserSummary:
+async def verify_email_route(
+    payload: VerifyEmailRequest, request: Request, response: Response
+) -> UserSummary:
     database: Database = request.app.state.database
     secret: str = request.app.state.session_secret
     async with database.session() as session:
         user = await verify_email(session, secret, email=payload.email, code=payload.code)
 
+    # Proof of control over the inbox is enough to start a session — she
+    # should not have to re-enter the password she chose minutes ago.
+    async with database.session() as session:
+        access_token, refresh_token = await start_session(session, secret, user)
+        await session.commit()
+
+    set_auth_cookies(response, access_token=access_token, refresh_token=refresh_token)
     return _user_summary(user)
 
 

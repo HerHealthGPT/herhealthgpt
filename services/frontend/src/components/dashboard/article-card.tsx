@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ExternalLink } from "lucide-react";
 
 import type { HealthArticle } from "@/lib/health-articles";
@@ -10,10 +11,12 @@ type ArticleCardProps = {
 };
 
 /**
- * Apple Health–inspired article tile: gradient header, title, trusted source,
- * short excerpt. Opens the original page in a new tab.
+ * Apple Health–inspired article tile: cover image (when available), title,
+ * trusted source, short excerpt. Opens the original page in a new tab.
  */
 export function ArticleCard({ article, className }: ArticleCardProps) {
+  const hasCover = Boolean(article.cover_image_url);
+
   return (
     <a
       href={article.url}
@@ -26,15 +29,39 @@ export function ArticleCard({ article, className }: ArticleCardProps) {
     >
       <div
         className={cn(
-          "relative h-24 bg-gradient-to-br px-4 py-3",
-          article.gradient,
+          "relative h-36 overflow-hidden",
+          !hasCover && "bg-gradient-to-br px-4 py-3",
+          !hasCover && article.gradient,
         )}
       >
-        <span className="inline-flex rounded-full bg-background/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground backdrop-blur-sm">
+        {hasCover ? (
+          <>
+            <Image
+              src={article.cover_image_url!}
+              alt={article.cover_image_alt ?? article.title}
+              fill
+              className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              sizes="(max-width: 640px) 260px, 280px"
+            />
+            <div
+              className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent"
+              aria-hidden
+            />
+          </>
+        ) : null}
+
+        <span
+          className={cn(
+            "absolute left-3 top-3 z-10 inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm",
+            hasCover
+              ? "bg-background/90 text-foreground"
+              : "bg-background/80 text-muted-foreground",
+          )}
+        >
           {sourceLabel(article.source_id)}
         </span>
         {article.origin === "chat" ? (
-          <span className="absolute right-3 top-3 rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
+          <span className="absolute right-3 top-3 z-10 rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
             From your chat
           </span>
         ) : null}

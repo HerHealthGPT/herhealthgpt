@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
 
 import { AuthErrorAlert } from "@/components/auth/auth-error-alert";
 import {
@@ -11,7 +10,6 @@ import {
   GoogleSignInButton,
 } from "@/components/auth/google-sign-in-button";
 import { AuthShell } from "@/components/auth/auth-shell";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -32,7 +30,6 @@ function SignInForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const justVerified = searchParams.get("verified") === "1";
   const showGoogle = isGoogleAuthConfigured();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -68,15 +65,6 @@ function SignInForm() {
         </>
       }
     >
-      {justVerified ? (
-        <Alert className="border-primary/30 bg-primary/5">
-          <CheckCircle2 className="size-4 text-primary" />
-          <AlertDescription>
-            You&apos;re verified. Sign in with your password to continue.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
       <div className="space-y-6">
         <AuthErrorAlert error={error} />
 

@@ -127,7 +127,8 @@ async def triage_turn(
             detail=(
                 "triage is not configured on this deployment "
                 "(set HERHEALTH_TRIAGE_MODE=demo for local testing, "
-                "openrouter or vllm for real reasoning, or OPENROUTER_API_KEY for openrouter/vllm fallback)"
+                "openrouter or vllm for real reasoning, "
+                "or OPENROUTER_API_KEY for openrouter/vllm fallback)"
             ),
         )
 

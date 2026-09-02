@@ -31,7 +31,7 @@ export function signInWithGoogle(idToken: string) {
   });
 }
 
-/** POST /accounts/verify-email → 200 */
+/** POST /accounts/verify-email → 200 + access_token / refresh_token cookies */
 export function verifyEmail(email: string, code: string) {
   return apiRequest<UserSummary>("/accounts/verify-email", {
     method: "POST",

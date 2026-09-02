@@ -36,7 +36,7 @@ export function RecommendedArticlesSection({
       {loading ? (
         <div className="flex gap-4 overflow-hidden pb-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-52 w-[260px] shrink-0 rounded-2xl" />
+            <Skeleton key={i} className="h-64 w-[260px] shrink-0 rounded-2xl" />
           ))}
         </div>
       ) : (

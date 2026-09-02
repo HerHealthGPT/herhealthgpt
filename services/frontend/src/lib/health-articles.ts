@@ -9,8 +9,11 @@ export type HealthArticle = {
   source_id: string;
   /** Condition ids this article relates to — used for personalization. */
   topic_ids: string[];
-  /** Tailwind gradient classes for the card header. */
+  /** Tailwind gradient classes for the card header when no cover image is set. */
   gradient: string;
+  /** Hero image from the source article page (womenshealth heading-images, etc.). */
+  cover_image_url?: string;
+  cover_image_alt?: string;
   /** Where this card came from. */
   origin: "curated" | "chat";
   /** Short reason shown on personalized cards. */
@@ -31,6 +34,9 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["normal_variation", "perimenopause", "pcos"],
     gradient: "from-rose-400/30 via-primary/15 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/styles/large/public/bucket-images/Yourmenstrualcycle.jpg",
+    cover_image_alt: "Illustration related to the menstrual cycle",
     origin: "curated",
   },
   {
@@ -42,6 +48,10 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["endometriosis", "adenomyosis"],
     gradient: "from-fuchsia-400/25 via-primary/10 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/heading-images/Endometriosis.jpg",
+    cover_image_alt:
+      "A person resting on a sofa, curled up with knees drawn in",
     origin: "curated",
   },
   {
@@ -53,6 +63,9 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["pcos"],
     gradient: "from-violet-400/25 via-primary/10 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/heading-images/Polycysticovarysyndrome.jpg",
+    cover_image_alt: "Healthcare provider speaking with a patient",
     origin: "curated",
   },
   {
@@ -64,6 +77,9 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["uterine_fibroids"],
     gradient: "from-orange-300/25 via-primary/10 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/heading-images/Uterinefibroids.jpg",
+    cover_image_alt: "Person in a consultation with a clinician",
     origin: "curated",
   },
   {
@@ -75,6 +91,9 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["urinary_tract_infection", "bladder_pain"],
     gradient: "from-sky-400/25 via-primary/10 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/heading-images/Urinarytractinfections.jpg",
+    cover_image_alt: "Person drinking water at home",
     origin: "curated",
   },
   {
@@ -86,6 +105,9 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["infertility", "pcos", "endometriosis"],
     gradient: "from-emerald-400/20 via-primary/10 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/heading-images/Infertility.jpg",
+    cover_image_alt: "Couple sitting together on a sofa",
     origin: "curated",
   },
   {
@@ -97,6 +119,9 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["hypothyroidism"],
     gradient: "from-amber-300/25 via-primary/10 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/heading-images/Thyroiddisease.jpg",
+    cover_image_alt: "Clinician examining a patient's neck",
     origin: "curated",
   },
   {
@@ -108,9 +133,23 @@ export const CURATED_ARTICLES: HealthArticle[] = [
     source_id: "womenshealth",
     topic_ids: ["sexually_transmitted_infection", "pelvic_inflammatory_disease"],
     gradient: "from-pink-400/25 via-primary/10 to-background",
+    cover_image_url:
+      "https://womenshealth.gov/sites/default/files/heading-images/Sexuallytransmittedinfections.jpg",
+    cover_image_alt: "Healthcare provider in a clinical setting",
     origin: "curated",
   },
 ];
+
+/** Cover art keyed by canonical article URL — reused for chat citations. */
+const COVER_BY_URL = new Map(
+  CURATED_ARTICLES.filter((article) => article.cover_image_url).map((article) => [
+    article.url,
+    {
+      cover_image_url: article.cover_image_url!,
+      cover_image_alt: article.cover_image_alt,
+    },
+  ]),
+);
 
 function passageToArticle(
   passage: CitedPassage,
@@ -131,6 +170,7 @@ function passageToArticle(
     source_id: passage.source_id,
     topic_ids: [],
     gradient: "from-primary/20 via-accent/30 to-background",
+    ...COVER_BY_URL.get(passage.url),
     origin: "chat",
     reason,
   };

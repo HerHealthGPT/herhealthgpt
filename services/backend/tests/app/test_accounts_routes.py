@@ -137,7 +137,44 @@ async def test_a_subsequent_request_identifies_the_signed_in_user(client: AsyncC
     response = await client.get("/accounts/me")
 
     assert response.status_code == 200
-    assert response.json()["email"] == "sign-in-then-me@example.com"
+    body = response.json()
+    assert body["email"] == "sign-in-then-me@example.com"
+    assert body["display_name"] is None
+
+
+async def test_patch_me_updates_display_name(client: AsyncClient) -> None:
+    await _register(client, "profile-update@example.com")
+    await client.post(
+        "/accounts/sign-in",
+        json={"email": "profile-update@example.com", "password": "correcthorse1"},
+    )
+
+    response = await client.patch(
+        "/accounts/me",
+        json={"display_name": "  Samira  "},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["display_name"] == "Samira"
+
+    cleared = await client.patch("/accounts/me", json={"display_name": "   "})
+    assert cleared.status_code == 200
+    assert cleared.json()["display_name"] is None
+
+
+async def test_patch_me_rejects_overlong_display_name(client: AsyncClient) -> None:
+    await _register(client, "profile-long@example.com")
+    await client.post(
+        "/accounts/sign-in",
+        json={"email": "profile-long@example.com", "password": "correcthorse1"},
+    )
+
+    response = await client.patch(
+        "/accounts/me",
+        json={"display_name": "x" * 81},
+    )
+
+    assert response.status_code == 400
 
 
 async def test_me_without_a_session_is_unauthorized(client: AsyncClient) -> None:
@@ -277,6 +314,29 @@ async def test_verify_email_with_the_correct_code_marks_it_verified(
 
     assert response.status_code == 200
     assert response.json()["email_verified"] is True
+
+
+async def test_verify_email_with_the_correct_code_signs_the_user_in(
+    client: AsyncClient, email_sender
+) -> None:
+    await client.post(
+        "/accounts/register",
+        json={"email": "verify-sign-in@example.com", "password": "correcthorse1"},
+    )
+    code = email_sender.code_for("verify-sign-in@example.com")
+
+    response = await client.post(
+        "/accounts/verify-email", json={"email": "verify-sign-in@example.com", "code": code}
+    )
+
+    assert response.status_code == 200
+    assert "access_token" in response.cookies
+    assert "refresh_token" in response.cookies
+
+    me = await client.get("/accounts/me")
+    assert me.status_code == 200
+    assert me.json()["email"] == "verify-sign-in@example.com"
+    assert me.json()["email_verified"] is True
 
 
 async def test_verify_email_with_the_wrong_code_is_refused(
