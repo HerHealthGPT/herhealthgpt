@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, PhoneCall, Siren } from "lucide-react";
 
+import { CitedSources } from "@/components/chat/cited-sources";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,10 +81,12 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
           </div>
         ) : null}
 
-        {decision.citations.length > 0 ? (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            Grounded in {decision.citations.length} cited source
-            {decision.citations.length === 1 ? "" : "s"} from our health library.
+        <CitedSources passages={decision.cited_passages ?? []} />
+
+        {decision.red_flag_id !== null ? (
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            This is a symptom pattern doctors check promptly, because it has
+            several possible causes and some need ruling out quickly.
           </p>
         ) : null}
 

@@ -63,14 +63,23 @@ class TriageDecision(BaseModel):
     optional.** The product decision is to name which authored conditions a
     CONCLUDE decision's pattern matches — "matches patterns associated with
     X, Y", never "you have X" — so a user gets more than an urgency level.
-    But ``CLAUDE.md`` already carries one hard-won rule about naming
-    conditions: cancer is deliberately unmodelled and *"served by red flags
-    instead — postmenopausal bleeding routes to a GP without ever naming
-    why."* Generalising that: **a decision driven by a red flag must never
-    name a condition**, authored or not — the whole reason red flags exist
-    is to escalate on a symptom pattern without asserting what it is. So
-    ``matching_conditions`` is only legal when ``red_flag_id`` is ``None``.
-    This is enforced below, not left to the prompt alone.
+    ``CLAUDE.md`` also carries one hard-won rule about naming conditions:
+    cancer is deliberately unmodelled and *"served by red flags instead —
+    postmenopausal bleeding routes to a GP without ever naming why."*
+    ADR 0011 generalised that to every red flag — a decision driven by one
+    must not name a condition, because red flags exist to escalate on a
+    symptom pattern without asserting what it is.
+
+    **This was later narrowed, deliberately, for ``EMERGENCY`` specifically**
+    (product decision, not a safety finding reversed): the team decided an
+    emergency conclusion should be allowed to name matching conditions
+    alongside the ``red_flag_id`` that drove it, on the reasoning that at
+    EMERGENCY severity the value of naming what she might be dealing with
+    outweighs the "never assert a specific condition while escalating" rule
+    the cancer/red-flag discipline otherwise holds everywhere else.
+    ``URGENT_SAME_DAY`` (and every other action) keeps the original rule
+    unchanged: a red-flag-driven decision at that severity still may not
+    name a condition. This is enforced below, not left to the prompt alone.
 
     **Why ``matching_conditions`` is capped at 5.** Generating the bootstrap
     dataset against the real knowledge base showed what an uncapped list
@@ -94,12 +103,14 @@ class TriageDecision(BaseModel):
     action_code: ActionCode | None = None
 
     #: Real conditions.yaml ids whose pattern the answers matched, for a
-    #: CONCLUDE only, and only when red_flag_id is None — see the class
-    #: docstring. Always rendered to the user as "matches patterns
-    #: associated with", never as "you have". May be empty even on a
-    #: qualifying CONCLUDE: naming conditions is offered, not mandatory.
-    #: Capped at 5 — see the class docstring for why an uncapped list is
-    #: actively unhelpful in this knowledge base, not just verbose.
+    #: CONCLUDE only. Legal alongside red_flag_id only when action_code is
+    #: EMERGENCY (the deliberate exception — see the class docstring);
+    #: otherwise a red-flag-driven decision may not carry this. Always
+    #: rendered to the user as "matches patterns associated with", never as
+    #: "you have". May be empty even on a qualifying CONCLUDE: naming
+    #: conditions is offered, not mandatory. Capped at 5 — see the class
+    #: docstring for why an uncapped list is actively unhelpful in this
+    #: knowledge base, not just verbose.
     matching_conditions: tuple[Identifier, ...] = Field(default=(), max_length=5)
 
     #: Passage ids (see herhealth_contracts.retrieval.RetrievedPassage) the
@@ -141,10 +152,13 @@ class TriageDecision(BaseModel):
                     "a CONCLUDE decision must not carry next_feature_id or question_text"
                 )
 
-        if self.red_flag_id is not None and self.matching_conditions:
+        emergency_exception = self.action_code is ActionCode.EMERGENCY
+        if self.red_flag_id is not None and self.matching_conditions and not emergency_exception:
             raise ValueError(
                 "a red-flag-driven decision must not name matching_conditions — "
                 "red flags escalate on a symptom pattern without asserting what "
-                "it is, the same discipline CLAUDE.md already applies to cancer"
+                "it is, the same discipline CLAUDE.md already applies to cancer "
+                "(EMERGENCY is the one deliberate exception to this — see the "
+                "class docstring)"
             )
         return self

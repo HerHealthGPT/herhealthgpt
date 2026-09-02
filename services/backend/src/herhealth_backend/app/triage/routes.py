@@ -21,12 +21,14 @@ import asyncio
 import functools
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from herhealth_contracts.decision import DecisionType, TriageDecision
+from herhealth_contracts.retrieval import RetrievedPassage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -221,9 +223,50 @@ async def _run_turn(
         ) from error
 
     decision = enforce_provenance_cap(turn.decision, turn.retrieved)
-    await _persist_turn(session_id, request.message, decision, database)
+    payload = _decision_payload(decision, turn.retrieved)
+    await _persist_turn(session_id, request.message, decision, payload, database)
 
-    return {"session_id": str(session_id), "decision": decision.model_dump(mode="json")}
+    return {"session_id": str(session_id), "decision": payload}
+
+
+def _decision_payload(
+    decision: TriageDecision, retrieved: Sequence[RetrievedPassage]
+) -> dict[str, Any]:
+    """``TriageDecision`` as JSON, plus the passages its ``citations`` name.
+
+    ``citations`` on its own is a list of 16-hex-character content hashes —
+    meaningful to :func:`validate_against_knowledge_base`, meaningless to a
+    person. Resolving them here, against the very passages this turn
+    retrieved, is what lets the UI show the sentence a conclusion actually
+    rests on and a link to the page it came from, rather than a hash or a
+    vague "grounded in 3 sources".
+
+    Resolved eagerly rather than looked up later on purpose: retrieval is a
+    live similarity search, so the same citation id is not guaranteed to
+    come back from a future search. The passages are captured with the turn
+    or not at all.
+
+    The extra key rides alongside ``TriageDecision``'s own fields rather
+    than inside them — the model is ``extra="forbid"``, and it should stay
+    that way: what the reasoning model may emit and what this API renders
+    are different contracts, and only the first one is the safety net.
+    """
+    by_id = {passage.id: passage for passage in retrieved}
+    cited = [by_id[citation] for citation in decision.citations if citation in by_id]
+    return {
+        **decision.model_dump(mode="json"),
+        "cited_passages": [
+            {
+                "id": passage.id,
+                "text": passage.text,
+                "citation": passage.citation,
+                "source_id": passage.source_id,
+                "url": passage.url,
+                "passage_type": passage.passage_type.value,
+            }
+            for passage in cited
+        ],
+    }
 
 
 async def _load_session(
@@ -264,10 +307,21 @@ async def _load_session(
 
 
 async def _persist_turn(
-    session_id: uuid.UUID, user_message: str, decision: TriageDecision, database: Database
+    session_id: uuid.UUID,
+    user_message: str,
+    decision: TriageDecision,
+    payload: dict[str, Any],
+    database: Database,
 ) -> None:
     """A second short-lived session: write this turn's two messages, and
-    close out the consultation if it concluded."""
+    close out the consultation if it concluded.
+
+    Stores ``payload`` — the decision *with* its resolved
+    ``cited_passages`` (see :func:`_decision_payload`) — not the bare
+    decision. Reopening an old consultation from the sidebar therefore
+    shows the same quoted sources it showed live, without re-running a
+    retrieval that might not return the same passages today.
+    """
     assistant_content = (
         decision.question_text if decision.type is DecisionType.ASK else decision.rationale
     )
@@ -278,7 +332,7 @@ async def _persist_turn(
                 session_id=session_id,
                 role="assistant",
                 content=assistant_content,
-                decision=decision.model_dump(mode="json"),
+                decision=payload,
             )
         )
         if decision.type is DecisionType.CONCLUDE:

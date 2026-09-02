@@ -20,6 +20,7 @@ import {
   sendTriageTurn,
 } from "@/lib/api/triage";
 import type {
+  CitedPassage,
   TriageDecision,
   TriageSessionMessage,
   TriageSessionSummary,
@@ -27,7 +28,16 @@ import type {
 import { routes } from "@/lib/routes";
 
 type ChatEntry =
-  | { id: string; kind: "message"; role: "user" | "assistant"; text: string }
+  | {
+      id: string;
+      kind: "message";
+      role: "user" | "assistant";
+      text: string;
+      /** Present on an assistant question: the passages that prompted it.
+       *  A question is a grounded decision too, not just filler between
+       *  the opening message and a conclusion. */
+      citedPassages?: CitedPassage[];
+    }
   | { id: string; kind: "conclusion"; decision: TriageDecision };
 
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
@@ -76,6 +86,7 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
       kind: "message",
       role: "assistant",
       text: decision.question_text,
+      citedPassages: decision.cited_passages,
     };
   }
 
@@ -157,6 +168,11 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       return;
     }
 
+    // Captured into a const before the closure: TypeScript drops the
+    // narrowing from the guard above once a parameter is read inside a
+    // nested function, since it cannot prove the value is unchanged by
+    // the time that function runs.
+    const sessionToLoad = requestedSessionId;
     let cancelled = false;
 
     async function loadSession() {
@@ -164,7 +180,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       setErrorMessage(null);
 
       try {
-        const detail = await getTriageSession(requestedSessionId);
+        const detail = await getTriageSession(sessionToLoad);
         if (cancelled) {
           return;
         }
@@ -216,6 +232,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           kind: "message",
           role: "assistant",
           text: response.decision.question_text,
+          citedPassages: response.decision.cited_passages,
         });
       } else {
         appendEntry({ kind: "conclusion", decision: response.decision });
@@ -275,7 +292,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
 
             {entries.map((entry) =>
               entry.kind === "message" ? (
-                <ChatMessage key={entry.id} role={entry.role} text={entry.text} />
+                <ChatMessage
+                  key={entry.id}
+                  role={entry.role}
+                  text={entry.text}
+                  citedPassages={entry.citedPassages}
+                />
               ) : (
                 <ConclusionCard
                   key={entry.id}

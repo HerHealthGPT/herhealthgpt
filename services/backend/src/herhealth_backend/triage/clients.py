@@ -100,8 +100,10 @@ _JSON_SHAPE_INSTRUCTION = (
     '"question_text": "the question, required only if type is ask, else null", '
     '"action_code": "one of SELF_CARE|ROUTINE_APPOINTMENT|URGENT_SAME_DAY|EMERGENCY, '
     'required only if type is conclude, else null", '
-    '"matching_conditions": ["array of condition ids, at most 5, only if type is conclude '
-    'and red_flag_id is null, else empty"], '
+    '"matching_conditions": ["array of condition ids, at most 5, only if type is conclude; '
+    'allowed together with red_flag_id ONLY when action_code is EMERGENCY, and required '
+    "then if any retrieved passage showed a matching condition_id; at any other urgency a "
+    'red-flag-driven conclusion leaves this empty"], '
     '"citations": ["array of retrieved-passage ids this decision is grounded on"], '
     '"red_flag_id": "a red_flags.yaml id if this decision is driven by one, else null"}. '
     "MANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "

@@ -17,16 +17,19 @@ __all__ = [
     "ALLOWED_FALLBACK_DOMAINS",
     "EMBEDDING_MODEL_ENV",
     "INDEX_DIR_ENV",
+    "INGEST_LOCK_ENV",
     "MEDLINEPLUS_EXCLUDED_PATH_FRAGMENT",
     "MIN_SCORE_ENV",
     "embedding_model_name",
     "index_dir",
+    "ingest_lock_path",
     "min_score",
 ]
 
 INDEX_DIR_ENV = "HERHEALTH_INDEX_DIR"
 EMBEDDING_MODEL_ENV = "HERHEALTH_EMBEDDING_MODEL"
 MIN_SCORE_ENV = "HERHEALTH_MIN_SCORE"
+INGEST_LOCK_ENV = "HERHEALTH_INGEST_LOCK"
 
 #: Same five sources as knowledge/sources.yaml, and for the same reason: no
 #: source beyond these is licensed for this project to use. Hardcoded rather
@@ -58,6 +61,20 @@ def index_dir() -> Path:
     from herhealth_data.paths import INDEX_DIR
 
     return INDEX_DIR
+
+
+def ingest_lock_path() -> Path:
+    """The tracked record of what ``make fetch`` retrieved, used to turn a
+    passage's ``(source_id, slug)`` into the page it came from — see
+    ``source_urls.py``. Defaults next to the data service's own copy, which
+    is where ``make fetch`` writes it.
+    """
+    value = os.environ.get(INGEST_LOCK_ENV)
+    if value:
+        return Path(value)
+    from herhealth_data.paths import REPO_ROOT
+
+    return REPO_ROOT / "services" / "data" / "ingest.lock.jsonl"
 
 
 def embedding_model_name() -> str:
