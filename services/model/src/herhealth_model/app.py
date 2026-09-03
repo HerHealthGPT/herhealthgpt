@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from herhealth_model.config import (
     embedding_model_name,
+    evidence_slots,
     index_dir,
     ingest_lock_path,
     min_score,
@@ -170,16 +171,50 @@ def create_app(
         fallback: WebSearchFallback = app.state.fallback
         source_urls: SourceUrlIndex = getattr(app.state, "source_urls", {})
 
-        hits = index.search(
+        # Two pools, not one. A single ranked search over the whole index is
+        # dominated by source passages (96.9% of it), which buries the
+        # evidence statements that carry feature_id — see config.evidence_slots
+        # for the measurement and for why that specifically causes 502s
+        # upstream. `where` filters BEFORE ranking (see PassageIndex.search),
+        # so the reserved pool returns its own best matches rather than
+        # whatever survives a post-hoc filter.
+        threshold = min_score()
+        quota = max(0, min(evidence_slots(), request.k))
+
+        general = index.search(
             request.query,
             embedder,
             k=request.k,
             where=lambda p: p.may_be_ingested,  # ADR 0011: mandatory, not optional
         )
-        threshold = min_score()
-        usable = [h for h in hits if h.score >= threshold]
+        reserved = (
+            index.search(
+                request.query,
+                embedder,
+                k=quota,
+                where=lambda p: p.may_be_ingested
+                and p.passage_type == PassageType.EVIDENCE_STATEMENT.value,
+            )
+            if quota
+            else []
+        )
+
+        # Reserved hits first so the quota survives the k cap, then the
+        # general pool fills what is left; re-sorted by score so the model
+        # still reads them best-first, and deduplicated because a passage
+        # good enough to rank in both pools must not appear twice.
+        merged: dict[str, object] = {}
+        for hit in [*reserved, *general]:
+            if hit.score >= threshold and hit.passage.id not in merged:
+                merged[hit.passage.id] = hit
+            if len(merged) >= request.k:
+                break
+        usable = sorted(merged.values(), key=lambda h: -h.score)  # type: ignore[attr-defined]
         if usable:
-            return [_passage_to_retrieved(h.passage, h.score, source_urls) for h in usable]
+            return [
+                _passage_to_retrieved(h.passage, h.score, source_urls)  # type: ignore[attr-defined]
+                for h in usable
+            ]
 
         # Primary index had nothing usable — ADR 0012 §3 fallback path.
         fallback_hits = fallback.run(request.query, top_k=request.k)

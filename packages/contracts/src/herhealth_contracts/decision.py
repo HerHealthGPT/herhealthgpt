@@ -43,6 +43,7 @@ class DecisionType(StrEnum):
 
     ASK = "ask"
     CONCLUDE = "conclude"
+    DECLINE = "decline"
 
 
 class TriageDecision(BaseModel):
@@ -51,9 +52,36 @@ class TriageDecision(BaseModel):
     ``rationale`` is required on every decision, including an ``ask`` — a
     question still has to say why, from what has been seen so far, which is
     what makes the transcript auditable without a deterministic trace to fall
-    back on. Every decision must also point at *something* it was grounded
-    on — ``citations``, ``red_flag_id``, or both — for the same reason: a
-    decision citing nothing is not distinguishable from one the model made up.
+    back on. An ``ask`` or a ``conclude`` must also point at *something* it
+    was grounded on — ``citations``, ``red_flag_id``, or both — for the same
+    reason: a decision citing nothing is not distinguishable from one the
+    model made up. ``DECLINE`` is the one exemption, and the next paragraph
+    is why.
+
+    **Why ``DECLINE`` exists, and why it grounds nothing.** With only ASK and
+    CONCLUDE, this schema had no way to represent "that is not something this
+    system does", so every input got an urgency verdict whether or not it was
+    a women's-reproductive-health question at all. Observed live 2026-09-03:
+    asked *"who won world cup 2026"*, the model returned CONCLUDE /
+    ``SELF_CARE`` and — because the grounding rule above left it no other
+    legal move — attached a real Office on Women's Health quote about a
+    complete blood count as the evidence for it. Nothing misbehaved; the
+    model picked the only shape available. The failure was that a refusal was
+    unrepresentable.
+
+    A DECLINE therefore carries **no** ``action_code``, ``next_feature_id``,
+    ``question_text``, ``matching_conditions``, ``red_flag_id`` or
+    ``citations`` — only its ``rationale``, which is what she reads. It is
+    exempt from the grounding rule because it asserts nothing about her
+    health for a citation to support, and requiring one is precisely what
+    manufactured the spurious citation above. Forbidden rather than merely
+    optional, so "declined *and* assigned an urgency" cannot be built at all.
+
+    Scope is defined as what the knowledge base can actually ground — the
+    conditions in ``conditions.yaml``, the features in ``features.yaml``, the
+    rules in ``red_flags.yaml``. A question those cannot speak to is declined
+    rather than answered thinly, which keeps a refusal provable instead of a
+    matter of taste. See ADR 0014.
 
     **Why two separate grounding fields, not one.** Walking a real example
     through the flow (a case matching both ``severe_pelvic_pain`` and, one
@@ -163,6 +191,29 @@ class TriageDecision(BaseModel):
 
     @model_validator(mode="after")
     def _shape_matches_type(self) -> Self:
+        if self.type is DecisionType.DECLINE:
+            # Every other field is forbidden, so a decline cannot smuggle an
+            # urgency level or a citation in alongside the refusal — see the
+            # class docstring for the live case that made this necessary.
+            # Named individually in the error because clients.py feeds it
+            # back to the model verbatim on retry.
+            forbidden = {
+                "next_feature_id": self.next_feature_id,
+                "question_text": self.question_text,
+                "action_code": self.action_code,
+                "red_flag_id": self.red_flag_id,
+                "matching_conditions": self.matching_conditions or None,
+                "citations": self.citations or None,
+            }
+            carried = sorted(name for name, value in forbidden.items() if value is not None)
+            if carried:
+                raise ValueError(
+                    f"a DECLINE decision must not carry {', '.join(carried)} — it "
+                    "assigns no urgency and asserts nothing about her health, so "
+                    "there is nothing for a citation to support"
+                )
+            return self
+
         if not self.citations and self.red_flag_id is None:
             raise ValueError(
                 "a decision must be grounded in at least one citation or a red_flag_id"
@@ -177,7 +228,7 @@ class TriageDecision(BaseModel):
                 raise ValueError("an ASK decision must not carry an action_code")
             if self.matching_conditions:
                 raise ValueError("an ASK decision must not carry matching_conditions")
-        else:
+        elif self.type is DecisionType.CONCLUDE:
             if self.action_code is None:
                 raise ValueError("a CONCLUDE decision requires action_code")
             if self.next_feature_id is not None or self.question_text is not None:

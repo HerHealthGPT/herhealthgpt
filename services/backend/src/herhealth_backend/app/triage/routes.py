@@ -28,7 +28,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from herhealth_contracts.decision import DecisionType, TriageDecision
-from herhealth_contracts.retrieval import RetrievedPassage
+from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -178,7 +178,7 @@ async def _run_turn(
     regardless of the above: a multi-second-to-multi-minute idle transaction
     during an unrelated external HTTP call is wasteful on its own terms.
     """
-    session_id, history = await _load_session(request, user, database)
+    session_id, history, carried = await _load_session(request, user, database)
     history.append(Message(role="user", content=request.message))
 
     turn = None
@@ -188,7 +188,8 @@ async def _run_turn(
             loop = asyncio.get_running_loop()
             turn = await asyncio.wait_for(
                 loop.run_in_executor(
-                    None, functools.partial(agent.run_turn, history, query=history[-1].content)
+                    None,
+                    functools.partial(agent.run_turn, history, carried_context=carried),
                 ),
                 timeout=REASONING_TIMEOUT_SECONDS,
             )
@@ -291,13 +292,41 @@ def _decision_payload(
     }
 
 
+def _passage_from_cited(raw: object) -> RetrievedPassage | None:
+    """Rebuild a passage from a stored ``cited_passages`` row.
+
+    Score is not persisted (the UI does not show it). Carried passages exist
+    so a later turn can still cite them — see ``TriageAgent.run_turn`` —
+    so a dummy 0.0 is enough; they are not re-ranked.
+    """
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return RetrievedPassage(
+            id=raw["id"],
+            passage_type=PassageType(raw["passage_type"]),
+            source_id=raw["source_id"],
+            text=raw["text"],
+            citation=raw["citation"],
+            score=0.0,
+            url=raw.get("url"),
+        )
+    except (KeyError, TypeError, ValidationError):
+        return None
+
+
 async def _load_session(
     request: TriageTurnRequest, user: User, database: Database
-) -> tuple[uuid.UUID, list[Message]]:
+) -> tuple[uuid.UUID, list[Message], tuple[RetrievedPassage, ...]]:
     """A short-lived session: create or look up the consultation, load its
     prior messages, and return plain data — nothing SQLAlchemy-attached
     survives past this function, so nothing here can be lazy-loaded later
     outside its session's greenlet.
+
+    The third value is every passage this consultation has already cited,
+    rebuilt from stored assistant decisions. Without it, turn two of a
+    live session 502s when the model re-cites turn-one evidence that this
+    turn's retrieval did not return — see ``build_retrieval_query``.
     """
     async with database.session() as session:
         consultation: ConsultationSession | None
@@ -305,7 +334,7 @@ async def _load_session(
             consultation = ConsultationSession(user_id=user.id)
             session.add(consultation)
             await session.commit()
-            return consultation.id, []
+            return consultation.id, [], ()
 
         consultation = await session.get(ConsultationSession, request.session_id)
         if consultation is None or consultation.user_id != user.id:
@@ -324,8 +353,17 @@ async def _load_session(
             .where(MessageRow.session_id == consultation.id)
             .order_by(MessageRow.created_at)
         )
-        history = [Message(role=row.role, content=row.content) for row in rows]
-        return consultation.id, history
+        history: list[Message] = []
+        carried_by_id: dict[str, RetrievedPassage] = {}
+        for row in rows:
+            history.append(Message(role=row.role, content=row.content))
+            if row.role != "assistant" or not isinstance(row.decision, dict):
+                continue
+            for raw in row.decision.get("cited_passages") or []:
+                passage = _passage_from_cited(raw)
+                if passage is not None:
+                    carried_by_id.setdefault(passage.id, passage)
+        return consultation.id, history, tuple(carried_by_id.values())
 
 
 async def _persist_turn(
@@ -344,6 +382,10 @@ async def _persist_turn(
     shows the same quoted sources it showed live, without re-running a
     retrieval that might not return the same passages today.
     """
+    # A decline shares CONCLUDE's branch here — its rationale is the refusal
+    # she reads (see decision.py) — but deliberately not the status change
+    # below: an off-scope message must not burn her consultation, so the
+    # session stays active and she can ask something in scope next.
     assistant_content = (
         decision.question_text if decision.type is DecisionType.ASK else decision.rationale
     )

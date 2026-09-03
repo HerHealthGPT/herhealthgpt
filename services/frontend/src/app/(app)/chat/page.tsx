@@ -11,6 +11,7 @@ import { ChatMessage } from "@/components/chat/chat-message";
 import { ChatShell } from "@/components/chat/chat-shell";
 import { ChatStarterPrompts } from "@/components/chat/chat-starter-prompts";
 import { ConclusionCard } from "@/components/chat/conclusion-card";
+import { DeclineCard } from "@/components/chat/decline-card";
 import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,11 @@ type ChatEntry =
        *  the opening message and a conclusion. */
       citedPassages?: CitedPassage[];
     }
-  | { id: string; kind: "conclusion"; decision: TriageDecision };
+  | { id: string; kind: "conclusion"; decision: TriageDecision }
+  /** An off-scope message the model refused (ADR 0014). Its own kind, not a
+   *  conclusion: `isConcluded` below keys off "conclusion", and a decline
+   *  must leave the chat open. */
+  | { id: string; kind: "decline"; rationale: string };
 
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 type ChatEntryInput = DistributiveOmit<ChatEntry, "id">;
@@ -80,6 +85,10 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
 
   if (decision.type === "conclude") {
     return { id: message.id, kind: "conclusion", decision };
+  }
+
+  if (decision.type === "decline") {
+    return { id: message.id, kind: "decline", rationale: decision.rationale };
   }
 
   if (decision.question_text) {
@@ -264,6 +273,8 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           text: response.decision.question_text,
           citedPassages: response.decision.cited_passages,
         });
+      } else if (response.decision.type === "decline") {
+        appendEntry({ kind: "decline", rationale: response.decision.rationale });
       } else {
         appendEntry({ kind: "conclusion", decision: response.decision });
       }
@@ -342,22 +353,30 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
               <ChatStarterPrompts disabled={isSending} onSelect={handleSend} />
             ) : null}
 
-            {entries.map((entry) =>
-              entry.kind === "message" ? (
-                <ChatMessage
-                  key={entry.id}
-                  role={entry.role}
-                  text={entry.text}
-                  citedPassages={entry.citedPassages}
-                />
-              ) : (
+            {entries.map((entry) => {
+              if (entry.kind === "message") {
+                return (
+                  <ChatMessage
+                    key={entry.id}
+                    role={entry.role}
+                    text={entry.text}
+                    citedPassages={entry.citedPassages}
+                  />
+                );
+              }
+
+              if (entry.kind === "decline") {
+                return <DeclineCard key={entry.id} rationale={entry.rationale} />;
+              }
+
+              return (
                 <ConclusionCard
                   key={entry.id}
                   decision={entry.decision}
                   onStartNewChat={handleNewChat}
                 />
-              ),
-            )}
+              );
+            })}
 
             {isSending ? <ThinkingIndicator turnLabel={thinkingTurnLabel} /> : null}
 

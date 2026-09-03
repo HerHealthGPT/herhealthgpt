@@ -10,7 +10,6 @@ import {
   LogOut,
   MessageSquarePlus,
   Settings,
-  Trash2,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -296,7 +295,7 @@ export function ConversationSidebar({
                           <button
                             type="button"
                             onClick={() => onSelectSession(session.id)}
-                            className="min-w-0 flex-1 px-3 py-2.5 pr-10 text-left"
+                            className="min-w-0 flex-1 px-3 py-2.5 text-left"
                           >
                             <p className="truncate text-sm">{session.preview}</p>
                             {session.status === "concluded" ? (
@@ -309,13 +308,10 @@ export function ConversationSidebar({
                               event.stopPropagation();
                               setConfirmingDeleteId(session.id);
                             }}
-                            className={cn(
-                              "absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-opacity hover:bg-background/60 hover:text-destructive",
-                              "opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus:opacity-100",
-                            )}
+                            className="mr-2 shrink-0 self-center rounded-md px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
                             aria-label={`Delete chat: ${session.preview}`}
                           >
-                            <Trash2 className="size-4" />
+                            Delete
                           </button>
                         </>
                       )}

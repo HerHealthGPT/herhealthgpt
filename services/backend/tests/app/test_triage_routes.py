@@ -224,6 +224,70 @@ async def test_continuing_a_concluded_session_is_refused(database_url: str) -> N
     assert response.status_code == 409
 
 
+_A_DECLINE_DECISION = TriageDecision(
+    type=DecisionType.DECLINE,
+    rationale="This tool covers women's reproductive health only.",
+)
+
+
+async def test_a_declined_message_leaves_the_session_open(database_url: str) -> None:
+    """An off-scope question must cost her nothing (ADR 0014). Unlike a
+    CONCLUDE, a DECLINE does not close the consultation, so the next turn
+    is accepted rather than 409'd — and it carries no action code or
+    citation to render."""
+    async for client in _build_client(
+        database_url, _scripted_agent(_A_DECLINE_DECISION, _A_CONCLUDE_DECISION)
+    ):
+        await _register_and_sign_in(client, "triage-decline@example.com")
+
+        declined = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "who won world cup 2026"},
+        )
+        assert declined.status_code == 200, declined.text
+        decision = declined.json()["decision"]
+        assert decision["type"] == "decline"
+        assert decision["action_code"] is None
+        assert decision["citations"] == []
+        assert decision["cited_passages"] == []
+        session_id = declined.json()["session_id"]
+
+        # The session is still hers to continue — the point of the change.
+        followed_up = await client.post(
+            "/triage/turn",
+            json={"session_id": session_id, "message": "sorry — my periods are irregular."},
+        )
+        assert followed_up.status_code == 200, followed_up.text
+        assert followed_up.json()["decision"]["type"] == "conclude"
+
+        listed = await client.get("/triage/sessions")
+
+    assert listed.status_code == 200, listed.text
+
+
+async def test_demo_mode_declines_an_off_scope_message(database_url: str) -> None:
+    """The offline path too, so the decline is exercisable without OpenRouter."""
+    base = load_knowledge_base(KNOWLEDGE)
+    agent = TriageAgent(
+        base=base,
+        reasoning=MvpDemoReasoningClient(),
+        retrieval=StaticRetrievalClient(),
+    )
+
+    async for client in _build_client(database_url, agent):
+        await _register_and_sign_in(client, "triage-demo-decline@example.com")
+        response = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "who won world cup 2026"},
+        )
+
+    assert response.status_code == 200, response.text
+    decision = response.json()["decision"]
+    assert decision["type"] == "decline"
+    assert decision["action_code"] is None
+    assert decision["citations"] == []
+
+
 async def test_an_empty_message_is_refused(triage_client: AsyncClient) -> None:
     await _register_and_sign_in(triage_client, "triage-empty@example.com")
 

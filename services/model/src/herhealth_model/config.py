@@ -22,6 +22,7 @@ __all__ = [
     "MIN_SCORE_ENV",
     "embedding_model_name",
     "index_dir",
+    "evidence_slots",
     "ingest_lock_path",
     "min_score",
 ]
@@ -30,6 +31,7 @@ INDEX_DIR_ENV = "HERHEALTH_INDEX_DIR"
 EMBEDDING_MODEL_ENV = "HERHEALTH_EMBEDDING_MODEL"
 MIN_SCORE_ENV = "HERHEALTH_MIN_SCORE"
 INGEST_LOCK_ENV = "HERHEALTH_INGEST_LOCK"
+EVIDENCE_SLOTS_ENV = "HERHEALTH_EVIDENCE_SLOTS"
 
 #: Same five sources as knowledge/sources.yaml, and for the same reason: no
 #: source beyond these is licensed for this project to use. Hardcoded rather
@@ -84,6 +86,33 @@ def embedding_model_name() -> str:
     offers.
     """
     return os.environ.get(EMBEDDING_MODEL_ENV) or "BAAI/bge-m3"
+
+
+def evidence_slots() -> int:
+    """How many of a search's ``k`` slots are reserved for evidence
+    statements — ``evidence.csv`` rows rendered as retrievable sentences.
+
+    Exists because the two passage types are wildly unbalanced in the index
+    and pure cosine ranking therefore buries the structured one. Measured on
+    the 2026-09-02 index (4454 passages): 4314 source passages, 140 evidence
+    statements — 3.1%. Across eight representative in-domain openers, five
+    returned **no** evidence statement at all in the top 8, the first one
+    landing at rank 27, 28, 33 or beyond 60.
+
+    That matters far more than a ranking nicety, because an evidence
+    statement is the only passage type that carries a ``feature_id``, and
+    ``herhealth_backend.triage.clients``' prompt tells the model it may not
+    invent one: with none retrieved, the model either concludes on turn one
+    (against the system prompt's instruction to ask two or three clarifying
+    questions first) or invents an id and trips
+    ``vocabulary.ClosedVocabularyViolation``, which the API surfaces as a
+    502. Reserving slots is the cheap fix; ADR 0010 defers a reranker until
+    "the right passage is retrieved but ranked outside top k", which is
+    exactly the measurement above, so revisit that ADR if this proves
+    insufficient rather than raising this number indefinitely.
+    """
+    raw = os.environ.get(EVIDENCE_SLOTS_ENV)
+    return int(raw) if raw else 3
 
 
 def min_score() -> float:

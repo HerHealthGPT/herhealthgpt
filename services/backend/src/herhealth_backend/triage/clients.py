@@ -118,7 +118,8 @@ def _render_context(context: Sequence[RetrievedPassage]) -> str:
 #: enforces the schema against this provider.
 _JSON_SHAPE_INSTRUCTION = (
     "\n\nRespond with ONLY a single JSON object, no other text, matching this shape: "
-    '{"type": "ask" or "conclude", "rationale": "why, required always", '
+    '{"type": "ask", "conclude" or "decline", "rationale": "why, required always — '
+    'and for a decline this is also the text she reads, so write it to her", '
     '"next_feature_id": "REQUIRED string when type is ask — must be a real '
     "feature id from the list in the system prompt; null only when type is "
     'conclude", '
@@ -138,8 +139,16 @@ _JSON_SHAPE_INSTRUCTION = (
     "MANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
     "an ask as much as a conclude. If you are asking a question because of something a "
     "retrieved passage suggests, cite that passage's id even though you have not "
-    "concluded yet. A decision with empty citations and no red_flag_id is invalid and "
-    "will be rejected.\n\n"
+    "concluded yet. An ask or conclude with empty citations and no red_flag_id is "
+    "invalid and will be rejected.\n\n"
+    "A DECLINE IS THE EXACT OPPOSITE, and is how you refuse an off-scope message (see "
+    "the scope rule at the top of this prompt). type \"decline\" takes ONLY rationale: "
+    "next_feature_id, question_text, action_code, matching_conditions, red_flag_id must "
+    "all be null and citations MUST be [] — a decline asserts nothing about her health, "
+    "so it cites nothing, and a decline carrying any of those fields is invalid and "
+    "will be rejected. Do not reach for a retrieved passage to satisfy the citation "
+    "rule on a question the passage does not address; decline instead. Do not answer "
+    "the off-scope question itself, even if you know the answer.\n\n"
     "THREE DIFFERENT KINDS OF ID — do not mix them up: "
     "(1) passage_id, shown on each retrieved passage above — use these ONLY in "
     "`citations`, never in `next_feature_id` or `matching_conditions`. "
@@ -152,7 +161,11 @@ _JSON_SHAPE_INSTRUCTION = (
     "field actually showed you, never a passage_id or an invented name. "
     "If type is ask, next_feature_id and question_text are BOTH mandatory — "
     "never send ask with only rationale and citations. "
-    "If you cannot pick a real feature id, use type conclude instead."
+    "If you cannot pick a real feature id and the message is in scope, use type "
+    "conclude instead; if it is out of scope, use type decline. "
+    "If she asked about a medicine, say in rationale (and in question_text if "
+    "you are asking) that you cannot advise on medicines and she should ask a "
+    "doctor or pharmacist — never answer the drug question yourself."
 )
 
 
@@ -231,8 +244,10 @@ def _decide_via_chat_completions(
                 "feature id from the system prompt list) AND question_text. "
                 "citations must be bare 16-character hex ids only "
                 '(e.g. "a6bf0793b2a9a509"), never "passage_id=…". '
-                "Use [] not null for empty arrays. If you cannot ask a valid "
-                "question, use type conclude with action_code instead."
+                "Use [] not null for empty arrays. If type is decline, send "
+                "rationale only — every other field null, citations []. If you "
+                "cannot ask a valid question, use type conclude with action_code "
+                "instead, or type decline if the message is out of scope."
             )
             logger.warning(
                 "decision attempt %s/%s failed (%s) — retrying with feedback",
@@ -264,7 +279,19 @@ class OpenRouterReasoningClient:
         api_key: str | None = None,
         model: str = DEFAULT_MODEL,
         client: httpx.Client | None = None,
-        timeout: float = 60.0,
+        # 120s, matching VllmReasoningClient below, because 60s was under the
+        # observed latency of this very endpoint: app/triage/routes.py's
+        # REASONING_TIMEOUT_SECONDS documents "a few seconds to ~90s across
+        # manual testing" and budgets 150s for the whole turn. A 60s read
+        # timeout therefore aborted responses that were merely slow, and an
+        # httpx timeout is raised as httpx.HTTPError, which that route turns
+        # straight into a 502 without a retry — so a healthy 75s answer was
+        # indistinguishable to the user from a broken dependency. Confirmed
+        # live 2026-09-03: "triage dependency HTTP failure: The read
+        # operation timed out" at 116s wall-clock on an in-scope emergency.
+        # Keep this below REASONING_TIMEOUT_SECONDS so the inner call fails
+        # inside the turn's own budget rather than racing it.
+        timeout: float = 120.0,
     ) -> None:
         key = api_key or os.environ.get(OPENROUTER_API_KEY_ENV)
         if not key:
