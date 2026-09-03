@@ -77,6 +77,21 @@ def test_null_matching_conditions_coerces_to_empty_tuple() -> None:
     assert decision.matching_conditions == ()
 
 
+def test_passage_id_prefix_on_citations_is_stripped() -> None:
+    """Models copy ``passage_id=…`` from the retrieval prompt into citations;
+    accepting the bare hash avoids a full OpenRouter retry (~10–60s)."""
+    decision = TriageDecision.model_validate(
+        {
+            "type": "ask",
+            "next_feature_id": "pregnancy_status",
+            "question_text": "Are you pregnant?",
+            "citations": [f"passage_id={A_PASSAGE_ID}", f"passage_id={A_PASSAGE_ID}"],
+            "rationale": "testing",
+        }
+    )
+    assert decision.citations == (A_PASSAGE_ID, A_PASSAGE_ID)
+
+
 def test_a_red_flag_alone_still_grounds_a_decision() -> None:
     """A red-flag-driven decision with no citations stays valid — red flags
     are injected, never retrieved, so there is nothing to cite (the reason

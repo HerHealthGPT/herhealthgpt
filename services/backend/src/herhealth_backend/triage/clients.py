@@ -131,8 +131,9 @@ _JSON_SHAPE_INSTRUCTION = (
     'allowed together with red_flag_id ONLY when action_code is EMERGENCY, and required '
     "then if any retrieved passage showed a matching condition_id; at any other urgency a "
     'red-flag-driven conclusion leaves this empty"], '
-    '"citations": ["array of retrieved-passage ids this decision is grounded on; '
-    'use [] not null"], '
+    '"citations": ["array of bare 16-hex passage ids ONLY — e.g. '
+    '\\"a6bf0793b2a9a509\\"; never \\"passage_id=…\\" and never a feature '
+    'or condition id; use [] not null"], '
     '"red_flag_id": "a red_flags.yaml id if this decision is driven by one, else null"}. '
     "MANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
     "an ask as much as a conclude. If you are asking a question because of something a "
@@ -228,6 +229,8 @@ def _decide_via_chat_completions(
                 f"\n\nYOUR PREVIOUS JSON WAS REJECTED: {error}\n"
                 "Fix it. If type is ask, include BOTH next_feature_id (a real "
                 "feature id from the system prompt list) AND question_text. "
+                "citations must be bare 16-character hex ids only "
+                '(e.g. "a6bf0793b2a9a509"), never "passage_id=…". '
                 "Use [] not null for empty arrays. If you cannot ask a valid "
                 "question, use type conclude with action_code instead."
             )

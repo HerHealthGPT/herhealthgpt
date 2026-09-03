@@ -20,6 +20,7 @@ this schema.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Self
 
@@ -29,6 +30,12 @@ from herhealth_contracts.knowledge import ActionCode, Identifier, NonEmptyText
 from herhealth_contracts.retrieval import PassageId
 
 __all__ = ["DecisionType", "TriageDecision"]
+
+#: OpenRouter models often copy the prompt's ``passage_id=…`` label into
+#: ``citations`` instead of the bare 16-hex id. Strip that prefix before
+#: schema validation so one bad format does not cost a full model retry
+#: (observed live: 1–3 retries × ~10–60s each).
+_PASSAGE_ID_PREFIX = re.compile(r"^(?:passage_id\s*=\s*)?", re.IGNORECASE)
 
 
 class DecisionType(StrEnum):
@@ -133,6 +140,10 @@ class TriageDecision(BaseModel):
     def _coerce_null_collections(cls, data: object) -> object:
         """OpenRouter often emits ``null`` for empty array fields; Pydantic
         tuple fields reject that. Coerce before shape validation runs.
+
+        Also normalises citation ids that were copied with a ``passage_id=``
+        prefix from the retrieval prompt — the id itself is still the same
+        16-hex hash; only the label is wrong.
         """
         if not isinstance(data, dict):
             return data
@@ -140,6 +151,14 @@ class TriageDecision(BaseModel):
         for key in ("matching_conditions", "citations"):
             if patched.get(key) is None:
                 patched[key] = []
+        raw_citations = patched.get("citations")
+        if isinstance(raw_citations, list):
+            patched["citations"] = [
+                _PASSAGE_ID_PREFIX.sub("", citation.strip())
+                if isinstance(citation, str)
+                else citation
+                for citation in raw_citations
+            ]
         return patched
 
     @model_validator(mode="after")
