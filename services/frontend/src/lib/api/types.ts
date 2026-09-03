@@ -55,9 +55,14 @@ export type CitedPassage = {
  *  (TriageDecision itself is `extra="forbid"` — what the model may emit and
  *  what this API renders are deliberately different contracts).
  *  next_feature_id is intentionally omitted here — it is internal bookkeeping
- *  for the backend's own vocabulary check, never meant for display. */
+ *  for the backend's own vocabulary check, never meant for display.
+ *
+ *  On a `decline` (an off-scope message — see ADR 0014) every field below
+ *  except `rationale` is null or empty, by schema rather than by convention:
+ *  action_code, matching_conditions, citations and red_flag_id are all
+ *  forbidden there, so render the rationale and nothing else. */
 export type TriageDecision = {
-  type: "ask" | "conclude";
+  type: "ask" | "conclude" | "decline";
   question_text: string | null;
   action_code: ActionCode | null;
   matching_conditions: string[];

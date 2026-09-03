@@ -49,8 +49,36 @@ class _DemoScenario(StrEnum):
     IRREGULAR_PERIODS = "irregular_periods"
 
 
+#: Enough to exercise the decline path offline — the three shapes of
+#: off-scope message ADR 0014 names (not health at all, men's health, health
+#: outside this scope). Deliberately a crude keyword list: it stands in for a
+#: scope judgement the real reasoning model makes from the system prompt, and
+#: pretending otherwise would make ``demo`` mode look like it validates that
+#: judgement. Same disclaimer ``MvpDemoReasoningClient`` already carries.
+_OUT_OF_SCOPE_PHRASES = (
+    "world cup",
+    "super bowl",
+    "football",
+    "election",
+    "president",
+    "weather",
+    "prostate",
+    "erectile",
+    "testicle",
+    "my penis",
+    "chest pain",
+    "sore throat",
+    "sprained",
+    "twisted my knee",
+)
+
+
 def _user_text(history: Sequence[Message]) -> str:
     return " ".join(message.content.lower() for message in history if message.role == "user")
+
+
+def _is_out_of_scope(text: str) -> bool:
+    return any(phrase in text for phrase in _OUT_OF_SCOPE_PHRASES)
 
 
 def _detect_scenario(text: str) -> _DemoScenario:
@@ -113,11 +141,37 @@ class MvpDemoReasoningClient:
         del system_prompt  # demo does not call a model
         passage_id = context[0].id if context else DEMO_PASSAGE.id
         user_turns = sum(1 for message in history if message.role == "user")
-        scenario = _detect_scenario(_user_text(history))
 
+        # Scope is judged on the newest message alone, unlike the two health
+        # scenarios below, which read the whole transcript so a follow-up
+        # ("yes", "about 3 months") stays in the scenario it belongs to. An
+        # off-scope aside must be declined on its own terms without an
+        # earlier in-scope complaint dragging it into a triage answer, and
+        # must not taint the turns after it either.
+        latest_message = next(
+            (message.content.lower() for message in reversed(history) if message.role == "user"),
+            "",
+        )
+        if _is_out_of_scope(latest_message):
+            return self._decline()
+
+        scenario = _detect_scenario(_user_text(history))
         if scenario is _DemoScenario.PERSISTENT_BLEEDING:
             return self._decide_bleeding(user_turns=user_turns, passage_id=passage_id)
         return self._decide_irregular_periods(user_turns=user_turns, passage_id=passage_id)
+
+    def _decline(self) -> TriageDecision:
+        """No action code, no citation — see ADR 0014."""
+        return TriageDecision(
+            type=DecisionType.DECLINE,
+            rationale=(
+                "I'm sorry — I can't help with that one. This tool covers women's "
+                "reproductive health only, and does not provide diagnoses. If it is "
+                "a health worry, please take it to a doctor or pharmacist, and seek "
+                "urgent medical help now if it feels serious. If you do have a "
+                "reproductive-health concern, tell me about it and I'll help."
+            ),
+        )
 
     def _decide_bleeding(self, *, user_turns: int, passage_id: str) -> TriageDecision:
         if user_turns < 2:
