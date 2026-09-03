@@ -14,7 +14,6 @@ import { ConclusionCard } from "@/components/chat/conclusion-card";
 import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { friendlyTriageError } from "@/lib/api/errors";
 import {
   deleteTriageSession,
@@ -125,7 +124,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   const isConcluded =
     sessionStatus === "concluded" || entries.some((entry) => entry.kind === "conclusion");
@@ -237,7 +236,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   }, [requestedSessionId, router]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    const pane = messagesRef.current;
+    if (!pane) {
+      return;
+    }
+    // Scroll only the message pane — scrollIntoView can drag the whole page.
+    pane.scrollTo({ top: pane.scrollHeight, behavior: "smooth" });
   }, [entries, isSending, isLoadingSession]);
 
   function appendEntry(entry: ChatEntryInput) {
@@ -326,9 +330,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       onNewChat={handleNewChat}
       onDeleteSession={handleDeleteSession}
     >
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
-        <ScrollArea className="flex-1">
-          <div className="flex flex-col gap-4 px-4 py-6 sm:px-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden">
+        <div
+          ref={messagesRef}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-6"
+        >
+          <div className="flex flex-col gap-4">
             {isLoadingSession ? <ThinkingIndicator label="Loading conversation…" /> : null}
 
             {showStarters ? (
@@ -367,33 +374,33 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
                 </AlertDescription>
               </Alert>
             ) : null}
-
-            <div ref={bottomRef} />
           </div>
-        </ScrollArea>
+        </div>
 
-        {isConcluded ? (
-          <div className="border-t border-border/60 bg-muted/20 p-4">
-            <p className="mb-3 text-center text-sm text-muted-foreground">
-              This chat is complete. Start a new one if something else comes up.
-            </p>
-            <Button size="lg" className="w-full" onClick={handleNewChat}>
-              <MessageSquarePlus className="size-4" />
-              Start a new chat
-            </Button>
-          </div>
-        ) : (
-          <ChatComposer
-            disabled={isSending || isLoadingSession}
-            placeholder={
-              entries.length <= 1
-                ? "Tell me what's going on…"
-                : "Type your reply…"
-            }
-            showWaitHint={userTurnCount === 0 && !isSending && !isLoadingSession}
-            onSend={handleSend}
-          />
-        )}
+        <div className="shrink-0">
+          {isConcluded ? (
+            <div className="border-t border-border/60 bg-muted/20 p-4">
+              <p className="mb-3 text-center text-sm text-muted-foreground">
+                This chat is complete. Start a new one if something else comes up.
+              </p>
+              <Button size="lg" className="w-full" onClick={handleNewChat}>
+                <MessageSquarePlus className="size-4" />
+                Start a new chat
+              </Button>
+            </div>
+          ) : (
+            <ChatComposer
+              disabled={isSending || isLoadingSession}
+              placeholder={
+                entries.length <= 1
+                  ? "Tell me what's going on…"
+                  : "Type your reply…"
+              }
+              showWaitHint={userTurnCount === 0 && !isSending && !isLoadingSession}
+              onSend={handleSend}
+            />
+          )}
+        </div>
       </div>
     </ChatShell>
   );
@@ -414,9 +421,17 @@ function ChatPageContent() {
 export default function ChatPage() {
   return (
     <AuthGuard>
-      <Suspense fallback={<div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">Loading chat…</div>}>
-        <ChatPageContent />
-      </Suspense>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <Suspense
+          fallback={
+            <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">
+              Loading chat…
+            </div>
+          }
+        >
+          <ChatPageContent />
+        </Suspense>
+      </div>
     </AuthGuard>
   );
 }

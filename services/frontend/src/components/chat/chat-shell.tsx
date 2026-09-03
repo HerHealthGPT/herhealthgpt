@@ -33,8 +33,8 @@ export function ChatShell({
   onDeleteSession,
 }: ChatShellProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="relative flex min-h-0 flex-1">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {sidebarOpen ? (
           <button
             type="button"
@@ -46,7 +46,7 @@ export function ChatShell({
 
         <aside
           className={cn(
-            "absolute inset-y-0 left-0 z-30 flex w-[min(100%,280px)] flex-col border-r border-border/60 bg-sidebar shadow-xl transition-transform duration-200 ease-out lg:static lg:z-0 lg:translate-x-0 lg:shadow-none",
+            "absolute inset-y-0 left-0 z-30 flex h-full w-[min(100%,280px)] flex-col border-r border-border/60 bg-sidebar shadow-xl transition-transform duration-200 ease-out lg:static lg:z-0 lg:h-auto lg:translate-x-0 lg:shadow-none",
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
           )}
         >
@@ -67,7 +67,7 @@ export function ChatShell({
           />
         </aside>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ChatHeader onToggleSidebar={onToggleSidebar} sidebarOpen={sidebarOpen} />
           {children}
         </div>

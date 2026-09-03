@@ -11,7 +11,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     pathname.startsWith("/onboarding") || pathname.startsWith("/how-it-works");
 
   if (isChat || isOnboarding) {
-    return <div className="flex h-dvh min-h-0 flex-col">{children}</div>;
+    return (
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
+        {children}
+      </div>
+    );
   }
 
   return (
