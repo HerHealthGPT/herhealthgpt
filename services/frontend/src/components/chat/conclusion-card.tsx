@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, PhoneCall, Siren } from "lucide-react";
 
 import { CitedSources } from "@/components/chat/cited-sources";
+import { UnreviewedModelNotice } from "@/components/chat/unreviewed-model-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -64,6 +65,7 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <UnreviewedModelNotice model={decision.reasoning_model} />
         <p className="text-sm leading-relaxed text-foreground/90">{decision.rationale}</p>
 
         {decision.matching_conditions.length > 0 ? (

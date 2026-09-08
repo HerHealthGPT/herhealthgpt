@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Sparkles, X } from "lucide-react";
 
+import { ProfileDetailsStep } from "@/components/onboarding/profile-details-step";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { ONBOARDING_STEPS } from "@/lib/onboarding-content";
@@ -23,13 +24,21 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
   const [step, setStep] = useState(0);
   const isReview = mode === "review";
 
+  // The details step runs before the intro slides, and only for a first-time
+  // user who has no date of birth yet. Accounts predating this field see it
+  // too, on their next visit to onboarding, but are never blocked elsewhere
+  // in the app — see ADR 0015 on why it is not a hard gate.
+  const needsProfileDetails = !isReview && user !== null && user.date_of_birth === null;
+  const [detailsDone, setDetailsDone] = useState(false);
+  const showProfileDetails = needsProfileDetails && !detailsDone;
+
   const current = ONBOARDING_STEPS[step];
   const isLast = step === ONBOARDING_STEPS.length - 1;
   const Icon = current.icon;
 
   function finishFirstTime() {
     if (user) markOnboardingComplete(user.id);
-    router.replace(routes.chat);
+    router.replace(routes.dashboard);
   }
 
   function closeReview() {
@@ -55,6 +64,26 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
       return;
     }
     setStep((currentStep) => currentStep + 1);
+  }
+
+  if (showProfileDetails) {
+    return (
+      <div className="flex min-h-dvh flex-col bg-gradient-to-b from-primary/8 via-background to-background">
+        <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14">
+          <div className="mb-8 text-center">
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+              A little about you
+            </h1>
+            <p className="mt-3 text-base leading-relaxed text-muted-foreground">
+              Two quick things, so we can give you better guidance and ask you
+              fewer questions later.
+            </p>
+          </div>
+
+          <ProfileDetailsStep onComplete={() => setDetailsDone(true)} />
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -155,7 +184,7 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
             ) : isLast ? (
               <>
                 <Sparkles className="size-4" />
-                Start your first chat
+                Go to my dashboard
               </>
             ) : (
               <>
@@ -174,7 +203,7 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
               onClick={finishFirstTime}
               className="font-medium text-primary hover:underline"
             >
-              Skip intro — start chatting
+              Skip intro — go to dashboard
             </button>
           </p>
         ) : (

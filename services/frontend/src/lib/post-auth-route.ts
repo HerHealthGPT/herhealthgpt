@@ -13,14 +13,14 @@ export async function resolvePostAuthRoute(user: UserSummary): Promise<string> {
   }
 
   if (hasCompletedOnboarding(user.id)) {
-    return routes.chat;
+    return routes.dashboard;
   }
 
   try {
     const sessions = await listTriageSessions();
     if (sessions.length > 0) {
       markOnboardingComplete(user.id);
-      return routes.chat;
+      return routes.dashboard;
     }
   } catch {
     // If sessions cannot be loaded, fall through to onboarding.

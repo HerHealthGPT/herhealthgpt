@@ -19,15 +19,26 @@ import { friendlyTriageError } from "@/lib/api/errors";
 import {
   deleteTriageSession,
   getTriageSession,
+  listReasoningModels,
   listTriageSessions,
   sendTriageTurn,
 } from "@/lib/api/triage";
 import type {
   CitedPassage,
+  DecisionReasoningModel,
+  ReasoningModelSummary,
   TriageDecision,
   TriageSessionMessage,
   TriageSessionSummary,
 } from "@/lib/api/types";
+import {
+  preferredReasoningModel,
+  setPreferredReasoningModel,
+} from "@/lib/model-preference";
+import {
+  setShowReasoning,
+  shouldShowReasoning,
+} from "@/lib/reasoning-preference";
 import { routes } from "@/lib/routes";
 
 type ChatEntry =
@@ -40,12 +51,16 @@ type ChatEntry =
        *  A question is a grounded decision too, not just filler between
        *  the opening message and a conclusion. */
       citedPassages?: CitedPassage[];
+      /** The decision's `rationale`, shown behind the header's reasoning
+       *  toggle. Only meaningful on an assistant turn. */
+      rationale?: string | null;
+      reasoningModel?: DecisionReasoningModel;
     }
   | { id: string; kind: "conclusion"; decision: TriageDecision }
   /** An off-scope message the model refused (ADR 0014). Its own kind, not a
    *  conclusion: `isConcluded` below keys off "conclusion", and a decline
    *  must leave the chat open. */
-  | { id: string; kind: "decline"; rationale: string };
+  | { id: string; kind: "decline"; rationale: string; reasoningModel?: DecisionReasoningModel };
 
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 type ChatEntryInput = DistributiveOmit<ChatEntry, "id">;
@@ -88,7 +103,12 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
   }
 
   if (decision.type === "decline") {
-    return { id: message.id, kind: "decline", rationale: decision.rationale };
+    return {
+      id: message.id,
+      kind: "decline",
+      rationale: decision.rationale,
+      reasoningModel: decision.reasoning_model,
+    };
   }
 
   if (decision.question_text) {
@@ -98,6 +118,8 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
       role: "assistant",
       text: decision.question_text,
       citedPassages: decision.cited_passages,
+      rationale: decision.rationale,
+      reasoningModel: decision.reasoning_model,
     };
   }
 
@@ -133,7 +155,67 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Read in an effect, not in the initialiser: localStorage does not exist
+  // during the server render, and seeding state from it directly would
+  // hydrate a different value than the server produced.
+  const [showReasoning, setShowReasoningState] = useState(true);
+  const [models, setModels] = useState<ReasoningModelSummary[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>("base");
   const messagesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setShowReasoningState(shouldShowReasoning());
+  }, []);
+
+  function handleToggleReasoning() {
+    setShowReasoningState((current) => {
+      const next = !current;
+      setShowReasoning(next);
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadModels() {
+      try {
+        const offered = await listReasoningModels();
+        if (cancelled) {
+          return;
+        }
+        setModels(offered);
+        if (offered.length === 0) {
+          return;
+        }
+        const preferred = preferredReasoningModel();
+        const preferredOffered = offered.find((model) => model.id === preferred);
+        const fallback = offered.find((model) => model.is_default) ?? offered[0];
+        setSelectedModelId((current) => {
+          if (current) {
+            return current;
+          }
+          return (preferredOffered ?? fallback).id;
+        });
+      } catch {
+        // Selector stays hidden — same as a deployment that does not offer it.
+        if (!cancelled) {
+          setModels([]);
+        }
+      }
+    }
+
+    void loadModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function handleSelectModel(modelId: string) {
+    setSelectedModelId(modelId);
+    setPreferredReasoningModel(modelId);
+  }
 
   const isConcluded =
     sessionStatus === "concluded" || entries.some((entry) => entry.kind === "conclusion");
@@ -219,6 +301,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         setSessionId(detail.id);
         setSessionStatus(detail.status);
         setEntries(transcriptToEntries(detail.messages));
+        const usedModel = detail.messages
+          .map((message) => message.decision?.reasoning_model)
+          .find((model) => model !== undefined);
+        if (usedModel) {
+          setSelectedModelId(usedModel.id);
+        }
         setLastFailedMessage(null);
       } catch (error) {
         if (!cancelled) {
@@ -262,7 +350,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     setErrorMessage(null);
 
     try {
-      const response = await sendTriageTurn(sessionId, text);
+      const response = await sendTriageTurn(sessionId, text, selectedModelId);
       setSessionId(response.session_id);
       setSessionStatus(response.decision.type === "conclude" ? "concluded" : "active");
 
@@ -272,9 +360,15 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           role: "assistant",
           text: response.decision.question_text,
           citedPassages: response.decision.cited_passages,
+          rationale: response.decision.rationale,
+          reasoningModel: response.decision.reasoning_model,
         });
       } else if (response.decision.type === "decline") {
-        appendEntry({ kind: "decline", rationale: response.decision.rationale });
+        appendEntry({
+          kind: "decline",
+          rationale: response.decision.rationale,
+          reasoningModel: response.decision.reasoning_model,
+        });
       } else {
         appendEntry({ kind: "conclusion", decision: response.decision });
       }
@@ -340,6 +434,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       onSelectSession={handleSelectSession}
       onNewChat={handleNewChat}
       onDeleteSession={handleDeleteSession}
+      showReasoning={showReasoning}
+      onToggleReasoning={handleToggleReasoning}
+      models={models}
+      selectedModelId={selectedModelId}
+      onSelectModel={handleSelectModel}
+      modelLocked={userTurnCount > 0}
     >
       <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden">
         <div
@@ -361,12 +461,21 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
                     role={entry.role}
                     text={entry.text}
                     citedPassages={entry.citedPassages}
+                    rationale={entry.rationale}
+                    showReasoning={showReasoning}
+                    reasoningModel={entry.reasoningModel}
                   />
                 );
               }
 
               if (entry.kind === "decline") {
-                return <DeclineCard key={entry.id} rationale={entry.rationale} />;
+                return (
+                  <DeclineCard
+                    key={entry.id}
+                    rationale={entry.rationale}
+                    reasoningModel={entry.reasoningModel}
+                  />
+                );
               }
 
               return (

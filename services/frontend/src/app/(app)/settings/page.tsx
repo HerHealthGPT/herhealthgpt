@@ -2,6 +2,7 @@
 
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { DeleteAccountSection } from "@/components/account/delete-account-section";
+import { HealthDetailsForm } from "@/components/account/health-details-form";
 import { ProfileSettingsForm } from "@/components/account/profile-settings-form";
 
 function AccountSettingsContent() {
@@ -21,6 +22,7 @@ function AccountSettingsContent() {
 
       <div className="mx-auto w-full max-w-2xl flex-1 space-y-8 px-4 py-8 sm:px-6 sm:py-10">
         <ProfileSettingsForm />
+        <HealthDetailsForm />
         <DeleteAccountSection />
       </div>
     </div>

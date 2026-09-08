@@ -19,7 +19,9 @@ from herhealth_backend.app.accounts.errors import (
     IncorrectVerificationCode,
     InvalidAccessToken,
     InvalidCredentials,
+    InvalidDateOfBirth,
     InvalidDisplayName,
+    InvalidHealthNote,
     InvalidSession,
     NoPasswordCredential,
     PasswordResetCodeExpired,
@@ -29,6 +31,7 @@ from herhealth_backend.app.accounts.errors import (
     VerificationCodeExpired,
 )
 from herhealth_backend.app.accounts.password_policy import PasswordTooWeak
+from herhealth_backend.app.accounts.profile import MAX_HEALTH_NOTE_LENGTH, MIN_AGE_YEARS
 
 __all__ = ["register_error_handlers"]
 
@@ -216,4 +219,30 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={"detail": "Name must be between 1 and 80 characters."},
+        )
+
+    @app.exception_handler(InvalidDateOfBirth)
+    async def _invalid_date_of_birth(
+        request: Request, exc: InvalidDateOfBirth
+    ) -> JSONResponse:
+        # Says which way it is wrong without echoing the date back, and
+        # without naming 120 — a user who typed 1902 by accident needs to
+        # know to check the year, not to learn our exact bounds.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "detail": (
+                    "Please check your date of birth. You must be at least "
+                    f"{MIN_AGE_YEARS} to use HerHealthGPT."
+                )
+            },
+        )
+
+    @app.exception_handler(InvalidHealthNote)
+    async def _invalid_health_note(request: Request, exc: InvalidHealthNote) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "detail": f"Please keep this under {MAX_HEALTH_NOTE_LENGTH} characters."
+            },
         )

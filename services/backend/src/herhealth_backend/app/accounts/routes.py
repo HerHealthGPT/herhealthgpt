@@ -12,6 +12,7 @@ Accounts grows.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -35,7 +36,13 @@ from herhealth_backend.app.accounts.google_sign_in import sign_in_with_google
 from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.password_reset import request_password_reset, reset_password
 from herhealth_backend.app.accounts.password_reset_policy import CODE_LENGTH as RESET_CODE_LENGTH
-from herhealth_backend.app.accounts.profile import update_display_name
+from herhealth_backend.app.accounts.profile import (
+    clear_health_note,
+    health_note_for,
+    update_date_of_birth,
+    update_display_name,
+    update_health_note,
+)
 from herhealth_backend.app.accounts.registration import register_user
 from herhealth_backend.app.accounts.sessions import (
     end_all_sessions,
@@ -47,6 +54,7 @@ from herhealth_backend.app.accounts.sessions import (
 from herhealth_backend.app.accounts.sign_in import sign_in as sign_in_user
 from herhealth_backend.app.accounts.verification_code_policy import CODE_LENGTH
 from herhealth_backend.app.db import Database
+from herhealth_backend.triage.age_bands import age_band_for
 
 __all__ = ["router"]
 
@@ -125,20 +133,60 @@ class UserSummary(BaseModel):
     email: str
     email_verified: bool
     display_name: str | None = None
+    #: Null for accounts created before migration 0009, which is what the
+    #: frontend keys the "we still need this" prompt off. New sign-ups always
+    #: have one — see ADR 0015 on why the column is nullable regardless.
+    date_of_birth: date | None = None
+    #: Derived from date_of_birth at response time, never stored: a stored
+    #: band would be wrong the morning after a birthday, and 45 is the
+    #: boundary features.yaml says separates perimenopause from PCOS.
+    age_band: str | None = None
+    #: Whether she has written a health note, not the note itself. The
+    #: content is only sent by GET /accounts/health-note, so it does not ride
+    #: along on every /me poll the app makes.
+    has_health_note: bool = False
 
 
 class UpdateProfileRequest(BaseModel):
+    """Every field is optional and *omitting* one leaves it untouched.
+
+    ``display_name`` is the exception, and only for backwards compatibility:
+    it has always treated an absent key as "clear it", and the settings form
+    relies on that. New fields use ``model_fields_set`` so that a form
+    editing only a note cannot silently wipe a date of birth.
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     display_name: str | None = None
+    date_of_birth: date | None = None
+    health_note: str | None = None
 
 
-def _user_summary(user: User) -> UserSummary:
+class HealthNoteResponse(BaseModel):
+    content: str | None = None
+
+
+class UpdateHealthNoteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Null or blank clears it — see profile.normalize_health_note.
+    content: str | None = None
+
+
+def _user_summary(user: User, *, has_health_note: bool = False) -> UserSummary:
     return UserSummary(
         id=user.id,
         email=user.email,
         email_verified=user.email_verified,
         display_name=user.display_name,
+        date_of_birth=user.date_of_birth,
+        age_band=(
+            age_band_for(user.date_of_birth, today=date.today())
+            if user.date_of_birth is not None
+            else None
+        ),
+        has_health_note=has_health_note,
     )
 
 
@@ -240,8 +288,14 @@ async def sign_out_everywhere(request: Request, response: Response) -> None:
 
 
 @router.get("/me", response_model=UserSummary)
-async def me(current_user: User = Depends(get_current_user)) -> UserSummary:  # noqa: B008
-    return _user_summary(current_user)
+async def me(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> UserSummary:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        note = await health_note_for(session, current_user.id)
+    return _user_summary(current_user, has_health_note=note is not None)
 
 
 @router.patch("/me", response_model=UserSummary)
@@ -250,12 +304,67 @@ async def update_me(
     request: Request,
     current_user: User = Depends(get_current_user),  # noqa: B008
 ) -> UserSummary:
+    """Update whichever profile fields the request actually names.
+
+    ``display_name`` keeps its original semantics (absent means clear it);
+    the two fields added in 0009 are only touched when present, so the
+    sign-up step can set a date of birth without clearing a note and the
+    settings form can do the reverse. See ``UpdateProfileRequest``.
+    """
     database: Database = request.app.state.database
+    named = payload.model_fields_set
     async with database.session() as session:
         updated = await update_display_name(
             session, current_user.id, display_name=payload.display_name
         )
-    return _user_summary(updated)
+        if "date_of_birth" in named and payload.date_of_birth is not None:
+            updated = await update_date_of_birth(
+                session,
+                current_user.id,
+                date_of_birth=payload.date_of_birth,
+                today=date.today(),
+            )
+        if "health_note" in named:
+            await update_health_note(session, current_user.id, content=payload.health_note)
+        note = await health_note_for(session, current_user.id)
+    return _user_summary(updated, has_health_note=note is not None)
+
+
+@router.get("/health-note", response_model=HealthNoteResponse)
+async def get_health_note(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> HealthNoteResponse:
+    """Her note's text. A separate route from ``/me`` so unverified clinical
+    free text is fetched only when something is actually going to show it."""
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        note = await health_note_for(session, current_user.id)
+    return HealthNoteResponse(content=note.content if note is not None else None)
+
+
+@router.put("/health-note", response_model=HealthNoteResponse)
+async def put_health_note(
+    payload: UpdateHealthNoteRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> HealthNoteResponse:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        stored = await update_health_note(session, current_user.id, content=payload.content)
+    return HealthNoteResponse(content=stored)
+
+
+@router.delete("/health-note", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_health_note(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Delete the note on its own, without closing her account — the property
+    ``services/backend/CONTEXT.md`` asks of anything clinical kept for her."""
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        await clear_health_note(session, current_user.id)
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

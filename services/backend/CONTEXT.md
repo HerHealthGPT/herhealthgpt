@@ -16,8 +16,17 @@ collide across it.
 ### Being someone
 
 **User**:
-A person with an account. One row, one human. Holds an email address and nothing
-clinical — everything she reports lives in a conversation, not on her.
+A person with an account. One row, one human. Holds an email address, a display
+name and a date of birth, and nothing clinical — everything she *reports* lives
+in a conversation, not on her.
+
+Date of birth was admitted in [ADR 0015](../../docs/adr/0015-a-user-may-keep-a-date-of-birth-and-a-health-note.md)
+on the grounds that it is demographic rather than clinical: it is the same kind
+of fact as an email address and reports no symptom. It is stored as a date, not
+as an `age_band`, so the band can be derived fresh on every request — a band
+stored at 44 would silently stay `40_to_44` past the birthday, and 45 is the
+number `features.yaml` says separates perimenopause from PCOS. What she says
+about her health is a **Health note**, below, and that is not held on her.
 _Avoid_: account, profile, customer, patient
 
 **Patient** is not a word this project uses, anywhere. She is not under anyone's
@@ -83,6 +92,20 @@ _Avoid_: soft delete, archive, deactivate, disable
 Menstrual tracking a user may import to give the system context. Hers, optional,
 and deletable independently of her account.
 _Avoid_: health data, records, history
+
+**Health note**:
+Anything a user chooses to tell the system about herself once — a condition she
+has been told she has, a medicine she takes — so she does not have to repeat it
+at the start of every consultation. One per user, edited in place. Optional,
+hers, and deletable on its own without closing her account, exactly as cycle
+data is.
+
+Unverified free text she typed, and never treated as a symptom she is reporting
+now: it cannot fire a red flag, and it cannot carry a conclusion by itself. It
+reaches the reasoning model as background in the system prompt, never as a turn
+in the transcript, because she did not say it in the consultation being
+recorded. See [ADR 0015](../../docs/adr/0015-a-user-may-keep-a-date-of-birth-and-a-health-note.md).
+_Avoid_: history, medical record, records, health data, profile, intake
 
 ## Resolved
 

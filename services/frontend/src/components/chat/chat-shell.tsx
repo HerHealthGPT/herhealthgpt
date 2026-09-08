@@ -2,7 +2,7 @@
 
 import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
 import { ChatHeader } from "@/components/chat/chat-header";
-import type { TriageSessionSummary } from "@/lib/api/types";
+import type { ReasoningModelSummary, TriageSessionSummary } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 type ChatShellProps = {
@@ -17,6 +17,12 @@ type ChatShellProps = {
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
   onDeleteSession: (sessionId: string) => void | Promise<void>;
+  showReasoning: boolean;
+  onToggleReasoning: () => void;
+  models: ReasoningModelSummary[];
+  selectedModelId: string | null;
+  onSelectModel: (modelId: string) => void;
+  modelLocked: boolean;
 };
 
 export function ChatShell({
@@ -31,6 +37,12 @@ export function ChatShell({
   onSelectSession,
   onNewChat,
   onDeleteSession,
+  showReasoning,
+  onToggleReasoning,
+  models,
+  selectedModelId,
+  onSelectModel,
+  modelLocked,
 }: ChatShellProps) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -73,6 +85,12 @@ export function ChatShell({
             sidebarOpen={sidebarOpen}
             sessionId={activeSessionId}
             onDeleteSession={onDeleteSession}
+            showReasoning={showReasoning}
+            onToggleReasoning={onToggleReasoning}
+            models={models}
+            selectedModelId={selectedModelId}
+            onSelectModel={onSelectModel}
+            modelLocked={modelLocked}
           />
           {children}
         </div>

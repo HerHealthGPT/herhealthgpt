@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { LayoutDashboard, Menu, Trash2, X } from "lucide-react";
+import { Brain, LayoutDashboard, Menu, Trash2, X } from "lucide-react";
 
+import { ModelSelector } from "@/components/chat/model-selector";
 import { Button } from "@/components/ui/button";
+import type { ReasoningModelSummary } from "@/lib/api/types";
 import { routes } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 
 type ChatHeaderProps = {
   onToggleSidebar: () => void;
@@ -14,6 +17,12 @@ type ChatHeaderProps = {
    *  with nothing to delete. */
   sessionId: string | null;
   onDeleteSession: (sessionId: string) => void | Promise<void>;
+  showReasoning: boolean;
+  onToggleReasoning: () => void;
+  models: ReasoningModelSummary[];
+  selectedModelId: string | null;
+  onSelectModel: (modelId: string) => void;
+  modelLocked: boolean;
 };
 
 export function ChatHeader({
@@ -21,6 +30,12 @@ export function ChatHeader({
   sidebarOpen,
   sessionId,
   onDeleteSession,
+  showReasoning,
+  onToggleReasoning,
+  models,
+  selectedModelId,
+  onSelectModel,
+  modelLocked,
 }: ChatHeaderProps) {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -50,61 +65,86 @@ export function ChatHeader({
         {sidebarOpen ? <X className="size-5" /> : <Menu className="size-5" />}
       </Button>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">Health chat</p>
-        <p className="truncate text-xs text-muted-foreground">
-          Guidance only — not a diagnosis
-        </p>
+      <div className="flex min-w-0 flex-1 justify-center">
+        <ModelSelector
+          models={models}
+          selectedId={selectedModelId}
+          onSelect={onSelectModel}
+          disabled={modelLocked}
+        />
       </div>
 
-      {sessionId ? (
-        confirming ? (
-          <div className="flex shrink-0 items-center gap-1.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={deleting}
-              onClick={() => setConfirming(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              disabled={deleting}
-              onClick={() => void handleConfirmDelete()}
-            >
-              <Trash2 className="size-3.5" />
-              Delete
-            </Button>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shrink-0 text-muted-foreground hover:text-destructive"
-            onClick={() => setConfirming(true)}
-          >
-            <Trash2 className="size-4" />
-            Delete chat
-          </Button>
-        )
-      ) : null}
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          role="switch"
+          aria-checked={showReasoning}
+          onClick={onToggleReasoning}
+          title={
+            showReasoning
+              ? "Hide the reasoning behind each reply"
+              : "Show the reasoning behind each reply"
+          }
+          className={cn(
+            "shrink-0",
+            showReasoning ? "text-primary" : "text-muted-foreground",
+          )}
+        >
+          <Brain className="size-4" />
+          <span className="hidden sm:inline">Reasoning</span>
+        </Button>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="shrink-0"
-        asChild
-        title="Home"
-      >
-        <Link href={routes.dashboard} aria-label="Home">
-          <LayoutDashboard className="size-5" />
-        </Link>
-      </Button>
+        {sessionId ? (
+          confirming ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={deleting}
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={deleting}
+                onClick={() => void handleConfirmDelete()}
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 text-muted-foreground hover:text-destructive"
+              onClick={() => setConfirming(true)}
+            >
+              <Trash2 className="size-4" />
+              <span className="hidden sm:inline">Delete chat</span>
+            </Button>
+          )
+        ) : null}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          asChild
+          title="Home"
+        >
+          <Link href={routes.dashboard} aria-label="Home">
+            <LayoutDashboard className="size-5" />
+          </Link>
+        </Button>
+      </div>
     </header>
   );
 }
