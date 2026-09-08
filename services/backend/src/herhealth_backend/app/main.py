@@ -41,13 +41,21 @@ from herhealth_backend.app.config import cors_origins as configured_cors_origins
 from herhealth_backend.app.config import email_sender_kind as configured_email_sender_kind
 from herhealth_backend.app.config import google_client_id as configured_google_client_id
 from herhealth_backend.app.config import knowledge_dir as configured_knowledge_dir
+from herhealth_backend.app.config import model_selector_enabled as configured_model_selector_enabled
 from herhealth_backend.app.config import model_service_url as configured_model_service_url
 from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.config import triage_mode as configured_triage_mode
+from herhealth_backend.app.config import vllm_api_key as configured_vllm_api_key
+from herhealth_backend.app.config import vllm_configured as configured_vllm_configured
 from herhealth_backend.app.config import vllm_model as configured_vllm_model
 from herhealth_backend.app.config import vllm_url as configured_vllm_url
 from herhealth_backend.app.db import Database
+from herhealth_backend.app.triage.reasoning_models import (
+    BASE_MODEL_ID,
+    FINE_TUNED_MODEL_ID,
+    ReasoningModelOption,
+)
 from herhealth_backend.app.triage.routes import router as triage_router
 from herhealth_backend.triage.agent import ReasoningClient, TriageAgent
 from herhealth_backend.triage.clients import (
@@ -102,6 +110,7 @@ def _build_triage_agent() -> TriageAgent | None:
         primary = VllmReasoningClient(
             base_url=configured_vllm_url(),
             model=configured_vllm_model(),
+            api_key=configured_vllm_api_key(),
         )
         api_key = configured_openrouter_api_key()
         reasoning: ReasoningClient
@@ -122,6 +131,54 @@ def _build_triage_agent() -> TriageAgent | None:
         reasoning=OpenRouterReasoningClient(api_key=api_key),
         retrieval=retrieval,
     )
+
+
+def _build_reasoning_models() -> dict[str, ReasoningModelOption]:
+    """The models ``GET /triage/models`` offers and ``POST /triage/turn`` may
+    route to.
+
+    Empty unless ``HERHEALTH_MODEL_SELECTOR`` is on: without it the app has
+    exactly one reasoning path, chosen by ``HERHEALTH_TRIAGE_MODE``, and the
+    selector is invisible rather than present-but-disabled. That is the
+    dev-only scoping ADR 0016 asks for — the fine-tuned adapter must not be
+    reachable at all in a deployment someone is being shown.
+
+    An option appears only when it is actually configured, so the frontend
+    never lists a model that would fail on the first request.
+    """
+    if not configured_model_selector_enabled():
+        return {}
+
+    options: dict[str, ReasoningModelOption] = {}
+
+    openrouter_key = configured_openrouter_api_key()
+    if openrouter_key is not None:
+        options[BASE_MODEL_ID] = ReasoningModelOption(
+            id=BASE_MODEL_ID,
+            label="Base model",
+            description="Qwen3.5-9B as published, with no fine-tuning. The default.",
+            reviewed=True,
+            client=OpenRouterReasoningClient(api_key=openrouter_key),
+        )
+
+    if configured_vllm_configured():
+        options[FINE_TUNED_MODEL_ID] = ReasoningModelOption(
+            id=FINE_TUNED_MODEL_ID,
+            label="Fine-tuned model (experimental)",
+            description=(
+                "Our QLoRA adapter, served on the campus GPU. Not reviewed for "
+                "triage decisions: it was trained without clarifying-question "
+                "examples, so it tends to conclude too early. For comparison only."
+            ),
+            reviewed=False,
+            client=VllmReasoningClient(
+                base_url=configured_vllm_url(),
+                model=configured_vllm_model(),
+                api_key=configured_vllm_api_key(),
+            ),
+        )
+
+    return options
 
 
 def _build_google_verifier() -> GoogleTokenVerifier:
@@ -178,6 +235,8 @@ def create_app(
             app.state.google_verifier = _build_google_verifier()
         if getattr(app.state, "triage_agent", None) is None:
             app.state.triage_agent = _build_triage_agent()
+        if getattr(app.state, "reasoning_models", None) is None:
+            app.state.reasoning_models = _build_reasoning_models()
         try:
             yield
         finally:

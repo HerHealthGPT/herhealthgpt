@@ -3,6 +3,20 @@ export type UserSummary = {
   email: string;
   email_verified: boolean;
   display_name: string | null;
+  /** ISO `YYYY-MM-DD`. Null on accounts created before this was collected —
+   *  that is what the post-sign-up step keys off, not a separate flag. */
+  date_of_birth: string | null;
+  /** Derived server-side from `date_of_birth` on every response, never stored:
+   *  a stored band would be wrong the morning after a birthday. One of
+   *  knowledge/features.yaml's `age_band` values. */
+  age_band: string | null;
+  /** Whether she has written a health note. The text itself needs its own
+   *  request (`getHealthNote`) so clinical free text is not on every poll. */
+  has_health_note: boolean;
+};
+
+export type HealthNote = {
+  content: string | null;
 };
 
 export type PasswordWeakDetail = {
@@ -61,6 +75,29 @@ export type CitedPassage = {
  *  except `rationale` is null or empty, by schema rather than by convention:
  *  action_code, matching_conditions, citations and red_flag_id are all
  *  forbidden there, so render the rationale and nothing else. */
+/** One selectable reasoning model, from GET /triage/models.
+ *
+ *  `reviewed: false` means this model's decisions are not cleared for use as
+ *  guidance — the fine-tuned adapter was trained without clarifying-question
+ *  examples, so it concludes too early. Every answer it produces must be
+ *  labelled in the UI. */
+export type ReasoningModelSummary = {
+  id: string;
+  label: string;
+  description: string;
+  reviewed: boolean;
+  is_default: boolean;
+};
+
+/** Which model produced a decision. Absent when the selector is off, which
+ *  is the default deployment. Stored with the turn, so a reopened chat still
+ *  shows it. */
+export type DecisionReasoningModel = {
+  id: string;
+  label: string;
+  reviewed: boolean;
+};
+
 export type TriageDecision = {
   type: "ask" | "conclude" | "decline";
   question_text: string | null;
@@ -70,6 +107,7 @@ export type TriageDecision = {
   cited_passages?: CitedPassage[];
   red_flag_id: string | null;
   rationale: string;
+  reasoning_model?: DecisionReasoningModel;
 };
 
 export type TriageTurnResponse = {

@@ -31,7 +31,7 @@ function OnboardingContent() {
         if (cancelled) return;
         if (sessions.length > 0) {
           markOnboardingComplete(user.id);
-          router.replace(routes.chat);
+          router.replace(routes.dashboard);
         }
       } catch {
         // Stay on onboarding if we cannot confirm chat history.
@@ -44,7 +44,7 @@ function OnboardingContent() {
   }, [user, router]);
 
   if (user && hasCompletedOnboarding(user.id)) {
-    return <PageLoading message="Taking you to chat…" />;
+    return <PageLoading message="Taking you to your dashboard…" />;
   }
 
   return <OnboardingWizard mode="first-time" />;

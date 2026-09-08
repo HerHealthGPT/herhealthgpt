@@ -1,8 +1,10 @@
 import { Sparkles } from "lucide-react";
 
 import { CitedSources } from "@/components/chat/cited-sources";
+import { ReasoningDisclosure } from "@/components/chat/reasoning-disclosure";
+import { UnreviewedModelNotice } from "@/components/chat/unreviewed-model-notice";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import type { CitedPassage } from "@/lib/api/types";
+import type { CitedPassage, DecisionReasoningModel } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 type ChatMessageProps = {
@@ -12,11 +14,29 @@ type ChatMessageProps = {
    *  the schema requires it to be grounded in a citation or a red flag —
    *  so it shows what prompted it, not just the question itself. */
   citedPassages?: CitedPassage[];
+  /** The decision's `rationale`. Rendered behind a disclosure when
+   *  `showReasoning` is on — see ReasoningDisclosure. */
+  rationale?: string | null;
+  showReasoning?: boolean;
+  reasoningModel?: DecisionReasoningModel;
 };
 
-export function ChatMessage({ role, text, citedPassages }: ChatMessageProps) {
+export function ChatMessage({
+  role,
+  text,
+  citedPassages,
+  rationale,
+  showReasoning = false,
+  reasoningModel,
+}: ChatMessageProps) {
   const isAssistant = role === "assistant";
   const sources = isAssistant ? (citedPassages ?? []) : [];
+  // Only ever on an assistant turn, and only when there is something to
+  // show that is not already the visible message text.
+  const reasoning =
+    isAssistant && showReasoning && rationale && rationale.trim() !== text.trim()
+      ? rationale
+      : null;
 
   return (
     <div
@@ -43,7 +63,9 @@ export function ChatMessage({ role, text, citedPassages }: ChatMessageProps) {
         )}
       >
         <p>{text}</p>
+        {isAssistant ? <UnreviewedModelNotice model={reasoningModel} /> : null}
         {sources.length > 0 ? <CitedSources passages={sources} variant="question" /> : null}
+        {reasoning ? <ReasoningDisclosure rationale={reasoning} /> : null}
       </div>
     </div>
   );

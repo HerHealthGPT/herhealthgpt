@@ -48,11 +48,12 @@ __all__ = [
     "ScriptedReasoningClient",
     "TriageAgent",
     "build_retrieval_query",
+    "render_known_background",
     "render_red_flags",
     "render_feature_vocabulary",
 ]
 
-#: The canonical system prompt. Owns three rules code cannot check on its own.
+#: The canonical system prompt. Owns four rules code cannot check on its own.
 #: First, scope: an off-scope message must be DECLINED, never answered and
 #: never assigned an urgency. The schema (see decision.py) can guarantee a
 #: decline carries no action code and no citation, but only this text can
@@ -61,7 +62,13 @@ __all__ = [
 #: never tells her to take, start, stop or dose a drug, even when the rest
 #: of the message is in-scope period pain or PCOS — a named tablet is still
 #: a prescribing question, and prescribing is diagnosing by another name.
-#: Third, and the framing rule that matters most:
+#: Third, stored profile background (ADR 0015): a known age band is an
+#: answer already given and must not be asked for again, while a health
+#: note is unverified background that may never fire a red flag on its own.
+#: `render_known_background` supplies the values per turn; the standing rule
+#: about how to treat them belongs here, so it holds even on a turn where
+#: no block is injected.
+#: Fourth, and the framing rule that matters most:
 #: the model may say what she described MATCHES a cited pattern, and may
 #: name which authored conditions match — but must never say she HAS a
 #: condition. A red-flag-driven conclusion names no condition either —
@@ -98,6 +105,20 @@ DEFAULT_SYSTEM_PROMPT = (
     "words that she should seek urgent medical help now — that is not a "
     "triage verdict, it is telling her this tool is the wrong one. "
     "For anything inside scope, everything below applies. "
+    "WHAT SHE HAS ALREADY TOLD US. Some consultations include a block headed "
+    "\"Known about her from her profile\". When it gives her age band, that "
+    "is a real answer she has already given to the age_band feature: use it "
+    "in your reasoning, and do NOT spend a turn asking her age, how old she "
+    "is, or which age group she is in — asking again wastes one of the few "
+    "questions you get and reads as though you had not listened. Age is not "
+    "a detail: it separates perimenopause from PCOS after 45, and it is what "
+    "makes bleeding after menopause interpretable at all, so weigh it "
+    "wherever it bears on a condition you are considering. When that block "
+    "also carries a health note she wrote, treat it as unverified background "
+    "she may have typed long ago — never as a symptom she is reporting now, "
+    "never as enough on its own to conclude, and never as grounds for a "
+    "warning sign. If no such block appears you know neither her age nor any "
+    "background, and age is then a reasonable thing to ask about. "
     "MEDICINES ARE NEVER YOURS TO ADVISE. If she asks whether to take, start, "
     "stop, buy, or dose a medicine — named or not, branded or generic, "
     "prescription or from a pharmacy, including painkillers such as ibuprofen "
@@ -238,6 +259,49 @@ def build_retrieval_query(history: Sequence[Message]) -> str:
     return " ".join([user_messages[0], *user_messages[-_QUERY_RECENT_ANSWERS:]])
 
 
+def render_known_background(*, age_band: str | None, health_note: str | None) -> str | None:
+    """What she told us about herself once, framed so it cannot be mistaken
+    for what she is reporting today. ``None`` when there is nothing to say.
+
+    Two things are load-bearing about the wording, both from ADR 0015:
+
+    * The age band is presented as an **answer she already gave** to the
+      ``age_band`` feature, so the model stops spending a turn on it. It is
+      not written into the transcript as a user message, because she did not
+      say it in this consultation and a fabricated turn would be a lie in an
+      auditable record.
+    * The note is presented as **unverified background, explicitly not a
+      symptom report and explicitly not able to fire a red flag**. A woman
+      who typed "I have PCOS" in Settings last month has not told us
+      anything about today, and a red flag inferred from stored free text
+      would escalate on something nobody checked.
+    """
+    lines: list[str] = []
+    if age_band is not None:
+        lines.append(
+            f"- Her age band is {age_band} (the age_band feature is already "
+            "answered — do not ask her age again)."
+        )
+    if health_note:
+        lines.append(
+            "- She has previously written this background about herself, in "
+            f'her own words: "{health_note}"'
+        )
+    if not lines:
+        return None
+    return "\n".join(
+        [
+            "Known about her from her profile, not from this conversation:",
+            *lines,
+            "Treat the above as background only. It is unverified, she may "
+            "have written it long ago, and it is NOT a symptom she is "
+            "reporting now — never conclude from it alone, and never let it "
+            "fire a warning sign on its own. Still ask about what is "
+            "happening today.",
+        ]
+    )
+
+
 def render_red_flags(red_flags: Sequence[RedFlagRule]) -> str:
     """Every red flag, verbatim, as the block injected into every turn.
 
@@ -311,6 +375,7 @@ class TriageAgent:
         query: str | None = None,
         k: int = 8,
         carried_context: Sequence[RetrievedPassage] = (),
+        background: str | None = None,
     ) -> AgentTurn:
         """One retrieve-then-reason step. Does not mutate ``history``.
 
@@ -341,6 +406,12 @@ class TriageAgent:
             f"{render_feature_vocabulary(self.base)}\n\n"
             f"{render_red_flags(self.base.red_flags)}"
         )
+        if background:
+            # Appended to the system prompt rather than injected into
+            # ``history`` as a turn: she never said it in this consultation,
+            # and inventing a user message would put words in her mouth in a
+            # transcript that is meant to be replayable and auditable.
+            system = f"{system}\n\n{background}"
         decision = self.reasoning.decide(system_prompt=system, history=history, context=context)
         return AgentTurn(history_before=tuple(history), retrieved=context, decision=decision)
 

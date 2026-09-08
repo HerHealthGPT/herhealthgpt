@@ -5,7 +5,7 @@
  * Base path is proxied to the backend via Next.js rewrites (/api → localhost:8000).
  */
 import { apiRequest } from "./client";
-import type { UserSummary } from "./types";
+import type { HealthNote, UserSummary } from "./types";
 
 /** POST /accounts/register → 201 */
 export function register(email: string, password: string) {
@@ -78,6 +78,36 @@ export function updateProfile(displayName: string | null) {
     method: "PATCH",
     body: { display_name: displayName },
   });
+}
+
+/** PATCH /accounts/me → 200, or 400 if the date is implausible.
+ *
+ *  `dateOfBirth` is ISO `YYYY-MM-DD`. Sent on its own rather than through
+ *  `updateProfile`, because that call's `display_name` key means "clear the
+ *  name" when absent — see UpdateProfileRequest on the backend. */
+export function updateDateOfBirth(dateOfBirth: string) {
+  return apiRequest<UserSummary>("/accounts/me", {
+    method: "PATCH",
+    body: { display_name: null, date_of_birth: dateOfBirth },
+  });
+}
+
+/** GET /accounts/health-note → 200 */
+export function getHealthNote() {
+  return apiRequest<HealthNote>("/accounts/health-note");
+}
+
+/** PUT /accounts/health-note → 200. Null or blank clears it. */
+export function saveHealthNote(content: string | null) {
+  return apiRequest<HealthNote>("/accounts/health-note", {
+    method: "PUT",
+    body: { content },
+  });
+}
+
+/** DELETE /accounts/health-note → 204. Deletes the note, not the account. */
+export function deleteHealthNote() {
+  return apiRequest<void>("/accounts/health-note", { method: "DELETE" });
 }
 
 /** POST /accounts/refresh → 204 */

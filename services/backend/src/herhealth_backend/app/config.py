@@ -27,12 +27,17 @@ __all__ = [
     "knowledge_dir",
     "MODEL_SERVICE_URL_ENV",
     "model_service_url",
+    "MODEL_SELECTOR_ENV",
+    "model_selector_enabled",
     "OPENROUTER_API_KEY_ENV",
     "openrouter_api_key",
     "TRIAGE_MODE_ENV",
     "triage_mode",
+    "VLLM_API_KEY_ENV",
     "VLLM_MODEL_ENV",
     "VLLM_URL_ENV",
+    "vllm_api_key",
+    "vllm_configured",
     "vllm_model",
     "vllm_url",
     "COOKIE_SECURE_ENV",
@@ -152,6 +157,19 @@ TRIAGE_MODE_ENV = "HERHEALTH_TRIAGE_MODE"
 VLLM_URL_ENV = "HERHEALTH_VLLM_URL"
 VLLM_MODEL_ENV = "HERHEALTH_VLLM_MODEL"
 
+#: Bearer token for the vLLM server, when it was started with ``--api-key``.
+#: Optional: a server on a trusted LAN or behind an SSH tunnel needs none,
+#: and sending an empty Authorization header would be worse than sending
+#: nothing. See triage/clients.py's VllmReasoningClient.
+VLLM_API_KEY_ENV = "HERHEALTH_VLLM_API_KEY"
+
+#: Whether ``GET /triage/models`` offers more than the default model, letting
+#: a caller choose per turn. Off by default and deliberately dev-only: the
+#: fine-tuned adapter is not cleared to make triage decisions (CLAUDE.md, and
+#: docs/runbooks/dev-vllm-lora-endpoint.md §6), so a marker or a supervisor
+#: opening this app must see one model and no switch. See ADR 0016.
+MODEL_SELECTOR_ENV = "HERHEALTH_MODEL_SELECTOR"
+
 #: Auth cookies' ``secure`` flag. Defaults to true; set ``false`` for plain-HTTP
 #: local dev (http://localhost) so browsers store and send session cookies.
 COOKIE_SECURE_ENV = "HERHEALTH_COOKIE_SECURE"
@@ -204,6 +222,28 @@ def vllm_url() -> str:
 def vllm_model() -> str:
     """The ``model`` field sent to vLLM — typically the LoRA module name."""
     return os.environ.get(VLLM_MODEL_ENV, "herhealth")
+
+
+def vllm_api_key() -> str | None:
+    """Bearer token for the vLLM server, or ``None`` when it needs none."""
+    return os.environ.get(VLLM_API_KEY_ENV) or None
+
+
+def vllm_configured() -> bool:
+    """Whether a vLLM endpoint has been named at all.
+
+    Keyed on the URL being set explicitly rather than on
+    :func:`vllm_url`, which has a localhost default — the fine-tuned model
+    must not appear as a selectable option just because nothing was
+    configured.
+    """
+    return bool(os.environ.get(VLLM_URL_ENV, "").strip())
+
+
+def model_selector_enabled() -> bool:
+    """Whether per-turn model choice is offered. Off unless asked for."""
+    raw = os.environ.get(MODEL_SELECTOR_ENV, "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 def cookie_secure() -> bool:

@@ -1,6 +1,8 @@
 import { Info } from "lucide-react";
 
+import { UnreviewedModelNotice } from "@/components/chat/unreviewed-model-notice";
 import { Card, CardContent } from "@/components/ui/card";
+import type { DecisionReasoningModel } from "@/lib/api/types";
 
 /**
  * An off-scope message, refused — see ADR 0014.
@@ -16,7 +18,13 @@ import { Card, CardContent } from "@/components/ui/card";
  * active), so the composer stays open and she can ask something in scope
  * next. An off-scope question should cost her nothing.
  */
-export function DeclineCard({ rationale }: { rationale: string }) {
+export function DeclineCard({
+  rationale,
+  reasoningModel,
+}: {
+  rationale: string;
+  reasoningModel?: DecisionReasoningModel;
+}) {
   return (
     <Card className="animate-in fade-in slide-in-from-bottom-3 border-border/60 bg-muted/40 shadow-none duration-500">
       <CardContent className="flex items-start gap-3 py-1">
@@ -24,6 +32,7 @@ export function DeclineCard({ rationale }: { rationale: string }) {
           <Info className="size-4" />
         </span>
         <div className="space-y-2">
+          <UnreviewedModelNotice model={reasoningModel} />
           <p className="text-sm leading-relaxed text-foreground/90">{rationale}</p>
           <p className="text-xs leading-relaxed text-muted-foreground">
             No urgency level and no sources are shown here, because nothing was

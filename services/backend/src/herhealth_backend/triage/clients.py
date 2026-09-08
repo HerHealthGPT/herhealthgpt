@@ -31,6 +31,7 @@ __all__ = [
     "HttpRetrievalClient",
     "OPENROUTER_API_KEY_ENV",
     "OpenRouterReasoningClient",
+    "VLLM_API_KEY_ENV",
     "VLLM_MODEL_ENV",
     "VLLM_URL_ENV",
     "VllmReasoningClient",
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 VLLM_URL_ENV = "HERHEALTH_VLLM_URL"
 VLLM_MODEL_ENV = "HERHEALTH_VLLM_MODEL"
+VLLM_API_KEY_ENV = "HERHEALTH_VLLM_API_KEY"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 _CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 
@@ -335,6 +337,7 @@ class VllmReasoningClient:
         *,
         base_url: str | None = None,
         model: str | None = None,
+        api_key: str | None = None,
         client: httpx.Client | None = None,
         timeout: float = 120.0,
     ) -> None:
@@ -343,6 +346,13 @@ class VllmReasoningClient:
         self._model = model or os.environ.get(VLLM_MODEL_ENV, DEFAULT_VLLM_MODEL)
         self._client = client or httpx.Client(timeout=timeout)
         self._headers = {"Content-Type": "application/json"}
+        # vLLM's ``--api-key`` makes it expect the same Bearer scheme
+        # OpenRouter uses. Added only when a key exists: an empty
+        # Authorization header is worse than none, because a server that
+        # requires no key would still see a malformed credential.
+        key = api_key or os.environ.get(VLLM_API_KEY_ENV) or None
+        if key:
+            self._headers["Authorization"] = f"Bearer {key}"
 
     def decide(
         self,
