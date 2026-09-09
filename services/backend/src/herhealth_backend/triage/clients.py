@@ -202,13 +202,30 @@ def _parse_chat_completion_payload(payload: object) -> TriageDecision:
         raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
 
 
-def _chat_completions_body(*, model: str, messages: list[dict[str, str]]) -> dict[str, object]:
-    return {
+def _chat_completions_body(
+    *,
+    model: str,
+    messages: list[dict[str, str]],
+    enforce_json_object: bool = True,
+) -> dict[str, object]:
+    """Build the OpenAI-compatible chat body.
+
+    ``response_format: json_object`` is on for OpenRouter. On campus vLLM
+    (Qwen3.5 + LoRA, TP=2) that same field turns on xgrammar structured
+    outputs; the Triton ``apply_token_bitmask_inplace`` kernel then hits
+    ``CUDA: unspecified launch failure``, kills Worker_TP1, and takes the
+    whole EngineCore down (observed 2026-09-08 on Lobot). Prompt-shaped JSON
+    plus ``TriageDecision.model_validate`` is enough until guided decoding is
+    wired deliberately (ADR 0011 checklist item 7).
+    """
+    body: dict[str, object] = {
         "model": model,
         "messages": messages,
-        "response_format": {"type": "json_object"},
         "chat_template_kwargs": {"enable_thinking": False},
     }
+    if enforce_json_object:
+        body["response_format"] = {"type": "json_object"}
+    return body
 
 
 def _decide_via_chat_completions(
@@ -220,6 +237,7 @@ def _decide_via_chat_completions(
     system_prompt: str,
     history: Sequence[Message],
     context: Sequence[RetrievedPassage],
+    enforce_json_object: bool = True,
 ) -> TriageDecision:
     """POST /v1/chat/completions with validation retries and error feedback."""
     retry_feedback = ""
@@ -231,7 +249,11 @@ def _decide_via_chat_completions(
             context=context,
             retry_feedback=retry_feedback,
         )
-        body = _chat_completions_body(model=model, messages=messages)
+        body = _chat_completions_body(
+            model=model,
+            messages=messages,
+            enforce_json_object=enforce_json_object,
+        )
         response = client.post(url, headers=headers, json=body)
         response.raise_for_status()
         try:
@@ -329,7 +351,10 @@ class VllmReasoningClient:
     See ``docs/runbooks/dev-vllm-lora-endpoint.md`` and
     ``docs/runbooks/friend-pc-vllm-setup.md``. Uses the same plain-JSON
     contract as :class:`OpenRouterReasoningClient` until guided decoding is
-    wired (ADR 0011 migration checklist item 7).
+    wired (ADR 0011 migration checklist item 7). Does **not** send
+    ``response_format: json_object`` — on the Lobot Qwen3.5 + LoRA serve that
+    path crashes the engine via xgrammar/Triton (see
+    ``_chat_completions_body``).
     """
 
     def __init__(
@@ -369,6 +394,7 @@ class VllmReasoningClient:
             system_prompt=system_prompt,
             history=history,
             context=context,
+            enforce_json_object=False,
         )
 
 

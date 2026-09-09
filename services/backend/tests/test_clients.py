@@ -124,6 +124,8 @@ def test_vllm_client_posts_to_chat_completions(monkeypatch: pytest.MonkeyPatch) 
     assert isinstance(body, dict)
     assert body["model"] == "herhealth"
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    # Must not request json_object — that path crashes campus vLLM via xgrammar.
+    assert "response_format" not in body
     assert decision.type is DecisionType.ASK
 
 
