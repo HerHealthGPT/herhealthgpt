@@ -97,6 +97,18 @@ export function completeProfile(displayName: string, dateOfBirth: string) {
   });
 }
 
+/** PATCH /accounts/me → 200, or 400 if the date is implausible.
+ *
+ *  Date of birth alone, for the settings form. Safe now that the backend
+ *  only touches fields a request actually names — before that change this
+ *  had to send `display_name: null` and wiped the name as a side effect. */
+export function updateDateOfBirth(dateOfBirth: string) {
+  return apiRequest<UserSummary>("/accounts/me", {
+    method: "PATCH",
+    body: { date_of_birth: dateOfBirth },
+  });
+}
+
 /** GET /accounts/health-note → 200 */
 export function getHealthNote() {
   return apiRequest<HealthNote>("/accounts/health-note");

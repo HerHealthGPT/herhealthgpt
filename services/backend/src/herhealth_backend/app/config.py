@@ -38,6 +38,7 @@ __all__ = [
     "VLLM_URL_ENV",
     "vllm_api_key",
     "vllm_configured",
+    "reasoning_timeout",
     "vllm_max_attempts",
     "vllm_model",
     "vllm_timeout",
@@ -173,6 +174,9 @@ VLLM_TIMEOUT_ENV = "HERHEALTH_VLLM_TIMEOUT"
 #: How many times the vLLM client re-prompts itself before failing over.
 VLLM_MAX_ATTEMPTS_ENV = "HERHEALTH_VLLM_MAX_ATTEMPTS"
 
+#: Whole-turn budget in the triage route, in seconds.
+REASONING_TIMEOUT_ENV = "HERHEALTH_REASONING_TIMEOUT"
+
 #: Whether ``GET /triage/models`` offers more than the default model, letting
 #: a caller choose per turn. Off by default and deliberately dev-only: the
 #: fine-tuned adapter is not cleared to make triage decisions (CLAUDE.md, and
@@ -237,6 +241,28 @@ def vllm_model() -> str:
 def vllm_api_key() -> str | None:
     """Bearer token for the vLLM server, or ``None`` when it needs none."""
     return os.environ.get(VLLM_API_KEY_ENV) or None
+
+
+def reasoning_timeout() -> float:
+    """Seconds one triage turn may take end to end. Default 150.
+
+    Raise this only alongside :func:`vllm_timeout`, and only if the network
+    path actually allows it. On the campus route it does not: JupyterHub's
+    reverse proxy cuts at roughly 60 seconds regardless of what this says,
+    so a larger budget here buys nothing on its own — it just means the
+    backend waits longer for a request the proxy has already killed.
+
+    The ceiling that matters is the smallest one on the path, and it is not
+    ours.
+    """
+    raw = os.environ.get(REASONING_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return 150.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 150.0
+    return value if value > 0 else 150.0
 
 
 def vllm_timeout() -> float:

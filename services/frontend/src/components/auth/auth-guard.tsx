@@ -1,15 +1,34 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { useAuth } from "@/contexts/auth-context";
 import { routes } from "@/lib/routes";
 import { PageLoading } from "@/components/ui/page-loading";
 
+/**
+ * Gates every signed-in page on three things, in order: signed in, email
+ * verified, profile complete.
+ *
+ * The third is new. Name and date of birth are mandatory, and "mandatory"
+ * only means anything if something enforces it — so an account missing
+ * either is sent to onboarding and cannot reach the chat until both are
+ * set. That deliberately catches accounts created before the fields
+ * existed: they complete their profile on next sign-in rather than being
+ * grandfathered in with a name the app cannot address them by and an age
+ * the triage prompt has to spend a question asking for.
+ *
+ * Onboarding itself is exempt, or the redirect would loop into the page
+ * that fixes the problem.
+ */
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, isLoading } = useAuth();
+
+  const onOnboarding = pathname?.startsWith(routes.onboarding) ?? false;
+  const profileIncomplete = Boolean(user?.email_verified) && user?.profile_complete === false;
 
   useEffect(() => {
     if (isLoading) {
@@ -25,8 +44,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace(
         `${routes.verifyEmail}?email=${encodeURIComponent(user.email)}`,
       );
+      return;
     }
-  }, [isLoading, user, router]);
+
+    if (!user.profile_complete && !onOnboarding) {
+      router.replace(routes.onboarding);
+    }
+  }, [isLoading, user, router, onOnboarding]);
 
   if (isLoading) {
     return (
@@ -41,6 +65,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (!user || !user.email_verified) {
     return <PageLoading message="Almost there…" />;
+  }
+
+  if (profileIncomplete && !onOnboarding) {
+    return <PageLoading message="Just one thing first…" />;
   }
 
   return <>{children}</>;

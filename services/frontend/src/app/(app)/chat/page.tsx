@@ -30,6 +30,8 @@ import type {
   TriageSessionMessage,
   TriageSessionSummary,
 } from "@/lib/api/types";
+import { useAuth } from "@/contexts/auth-context";
+import { userDisplayName } from "@/lib/display-name";
 import { routes } from "@/lib/routes";
 
 type ChatEntry =
@@ -56,12 +58,33 @@ type ChatEntry =
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 type ChatEntryInput = DistributiveOmit<ChatEntry, "id">;
 
+const GREETING_TEXT =
+  "I'm here to help you figure out what to do next. Tell me what's going on, in your own words, and I'll ask a few follow-up questions if I need to.";
+
+/** The opening bubble, addressed to her by name when we have one.
+ *
+ *  A name is mandatory at sign-up now, so in practice we always do — but
+ *  this still falls back, because the greeting renders from the very first
+ *  paint and `user` can be null for a tick while the session loads. A
+ *  bubble reading "Hi , " is worse than a bubble reading "Hi". */
+function greetingText(name: string | null): string {
+  return name ? `Hi ${name} — ${GREETING_TEXT}` : `Hi — ${GREETING_TEXT}`;
+}
+
 const GREETING: ChatEntry = {
   id: "greeting",
   kind: "message",
   role: "assistant",
-  text: "Hi — I'm here to help you figure out what to do next. Tell me what's going on, in your own words, and I'll ask a few follow-up questions if I need to.",
+  text: greetingText(null),
 };
+
+/** The greeting's text is derived from the signed-in user at render time,
+ *  not stored. Storing it meant an effect rewriting state the moment the
+ *  name loaded — a cascading render to say something the component already
+ *  knew. Every other entry passes through untouched. */
+function entryText(entry: ChatEntry & { kind: "message" }, name: string | null): string {
+  return entry.id === "greeting" ? greetingText(name) : entry.text;
+}
 
 function newId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -134,6 +157,8 @@ function transcriptToEntries(messages: TriageSessionMessage[]): ChatEntry[] {
 
 function ChatContent({ requestedSessionId }: { requestedSessionId: string | null }) {
   const router = useRouter();
+  const { user } = useAuth();
+  const greetingName = userDisplayName(user);
 
   const [entries, setEntries] = useState<ChatEntry[]>([GREETING]);
   const [sessionId, setSessionId] = useState<string | null>(requestedSessionId);
@@ -399,7 +424,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
                   <ChatMessage
                     key={entry.id}
                     role={entry.role}
-                    text={entry.text}
+                    text={entryText(entry, greetingName)}
                     citedPassages={entry.citedPassages}
                     rationale={entry.rationale}
                     reasoningModel={entry.reasoningModel}

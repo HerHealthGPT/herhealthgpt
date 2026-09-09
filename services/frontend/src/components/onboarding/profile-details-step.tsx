@@ -8,7 +8,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
-import { saveHealthNote, updateDateOfBirth } from "@/lib/api/accounts";
+import { completeProfile, saveHealthNote } from "@/lib/api/accounts";
 import { friendlyApiError } from "@/lib/api/errors";
 
 /** Mirrors profile.MAX_HEALTH_NOTE_LENGTH on the backend. */
@@ -36,22 +36,35 @@ type ProfileDetailsStepProps = {
 };
 
 /**
- * The one step in onboarding that collects rather than explains: her date of
- * birth (required) and anything she wants us to know (optional).
+ * The one step in onboarding that collects rather than explains.
  *
- * Date of birth is required because age changes what the system suspects —
- * knowledge/features.yaml records that 45 is what separates perimenopause from
- * PCOS — so without it every consultation has to spend a question asking. It
- * is stored as a date, not an age, so it cannot go stale.
+ * Two required fields and one optional one, and the split is deliberate:
+ *
+ * - **Name** — required. It is what the app calls her, in the greeting and
+ *   on the dashboard. Cheap to give and it makes a health tool addressing a
+ *   worried stranger feel less like a form.
+ * - **Date of birth** — required, because age changes what the system
+ *   suspects: `knowledge/features.yaml` records that 45 is what separates
+ *   perimenopause from PCOS. Without it, every consultation burns one of its
+ *   few questions asking. Stored as a date rather than an age so it cannot
+ *   go stale.
+ * - **Health note** — optional, and it stays optional. Blocking on free-text
+ *   clinical background would pressure someone into writing something just
+ *   to get past a wall, and unreliable background is worse than none.
+ *
+ * Both required fields save in a single request. They have to: the backend
+ * only touches fields a request names, so sending them separately would mean
+ * a half-finished profile if the second call failed.
  */
 export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
-  const { setUser, refreshUser } = useAuth();
+  const { user, setUser, refreshUser } = useAuth();
+  const [name, setName] = useState(() => user?.display_name ?? "");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = dateOfBirth !== "" && !saving;
+  const canSubmit = name.trim() !== "" && dateOfBirth !== "" && !saving;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -60,8 +73,8 @@ export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateDateOfBirth(dateOfBirth);
-      // Only after the required field is accepted, so a rejected date does
+      const updated = await completeProfile(name.trim(), dateOfBirth);
+      // Only after the required fields are accepted, so a rejected date does
       // not leave a note stored against a half-finished profile.
       const trimmedNote = note.trim();
       if (trimmedNote) {
@@ -79,6 +92,24 @@ export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
 
   return (
     <form onSubmit={(event) => void handleSubmit(event)} className="w-full space-y-6">
+      <Field>
+        <FieldLabel htmlFor="display-name">Your name</FieldLabel>
+        <Input
+          id="display-name"
+          type="text"
+          required
+          maxLength={80}
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="What should we call you?"
+          autoComplete="given-name"
+        />
+        <FieldDescription>
+          Just so we can address you properly. A first name or a nickname is
+          plenty.
+        </FieldDescription>
+      </Field>
+
       <Field>
         <FieldLabel htmlFor="date-of-birth">Date of birth</FieldLabel>
         <Input
