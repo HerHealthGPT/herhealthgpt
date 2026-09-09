@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, PhoneCall, Siren } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
 import { CitedSources } from "@/components/chat/cited-sources";
 import { UnreviewedModelNotice } from "@/components/chat/unreviewed-model-notice";
@@ -22,12 +22,6 @@ import {
 } from "@/lib/design/action";
 import { cn } from "@/lib/utils";
 
-const toneIcon = {
-  calm: CheckCircle2,
-  urgent: PhoneCall,
-  emergency: Siren,
-} as const;
-
 type ConclusionCardProps = {
   decision: TriageDecision;
   onStartNewChat: () => void;
@@ -39,7 +33,10 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
   }
 
   const display = actionDisplay[decision.action_code];
-  const Icon = toneIcon[display.tone];
+  // Keyed on the action code, not the tone — see ActionDisplay.icon. The
+  // same icon appears on the landing page's urgency scale, so what she was
+  // shown before signing up is what she gets in the answer.
+  const Icon = display.icon;
 
   return (
     <Card className={cn("border shadow-sm animate-in fade-in slide-in-from-bottom-3 duration-500", surfaceClassesForTone(display.tone))}>
@@ -92,13 +89,27 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
           </p>
         ) : null}
 
-        <div className="flex items-start gap-2 rounded-lg bg-background/60 p-3 text-xs text-muted-foreground">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          <p>
-            This is urgency guidance from cited sources, not a diagnosis. We&apos;re
-            an AI tool, not a clinician — if you&apos;re ever unsure, please see a
-            doctor.
-          </p>
+        {/* Amber, not the urgency reds and not brand berry: `globals.css`
+            reserves the reds for the urgency verdict itself, and colouring a
+            standing notice the same way would compete with the thing it sits
+            under. Amber reads as "read this" without reading as "emergency".
+            Text sits at full foreground rather than muted — a disclaimer
+            nobody can be bothered to read is not a disclaimer. */}
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+          <AlertTriangle
+            className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-500"
+            aria-hidden
+          />
+          <div className="text-xs leading-relaxed">
+            <p className="font-bold tracking-wide text-amber-700 dark:text-amber-400">
+              DISCLAIMER
+            </p>
+            <p className="mt-1 text-foreground/90">
+              This is urgency guidance from cited sources, not a diagnosis.
+              We&apos;re an AI tool, not a clinician, and we can be wrong — if
+              you&apos;re ever unsure, please see a doctor.
+            </p>
+          </div>
         </div>
       </CardContent>
 

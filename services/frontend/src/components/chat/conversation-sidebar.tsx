@@ -9,12 +9,14 @@ import {
   LayoutDashboard,
   LogOut,
   MessageSquarePlus,
+  MoreHorizontal,
   Settings,
 } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Illustration } from "@/components/ui/illustration";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import type { TriageSessionSummary, UserSummary } from "@/lib/api/types";
@@ -240,11 +242,12 @@ export function ConversationSidebar({
               <Skeleton className="h-11 w-full rounded-xl bg-sidebar-accent/40" />
             </div>
           ) : sessions.length === 0 ? (
-            <p className="px-2 py-6 text-center text-sm leading-relaxed text-muted-foreground">
-              No past chats yet.
-              <br />
-              Start one above.
-            </p>
+            <div className="px-2 py-6 text-center">
+              <Illustration name="conversation" className="mx-auto mb-3 w-32" />
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                No chats yet. Start one above and it&apos;ll show up here.
+              </p>
+            </div>
           ) : (
             grouped.map((group) => (
               <div key={group.label}>
@@ -256,7 +259,7 @@ export function ConversationSidebar({
                     <div
                       key={session.id}
                       className={cn(
-                        "group relative flex items-stretch rounded-xl transition-colors",
+                        "group relative flex min-w-0 items-stretch rounded-xl transition-colors",
                         activeSessionId === session.id
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
                           : "hover:bg-sidebar-accent/60",
@@ -295,24 +298,57 @@ export function ConversationSidebar({
                           <button
                             type="button"
                             onClick={() => onSelectSession(session.id)}
-                            className="min-w-0 flex-1 px-3 py-2.5 text-left"
+                            className="min-w-0 flex-1 overflow-hidden px-3 py-2.5 pr-3 text-left"
                           >
-                            <p className="truncate text-sm">{session.preview}</p>
+                            {/* block + w-full so `truncate` has a definite
+                                width to truncate against: inside a flex row a
+                                bare <p> can size to its content and push the
+                                delete control off the panel instead of
+                                ellipsing. */}
+                            <p className="block w-full truncate text-sm">
+                              {session.preview}
+                            </p>
                             {session.status === "concluded" ? (
                               <p className="mt-0.5 text-xs text-muted-foreground">Completed</p>
                             ) : null}
                           </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setConfirmingDeleteId(session.id);
-                            }}
-                            className="mr-2 shrink-0 self-center rounded-md px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10"
-                            aria-label={`Delete chat: ${session.preview}`}
+                          {/* The "…" affordance. Sits over the end of the
+                              title on a gradient rather than beside it, so
+                              the title always gets the panel's full width to
+                              truncate into and the control costs no layout.
+                              The gradient fades the ellipsed text out under
+                              the button instead of letting a half-letter
+                              collide with it.
+
+                              Always in the DOM and reachable by keyboard:
+                              hidden by opacity, never `hidden`, so tab order
+                              and screen readers are unaffected. */}
+                          <div
+                            className={cn(
+                              "pointer-events-none absolute inset-y-0 right-0 flex items-center pl-8 pr-1.5",
+                              "bg-gradient-to-l from-sidebar-accent via-sidebar-accent to-transparent",
+                              "rounded-r-xl opacity-0 transition-opacity",
+                              "group-hover:opacity-100 group-focus-within:opacity-100",
+                              activeSessionId === session.id ? "" : "from-sidebar via-sidebar",
+                            )}
                           >
-                            Delete
-                          </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setConfirmingDeleteId(session.id);
+                              }}
+                              className={cn(
+                                "pointer-events-auto rounded-md p-1.5 text-muted-foreground transition",
+                                "hover:bg-destructive/10 hover:text-destructive",
+                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              )}
+                              aria-label={`Delete chat: ${session.preview}`}
+                              title="Delete chat"
+                            >
+                              <MoreHorizontal className="size-4" aria-hidden />
+                            </button>
+                          </div>
                         </>
                       )}
                     </div>

@@ -1,126 +1,145 @@
-"use client";
-
 import Link from "next/link";
-import {
-  ArrowRight,
-  BookOpen,
-  Globe,
-  MessageCircle,
-} from "lucide-react";
+import { Heart } from "lucide-react";
 
 import { SiteHeader } from "@/components/layout/site-header";
+import { ConversationPreview } from "@/components/marketing/conversation-preview";
 import { Button } from "@/components/ui/button";
+import { Illustration } from "@/components/ui/illustration";
+import { UrgencyScale } from "@/components/urgency-scale";
 import { routes } from "@/lib/routes";
-import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
-const features = [
-  {
-    icon: MessageCircle,
-    title: "Say it your way",
-    description:
-      "Heavy periods, pelvic pain, or something that just feels off. Write it like you'd tell a friend.",
-  },
-  {
-    icon: BookOpen,
-    title: "Conditions that might fit",
-    description:
-      "We can suggest health conditions your symptoms may match, with links to trusted sources. Information to help you decide, not a doctor's verdict.",
-  },
-  {
-    icon: Globe,
-    title: "English, French, and Arabic",
-    description: "Use whichever language you're most comfortable in.",
-  },
-];
-
+/**
+ * The four urgency levels, in severity order — `knowledge/actions.yaml`.
+ *
+ * Shown as a scale rather than a card grid because it *is* an ordered
+ * sequence, which is the only thing that justifies a sequence device. It is
+ * also the honest summary of what this product does: it does not tell you
+ * what you have, it tells you where on this line you are.
+ *
+ * Deliberately not coloured with the `--urgency-*` tokens. `globals.css`
+ * reserves those saturated reds for result screens, and putting alarm red on
+ * a marketing page would be both a token violation and bad manners toward
+ * someone who is already worried.
+ */
 export default function HomePage() {
   return (
     <>
       <SiteHeader />
 
       <main className="flex-1">
-        <section className="relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-b from-primary/10 via-background to-background" />
-          <div className="absolute -right-24 top-0 size-96 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute -left-24 bottom-0 size-80 rounded-full bg-accent/20 blur-3xl" />
+        <section className="border-b border-border/60 bg-gradient-to-b from-accent/40 to-background">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 sm:py-20 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-center lg:gap-16">
+            <div>
+              {/* The wordmark, as the lockup used in the header and the chat
+                  sidebar — heart mark, and GPT in primary. Reads as a logo
+                  rather than a styled heading, which is why the coloured
+                  fragment belongs here and not in the h1 below. A first-time
+                  visitor has to be told what this is called, and the header
+                  logo is too small to carry that on its own. */}
+              <p className="flex items-center gap-2.5 text-2xl font-bold tracking-tight sm:text-3xl">
+                <span
+                  className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary sm:size-11"
+                  aria-hidden
+                >
+                  <Heart className="size-5 fill-current sm:size-6" />
+                </span>
+                {/* The wordmark is ONE flex item, not two. Left as a bare text
+                    node plus a <span>, flexbox treats "HerHealth" and "GPT" as
+                    separate children and puts the container's gap between
+                    them — the name renders broken in half. Same lockup as
+                    `site-header.tsx`, which wraps it for this reason. */}
+                <span>
+                  HerHealth<span className="text-primary">GPT</span>
+                </span>
+              </p>
 
-          <div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-            <div className="mx-auto max-w-3xl text-center">
-              <p className="mb-3 text-3xl font-bold tracking-tight sm:text-4xl">
-                HerHealth<span className="text-primary">GPT</span>
-              </p>
-              <p className="mb-4 text-sm text-muted-foreground">
-                For when you&apos;re not sure what to do
-              </p>
-              <h1 className="text-3xl font-semibold tracking-tight text-balance sm:text-4xl sm:leading-tight">
-                Talk through what&apos;s going on.{" "}
-                <span className="text-primary">Work out what to do next.</span>
+              <h1 className="mt-6 max-w-[15ch] text-4xl font-semibold leading-[1.1] tracking-tight text-balance sm:text-5xl">
+                Not sure if this needs a doctor?
               </h1>
-              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-                <span className="font-semibold text-foreground">HerHealthGPT</span>{" "}
-                is a health chat for women. You tell us how you feel. We ask a
-                few follow-up questions. We may suggest conditions your symptoms
-                could fit, and how soon to see someone. We&apos;re not a doctor,
-                and this isn&apos;t a diagnosis.
+
+              <p className="mt-5 max-w-[46ch] text-lg leading-relaxed text-muted-foreground">
+                Describe what&apos;s going on in your own words. We ask a couple
+                of questions, then tell you how soon to be seen — and show you
+                the source we got that from.
               </p>
-              <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button size="lg" asChild className="min-w-[180px]">
-                  <Link href={routes.signUp}>
-                    Create a free account
-                    <ArrowRight className="size-4" />
-                  </Link>
+                  <Link href={routes.signUp}>Start a chat</Link>
                 </Button>
-                <Button size="lg" variant="outline" asChild className="min-w-[180px]">
-                  <Link href={routes.signIn}>I already have an account</Link>
+                <Button size="lg" variant="outline" asChild className="min-w-[160px]">
+                  <Link href={routes.signIn}>Sign in</Link>
                 </Button>
               </div>
-            </div>
-          </div>
-        </section>
 
-        <section className="border-t border-border/60 bg-muted/30 py-20">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <div className="mb-12 text-center">
-              <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-                What you get
-              </h2>
-              <p className="mt-3 text-muted-foreground">
-                A private chat, a clear next step, and links you can check
+              <p className="mt-6 text-sm text-muted-foreground">
+                Ask in English, French or Arabic.
               </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-3">
-              {features.map((feature) => (
-                <Card
-                  key={feature.title}
-                  className="border-border/70 bg-card/80 backdrop-blur-sm"
-                >
-                  <CardHeader>
-                    <div className="mb-3 flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <feature.icon className="size-5" />
-                    </div>
-                    <CardTitle className="text-lg">{feature.title}</CardTitle>
-                    <CardDescription className="text-base leading-relaxed">
-                      {feature.description}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
+            <div className="lg:pl-4">
+              <ConversationPreview />
             </div>
           </div>
         </section>
 
-        <section className="py-16">
-          <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              HerHealthGPT shares health information, not medical advice or a
-              diagnosis. We&apos;re not a doctor. If something feels urgent,
-              call emergency services or go to hospital.
+        <section className="border-b border-border/60 py-14 sm:py-16">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-center lg:gap-16">
+              <div>
+                <h2 className="max-w-[24ch] text-2xl font-semibold tracking-tight sm:text-3xl">
+                  Every answer lands somewhere on this line
+                </h2>
+                <p className="mt-3 max-w-[52ch] text-muted-foreground">
+                  We don&apos;t tell you what you have. We tell you how urgent
+                  it is, and why we think so.
+                </p>
+              </div>
+              {/* Its own slot rather than reusing `welcome`: someone who
+                  signs up meets that one again on onboarding step 1 and on
+                  the dashboard, and the same drawing three times in five
+                  minutes reads as a placeholder. */}
+              <Illustration
+                name="urgency"
+                className="max-h-[240px] w-full max-w-[280px] object-contain justify-self-center lg:justify-self-end"
+              />
+            </div>
+
+            <UrgencyScale className="mt-10" />
+          </div>
+        </section>
+
+        {/* Evidence, then the ask. The illustration leads on this one so the
+            two visual sections alternate sides rather than stacking down one
+            edge of the page. */}
+        <section className="border-b border-border/60 bg-accent/20 py-14 sm:py-16">
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-center lg:gap-16">
+            <Illustration
+              name="sources"
+              className="max-h-[240px] w-full max-w-[280px] object-contain justify-self-center lg:justify-self-start"
+            />
+            <div>
+              <h2 className="max-w-[24ch] text-2xl font-semibold tracking-tight sm:text-3xl">
+                You can check where every answer came from
+              </h2>
+              <p className="mt-3 max-w-[52ch] text-muted-foreground">
+                Answers quote the NHS, MedlinePlus, the Office on Women&apos;s
+                Health, NICHD and the CDC — and link straight to the page.
+              </p>
+              <Button size="lg" asChild className="mt-6 min-w-[180px]">
+                <Link href={routes.signUp}>Start a chat</Link>
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section className="py-12 sm:py-14">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <p className="max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
+              HerHealthGPT gives health information and urgency guidance, never
+              a diagnosis, and it can be wrong. It isn&apos;t a doctor. If
+              something feels urgent, contact emergency services or go to
+              hospital.
             </p>
           </div>
         </section>

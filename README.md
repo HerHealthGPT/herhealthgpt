@@ -26,13 +26,15 @@ see `CLAUDE.md` for what changed and why.
 
 | If you want to… | Read |
 |---|---|
+| **Start every local service and test Base / Fine-tuned** | [`docs/runbooks/running-the-app.md`](docs/runbooks/running-the-app.md) — both machines, verified end to end 2026-09-09 |
+| Start the pieces individually | [Run the full app](#run-the-full-app-local-laptop) · [Fine-tuned on campus](#fine-tuned-model-campus-vm--laptop) |
 | Understand how the reasoning works, **with diagrams** | [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) |
 | Find your way around the repository | [`docs/REPO_MAP.md`](docs/REPO_MAP.md) |
 | Know what we are doing now and next | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
 | Read every module in detail | [`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md) |
 | Know why a decision was made | [`docs/adr/`](docs/adr/) |
 
-See a consultation run in 30 seconds:
+Offline controller smoke test (no GPU, no chat UI):
 
 ```bash
 make install
@@ -45,12 +47,14 @@ make triage CASE=services/backend/cases/sudden_severe_pain.yaml
 
 - [Why it is built this way](#why-it-is-built-this-way)
 - [How it reasons](#how-it-reasons)
-- [Architecture](#architecture)
+- [Architecture](#architecture) (includes [Models this project uses](#models-this-project-uses))
 - [Repository layout](#repository-layout)
 - [The knowledge model](#the-knowledge-model)
 - [Verification protocol](#verification-protocol)
 - [Sources](#sources)
 - [Quickstart](#quickstart)
+- [Run the full app (local laptop)](#run-the-full-app-local-laptop)
+- [Fine-tuned model (campus VM + laptop)](#fine-tuned-model-campus-vm--laptop)
 - [Commands](#commands)
 - [CI](#ci)
 - [Evaluation](#evaluation)
@@ -145,8 +149,33 @@ Monorepo. Four independently deployable services, one contracts package.
 no offline shell, no install prompt, no web push. Mobile-first layout with RTL
 support for Arabic. Do not add PWA scaffolding.
 
-**No model weights load inside the backend process.** Embeddings and reranking
-are HTTP calls to `services/model`.
+**No model weights load inside the backend process.** Embeddings are an HTTP
+call to local `services/model` (bge-m3 on `:8001`). Reasoning is either
+OpenRouter (Base tab) or campus vLLM with our LoRA (Fine-tuned tab).
+
+### Models this project uses
+
+| Role | Model | Where |
+|---|---|---|
+| Base reasoning | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | OpenRouter in local chat; also the vLLM base on campus |
+| Fine-tuned LoRA (experimental) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
+| Retrieval embeddings | [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3) | Local `services/model` over `build/index` |
+
+**`Qwen/Qwen3.5-9B` is a multimodal hybrid, not a plain text model.** It loads
+as `Qwen3_5ForConditionalGeneration`: a vision tower plus a mixed attention
+stack, where only every fourth layer is full attention and the rest are gated
+linear-attention (Mamba-family) blocks. This drives real serving flags — both
+`image` and `video` must be capped to run text-only, and the KV cache
+reconciles two different page sizes. See
+[`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md) §0.2.
+
+The LoRA was trained (QLoRA, `r=16`) on six-register styled answers for EN/FR/AR
+phrasing. Its module list matches that architecture: MLP projections on all 32
+layers, attention projections only on layers 3, 7, 11, 15, 19, 23, 27 and 31. It is **not** cleared to own triage decisions until a multi-turn
+retrain is reviewed — see ADR 0011 / ADR 0016 and the Fine-tuned section below.
+HF access to the private adapter needs a token with read access to the
+`herhealthgpt` org; that token lives on the serving host only, never in this
+repo.
 
 ### The dependency rule
 
@@ -365,7 +394,8 @@ network call. **Tests never hit the network.**
 
 ## Quickstart
 
-Install [uv](https://docs.astral.sh/uv/). Nothing else — not even Python.
+Install [uv](https://docs.astral.sh/uv/), [Docker Desktop](https://www.docker.com/products/docker-desktop/),
+and [Node.js 20+](https://nodejs.org/) (for the frontend).
 
 ```bash
 # macOS / Linux
@@ -380,15 +410,397 @@ Then:
 ```bash
 git clone <repo> && cd herhealthgpt
 uv sync
+cp infra/envs/backend.env.example infra/envs/backend.env
+# Edit backend.env: set HERHEALTH_SESSION_SECRET (openssl rand -hex 32),
+# OPENROUTER_API_KEY, and HERHEALTH_TRIAGE_MODE=openrouter for real chat.
 ```
 
-That is the entire setup. `uv sync` reads `.python-version`, downloads CPython
-3.12 if the machine lacks it, creates `.venv/`, and installs the exact versions
-in `uv.lock` — including both local packages in editable mode. No activation
-needed; `uv run` and every `make` target sync first.
+`uv sync` reads `.python-version`, downloads CPython 3.12 if needed, creates
+`.venv/`, and installs the lockfile. Prefer `uv run` over activating the venv.
 
 **`uv.lock` is committed and is the source of truth.** CI runs `uv sync
---locked`, which fails rather than silently re-resolving.
+--locked`.
+
+You also need a built retrieval index at `build/index/` (bge-m3). If that
+directory is missing, run the data pipeline / index step documented in
+[`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md) before starting `services/model`.
+
+---
+
+## Run the full app (local laptop)
+
+Four processes on the laptop. The campus GPU is **optional** and only needed
+for the Fine-tuned tab (next section).
+
+| Process | Port | Role |
+|---|---|---|
+| PostgreSQL (`infra/compose.yml`) | 5432 | Accounts + triage sessions |
+| `services/model` (retrieval) | **8001** | bge-m3 RAG over `build/index` |
+| `services/backend` (FastAPI) | **8000** | Triage API, auth, orchestration |
+| `services/frontend` (Next.js) | **3000** | Chat UI |
+
+**Order matters.** A turn always calls retrieval on `:8001` *before* the
+reasoning model. If `:8001` is down you get `502` / `WinError 10061` even when
+campus vLLM is healthy.
+
+### 1. Configure `infra/envs/backend.env`
+
+Minimum for **Base** (OpenRouter) chat:
+
+```env
+HERHEALTH_DATABASE_URL=postgresql+psycopg://herhealth:herhealth@localhost:5432/herhealth
+HERHEALTH_SESSION_SECRET=<openssl rand -hex 32>
+HERHEALTH_EMAIL_SENDER=console
+HERHEALTH_TRIAGE_MODE=openrouter
+OPENROUTER_API_KEY=sk-or-...
+HERHEALTH_MODEL_SERVICE_URL=http://127.0.0.1:8001
+HERHEALTH_COOKIE_SECURE=false
+HERHEALTH_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+```
+
+Add these only when testing Fine-tuned (after campus + Lobot proxy work):
+
+```env
+HERHEALTH_MODEL_SELECTOR=on
+HERHEALTH_VLLM_URL=https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000
+HERHEALTH_VLLM_MODEL=herhealth
+HERHEALTH_VLLM_API_KEY=<JUPYTERHUB_API_TOKEN from the pod — rotates on cull>
+```
+
+Keep `HERHEALTH_TRIAGE_MODE=openrouter` when the selector is on: **Base** uses
+OpenRouter, **Fine-tuned** uses `HERHEALTH_VLLM_*`. Do not put the pod IP
+`10.244.x.x` in `HERHEALTH_VLLM_URL`.
+
+Frontend: set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in
+`services/frontend/.env.local` if the UI talks to the API directly (same CORS
+origins as above).
+
+### 2. Start PostgreSQL and migrate
+
+```powershell
+# From the repo root
+docker compose -f infra/compose.yml up -d postgres
+
+# Apply migrations (Git Bash / WSL, or load env then run alembic by hand on Windows)
+# Git Bash:
+set -a; . ./infra/envs/backend.env; set +a
+cd services/backend && uv run --extra api alembic upgrade head
+```
+
+Windows PowerShell equivalent for migrate / serve (load env, then run):
+
+```powershell
+Get-Content .\infra\envs\backend.env | ForEach-Object {
+  $line = $_.Trim()
+  if (-not $line -or $line.StartsWith('#')) { return }
+  $i = $line.IndexOf('=')
+  if ($i -lt 1) { return }
+  Set-Item -Path ("Env:" + $line.Substring(0, $i).Trim()) -Value $line.Substring($i + 1).Trim()
+}
+$env:HERHEALTH_KNOWLEDGE_DIR = (Resolve-Path .\knowledge).Path
+uv run --extra api --package herhealth-backend python -c "import asyncio; from alembic.config import main; main(['upgrade','head'])"
+# Prefer: cd services/backend; uv run --extra api alembic upgrade head
+```
+
+### 3. Start retrieval (`:8001`) — required for every real turn
+
+First load of `BAAI/bge-m3` can take **1–3 minutes**. Wait until `/health` is
+ok before opening chat.
+
+```powershell
+# Terminal A — repo root
+$env:HERHEALTH_INDEX_DIR = (Resolve-Path .\build\index).Path
+uv run --package herhealth-model python -m herhealth_model
+```
+
+Check:
+
+```powershell
+curl.exe http://127.0.0.1:8001/health
+# {"status":"ok"}
+```
+
+### 4. Start the backend (`:8000`)
+
+```powershell
+# Terminal B — repo root, same env-loading block as above, then:
+$env:HERHEALTH_KNOWLEDGE_DIR = (Resolve-Path .\knowledge).Path
+uv run --extra api --package herhealth-backend python -m herhealth_backend.app
+```
+
+Or with make (Git Bash): `make serve`
+
+Check:
+
+```powershell
+curl.exe http://127.0.0.1:8000/health
+# {"status":"ok"}
+```
+
+Restart the backend after any change to `HERHEALTH_VLLM_*` or
+`HERHEALTH_MODEL_SELECTOR`.
+
+### 5. Start the frontend (`:3000`)
+
+```powershell
+# Terminal C
+cd services\frontend
+npm install   # first time only
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) → sign up / sign in → set
+date of birth if prompted (age band is injected into the triage prompt).
+
+### 6. Test Base model
+
+1. Open [http://localhost:3000/chat](http://localhost:3000/chat).
+2. Start a **new** chat. If the model tabs appear, leave **Base** selected.
+3. Send: *I've had irregular periods for three months.*
+4. Expect clarifying questions or a conclude with an action code — with RAG
+   citations and age context when DOB is on the account.
+
+Without `HERHEALTH_MODEL_SELECTOR=on`, the Base / Fine-tuned tabs are hidden
+and every turn uses OpenRouter.
+
+### 7. Common failure: `502` + `WinError 10061`
+
+```
+triage dependency HTTP failure: [WinError 10061] No connection could be made...
+POST /triage/turn → 502
+```
+
+That is almost always **`:8001` not listening**, not campus vLLM. Confirm
+`curl http://127.0.0.1:8001/health`, then retry. Campus can be up
+(`/v1/models` 200 on Lobot) while this laptop still 502s.
+
+---
+
+## Fine-tuned model (campus VM + laptop)
+
+The Fine-tuned tab calls the same RAG + system prompt + age-band injection as
+Base; only the reasoning HTTP client changes (campus LoRA `herhealth`).
+
+**Hugging Face artifact (project fine-tune):**
+[`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2)
+— private QLoRA on [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B).
+On campus we serve a local checkout at
+`/home/jovyan/models/herhealth-lora-v2` under the vLLM module name `herhealth`
+(`HERHEALTH_VLLM_MODEL=herhealth`).
+
+**The adapter is experimental / phrasing-trained.** It was not trained on
+clarifying-question turns and must not be treated as a reviewed triage
+decision-maker. See ADR 0011 / ADR 0016.
+
+**The per-answer unreviewed-model notice was removed on 2026-09-09** at the
+project owner's direction, and the Fine-tuned option is now marked
+`reviewed=True` in `_build_reasoning_models`. Nothing about the adapter's
+training changed — the paragraph above still stands. What still scopes it is
+`HERHEALTH_MODEL_SELECTOR`, off by default: per ADR 0016 the Fine-tuned option
+is **absent**, not merely unlabelled, in any deployment someone is being shown,
+and `default_model_id` still resolves to the base model so the adapter is only
+ever reached by an explicit click.
+
+**The base model is now an automatic fallback for the Fine-tuned tab.** When the
+adapter is unreachable, returns 502/503/504, or produces nothing that validates
+after its own three corrective retries, `FallbackReasoningClient` re-asks
+OpenRouter's base model and returns that instead. Measured 2026-09-09: 3/4
+identical in-scope turns succeeded against the adapter alone, 4/4 with the
+fallback, one turn taking 101 s because the adapter's retries are spent before
+the handover. A fallback is **not** surfaced to the user or recorded on the
+turn — `reasoning_model` still reports the model that was selected, not the one
+that answered.
+
+Full detail: [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md).
+
+Hub for this project: [https://lobot.cs.queensu.ca](https://lobot.cs.queensu.ca)
+· user `group-digi2026-g1`.
+
+### A. On the university Jupyter VM (Lobot)
+
+Closing JupyterLab (or Hub → Stop My Server) **kills the container** and vLLM.
+Keep a Lab tab open while testing.
+
+| | |
+|---|---|
+| Base | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) |
+| Fine-tune (HF) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) |
+| Adapter id (vLLM / env) | `herhealth` |
+| Adapter path on VM | `/home/jovyan/models/herhealth-lora-v2` |
+| Venv | `~/herhealthgpt-venv` (fallback `~/vllm-env`) |
+| Port **inside the pod** | **8000** |
+| Pod IP `10.244.x.x` | **Not reachable from the laptop** |
+
+**1. Clean** (JupyterLab → Terminal):
+
+```bash
+pkill -9 -f 'vllm serve' || true
+pkill -9 -f 'VLLM::' || true
+sleep 3
+nvidia-smi --query-gpu=index,memory.used --format=csv
+# expect ~0 MiB on both GPUs
+```
+
+**2. Start** (verified **2026-09-09**, vLLM 0.28.0 — engine init 15.98 s):
+
+```bash
+source ~/herhealthgpt-venv/bin/activate
+# if that fails: source ~/vllm-env/bin/activate
+
+rm -rf ~/.cache/vllm          # stale GPU P2P probe — see the runbook §0.1
+
+nohup env \
+  NCCL_P2P_DISABLE=1 \
+  NCCL_IB_DISABLE=1 \
+  VLLM_USE_FLASHINFER_SAMPLER=0 \
+  NCCL_DEBUG=INFO \
+  TRITON_CACHE_DIR=/home/jovyan/.cache/triton \
+  HF_HOME=/home/jovyan/.cache/huggingface \
+  vllm serve Qwen/Qwen3.5-9B \
+  --enable-lora \
+  --lora-modules herhealth=/home/jovyan/models/herhealth-lora-v2 \
+  --max-lora-rank 16 \
+  --max-model-len 8192 \
+  --tensor-parallel-size 2 \
+  --disable-custom-all-reduce \
+  --enforce-eager \
+  --limit-mm-per-prompt '{"image":0,"video":0}' \
+  --host 127.0.0.1 --port 8000 \
+  > /home/jovyan/vllm.log 2>&1 &
+echo $! > /home/jovyan/vllm.pid
+tail -f /home/jovyan/vllm.log
+```
+
+| Flag / env | Why |
+|---|---|
+| **`--disable-custom-all-reduce`** | **Mandatory.** Without it TP all-reduce corrupts activations → NaN logits → the sampler emits token 0 (`!`) forever, giving `!!!!!!!` answers, and startup deadlocks. Full write-up: runbook §0.1. |
+| `NCCL_P2P_DISABLE=1` / `NCCL_IB_DISABLE=1` | Without them, TP=2 hangs after NCCL init |
+| `VLLM_USE_FLASHINFER_SAMPLER=0` | FlashInfer JIT needs `curand.h` (missing on the image) |
+| `--enforce-eager` | Avoids CUDA-graph / Inductor spin at empty VRAM |
+| `--limit-mm-per-prompt '{"image":0,"video":0}'` | **Both** keys — the base is a multimodal hybrid, not a text model (runbook §0.2) |
+| `--tensor-parallel-size 2` | 17.98 GiB of bf16 weights do not fit one 14.6 GiB A16 |
+| `--max-model-len 8192` | The triage prompt is ~3,200–3,600 tokens before retrieval; 4096 leaves no room to generate (runbook §0.3) |
+| `TRITON_CACHE_DIR` under `/home/jovyan` | Survives culls |
+
+Wait for **`Application startup complete.`** (~30 s). Hundreds of `no matching
+PunicaWrapper ... will be ignored` warnings on the way are expected — that is
+vLLM skipping LoRA on the vision tower. Ctrl+C stops `tail` only.
+
+First-time install after a wipe:
+
+```bash
+bash scripts/setup-uni-vllm.sh --clean
+bash scripts/setup-uni-vllm.sh
+bash scripts/setup-uni-vllm.sh --check
+```
+
+**3. Smoke-test on the VM:**
+
+```bash
+curl -s http://127.0.0.1:8000/v1/models
+# must list Qwen/Qwen3.5-9B and herhealth
+
+curl http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "herhealth",
+    "messages": [{"role": "user", "content": "I have irregular periods and some pelvic pain, what could this mean?"}],
+    "max_tokens": 4000,
+    "chat_template_kwargs": {"enable_thinking": false}
+  }'
+```
+
+Always send `chat_template_kwargs: {"enable_thinking": false}` (the backend
+already does). Cloudflare quick tunnels are often **blocked** from this
+cluster (`api.trycloudflare.com` timeout) — use the Jupyter proxy below.
+
+### B. Reach campus from the laptop (Jupyter proxy)
+
+`jupyter_server_proxy` is enabled on Lobot. From the **pod** terminal:
+
+```bash
+echo "len=${#JUPYTERHUB_API_TOKEN}"
+curl -sS -H "Authorization: token ${JUPYTERHUB_API_TOKEN}" \
+  "https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000/v1/models"
+```
+
+Expect JSON listing `herhealth`. Copy the token:
+
+```bash
+echo "$JUPYTERHUB_API_TOKEN"
+```
+
+Put it in laptop `HERHEALTH_VLLM_API_KEY`. That token **rotates when the
+Jupyter server restarts** — after a cull, copy a fresh one and restart the
+backend.
+
+From the **laptop** (PowerShell), after `backend.env` is filled:
+
+```powershell
+# Load HERHEALTH_VLLM_* from backend.env, then:
+curl.exe -sS -H "Authorization: Bearer $env:HERHEALTH_VLLM_API_KEY" `
+  "$env:HERHEALTH_VLLM_URL/v1/models"
+```
+
+Both `Bearer` and `token` schemes work against Lobot.
+
+### C. Wire the laptop and test the Fine-tuned tab
+
+1. Confirm local `:8001`, `:8000`, `:3000` are up ([above](#run-the-full-app-local-laptop)).
+2. Set `HERHEALTH_MODEL_SELECTOR=on` and the three `HERHEALTH_VLLM_*` values.
+3. Restart the backend so it rebuilds the model list.
+4. Open [http://localhost:3000/chat](http://localhost:3000/chat) → **new** chat.
+5. Click **Fine-tuned** (disabled until vLLM URL is configured and the backend
+   restarted). Tabs lock after the first user message in a session.
+6. Send a short symptom message. Expect the unreviewed-model notice, then a
+   turn that still used local RAG + age band, with reasoning from campus.
+
+If Fine-tuned stays greyed out: hard-refresh so `GET /triage/models` reloads.
+If you get `502` / `10061`: fix `:8001` first.
+
+**If RAG succeeds but chat returns `504 Gateway Time-out` on the Lobot proxy**
+(backend log shows `POST …/proxy/8000/v1/chat/completions` → 504, UI says
+*"A service we rely on is temporarily unavailable"*): local retrieval is fine;
+the Hub/nginx proxy cut the request at ~60s while campus vLLM was still
+generating (often first LoRA Triton JIT). Warm inside the pod first (below).
+
+**If the Fine-tuned tab answers with `!!!!!!!!!!!`** (or the VM never binds
+`:8000` and the log repeats `No available shared memory broadcast block found
+in 60 seconds`): both are the same bug — vLLM's custom all-reduce running over
+the broken GPU-to-GPU link on these A16s, corrupting activations until the
+logits are NaN and the sampler emits token 0, which is `!` in Qwen's
+vocabulary. Fix: `--disable-custom-all-reduce` and `rm -rf ~/.cache/vllm`,
+both already in the step 2 command above. Confirm the log line reads
+`Using ['PYNCCL'] all-reduce backends` with no `CUSTOM`. Diagnosed and fixed
+2026-09-09; full write-up in the runbook §0.1.
+
+**If the VM returns `EngineCore encountered an issue` / worker dies with
+`apply_token_bitmask_inplace` / `CUDA: unspecified launch failure`:** the
+engine is dead — restart vLLM. That crash was triggered by
+`response_format: json_object` (xgrammar structured outputs). The laptop
+backend no longer sends that field to Fine-tuned / vLLM; restart the local
+backend after pulling that fix, then warm and retry.
+
+On the **Jupyter terminal**, after a fresh serve is up, warm LoRA **without**
+`response_format`:
+
+```bash
+time curl -s http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "herhealth",
+    "messages": [{"role": "user", "content": "Say hello in one short sentence."}],
+    "max_tokens": 64,
+    "chat_template_kwargs": {"enable_thinking": false}
+  }'
+```
+
+Wait until it returns (may take 1–3 minutes the first time). Run it once more —
+the second should be much faster — then retry Fine-tuned from the laptop.
+
+Other hosts (friend PC, vast.ai): see
+[`friend-pc-vllm-setup.md`](docs/runbooks/friend-pc-vllm-setup.md) and
+[`dev-vllm-lora-endpoint.md`](docs/runbooks/dev-vllm-lora-endpoint.md).
 
 ---
 
@@ -401,16 +813,18 @@ needed; `uv run` and every `make` target sync first.
 | `make test` | pytest |
 | `make lint` | ruff both packages, mypy strict on `packages/contracts/` |
 | `make fmt` | ruff format and autofix |
+| `make migrate` | apply Alembic migrations using `infra/envs/backend.env` |
+| `make serve` | run the backend API on `127.0.0.1:8000` |
 | `make build` | fetch → clean → chunk → `build/passages.parquet` *(phase 4)* |
 | `make eval` | run the controller over the benchmark cases *(phase 3)* |
 | `make lock` | re-resolve `uv.lock` after a dependency change |
 | `make sync-check` | fail if `uv.lock` has drifted |
 
 `make` is not installed by default on Windows — `winget install
-ezwinports.make`, or read the one-line recipe out of the `Makefile`.
+ezwinports.make`, or run the PowerShell steps in
+[Run the full app](#run-the-full-app-local-laptop).
 
 ---
-
 ## CI
 
 Every workflow is **path-filtered**. A frontend change must not rebuild the model
@@ -487,5 +901,7 @@ written by a native speaker — never machine translated.
 - [`CLAUDE.md`](CLAUDE.md) — the project spec. Binding.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — environment setup, workflow, branching
 - [`knowledge/README.md`](knowledge/README.md) — the seven files in detail
+- [`docs/runbooks/`](docs/runbooks/) — standing up the model endpoint, SES,
+  Google OAuth
 - [`.claude/skills/`](.claude/skills/) — binding constraints on clinical
   authoring, repo conventions and source ingestion

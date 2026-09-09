@@ -10,6 +10,11 @@ export type UserSummary = {
    *  a stored band would be wrong the morning after a birthday. One of
    *  knowledge/features.yaml's `age_band` values. */
   age_band: string | null;
+  /** Both mandatory profile fields — name and date of birth — are set.
+   *  Computed server-side so one definition governs every caller. The app
+   *  routes an incomplete profile to the onboarding step and refuses the
+   *  chat until it is true; see `ProfileGuard`. */
+  profile_complete: boolean;
   /** Whether she has written a health note. The text itself needs its own
    *  request (`getHealthNote`) so clinical free text is not on every poll. */
   has_health_note: boolean;

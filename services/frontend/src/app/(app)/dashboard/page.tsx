@@ -17,6 +17,8 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Illustration } from "@/components/ui/illustration";
+import { UrgencyScale } from "@/components/urgency-scale";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PageLoading } from "@/components/ui/page-loading";
 import {
@@ -64,31 +66,43 @@ function DashboardContent() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <section className="relative overflow-hidden border-b border-border/60">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-accent/20" />
-        <div className="absolute -right-16 top-0 size-64 rounded-full bg-primary/10 blur-3xl" />
+      {/* The widest band on the page, and it was text on a gradient with a
+          blur blob in the corner. The illustration sits here rather than
+          inside the chat card below, and unconditionally: keying it to
+          "no chats yet" meant the space only ever filled for a brand-new
+          account and stayed empty for everyone who actually uses the app. */}
+      <section className="relative overflow-hidden border-b border-border/60 bg-gradient-to-br from-primary/10 via-background to-accent/20">
+        <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,15rem)] lg:items-center lg:gap-12">
+          <div>
+            <p className="text-sm text-muted-foreground">Your home</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
+              {greetingName ? `Hi, ${greetingName}` : "Hi there"}
+            </h1>
+            <p className="mt-3 max-w-2xl text-muted-foreground">{heroSubtitle}</p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              <Link
+                href={routes.howItWorks}
+                className="font-medium text-primary hover:underline"
+              >
+                How this works
+              </Link>
+              {" · "}
+              <Link
+                href={routes.settings}
+                className="font-medium text-primary hover:underline"
+              >
+                Account settings
+              </Link>
+            </p>
+          </div>
 
-        <div className="relative mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-12">
-          <p className="text-sm text-muted-foreground">Your home</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
-            {greetingName ? `Hi, ${greetingName}` : "Hi there"}
-          </h1>
-          <p className="mt-3 max-w-2xl text-muted-foreground">{heroSubtitle}</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            <Link
-              href={routes.howItWorks}
-              className="font-medium text-primary hover:underline"
-            >
-              How this works
-            </Link>
-            {" · "}
-            <Link
-              href={routes.settings}
-              className="font-medium text-primary hover:underline"
-            >
-              Account settings
-            </Link>
-          </p>
+          {/* Every width, every state. It was `hidden lg:block`, which meant
+              the whole point of it — the page not being a wall of text —
+              stopped applying on the devices most of this audience uses. */}
+          <Illustration
+            name="welcome"
+            className="order-first mx-auto max-h-[140px] w-full max-w-[180px] object-contain sm:max-h-[160px] lg:order-none lg:max-h-[180px] lg:max-w-[220px] lg:justify-self-end"
+          />
         </div>
       </section>
 
@@ -137,6 +151,10 @@ function DashboardContent() {
               </p>
             </CardHeader>
             <CardContent className="border-t border-border/60 bg-muted/30 px-6 py-5 lg:border-t-0 lg:border-l lg:py-8">
+              <Illustration
+                name="conversation"
+                className="mx-auto mb-4 max-h-[130px] w-full max-w-[180px] object-contain"
+              />
               <div className="flex flex-col gap-2">
                 <Button size="lg" className="w-full min-w-[200px]" asChild>
                   <Link href={routes.chat}>
@@ -159,6 +177,22 @@ function DashboardContent() {
             </CardContent>
           </div>
         </Card>
+
+        {/* What a finished chat's verdict actually meant. Placed after
+            Recent chats so it reads as a key to the list above rather than
+            as marketing, and shown unconditionally — the four levels do not
+            depend on whether this account has used any of them. */}
+        <section>
+          <h2 className="text-lg font-semibold tracking-tight">
+            The four answers a chat can end with
+          </h2>
+          <p className="mt-1 max-w-[62ch] text-sm text-muted-foreground">
+            We never tell you what you have. Every consultation ends by
+            placing what you described on this scale, with the sources behind
+            it.
+          </p>
+          <UrgencyScale className="mt-8" />
+        </section>
 
         <RecentChatsSection sessions={data.sessions} loading={loading} />
 
