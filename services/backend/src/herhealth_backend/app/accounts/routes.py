@@ -146,14 +146,34 @@ class UserSummary(BaseModel):
     #: along on every /me poll the app makes.
     has_health_note: bool = False
 
+    #: Whether the two mandatory profile fields — display name and date of
+    #: birth — are both set.
+    #:
+    #: Computed here rather than in the client so one definition of
+    #: "complete" governs every caller. The frontend gates on it: an account
+    #: without both is sent to the profile step and cannot reach the chat,
+    #: which is what makes the fields mandatory rather than merely requested.
+    #: Accounts created before they existed therefore complete their profile
+    #: on next sign-in.
+    #:
+    #: The health note is deliberately NOT part of this. It is optional by
+    #: design, and blocking on free-text clinical background would pressure
+    #: people into writing something to get past a wall.
+    profile_complete: bool = False
+
 
 class UpdateProfileRequest(BaseModel):
-    """Every field is optional and *omitting* one leaves it untouched.
+    """Every field is optional, and *omitting* one leaves it untouched.
 
-    ``display_name`` is the exception, and only for backwards compatibility:
-    it has always treated an absent key as "clear it", and the settings form
-    relies on that. New fields use ``model_fields_set`` so that a form
-    editing only a note cannot silently wipe a date of birth.
+    ``display_name`` used to be the exception: an absent key meant "clear
+    it". That made any request setting only a date of birth erase the name
+    as a side effect — harmless while nothing collected a name, and a
+    data-loss bug the moment the profile step started to. Now every field
+    is governed by ``model_fields_set``.
+
+    Clearing still works and is unchanged for callers that meant it:
+    ``display_name`` sent *explicitly* as ``null`` clears the name, which is
+    what the settings form has always sent.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -187,6 +207,7 @@ def _user_summary(user: User, *, has_health_note: bool = False) -> UserSummary:
             else None
         ),
         has_health_note=has_health_note,
+        profile_complete=user.display_name is not None and user.date_of_birth is not None,
     )
 
 
@@ -306,17 +327,19 @@ async def update_me(
 ) -> UserSummary:
     """Update whichever profile fields the request actually names.
 
-    ``display_name`` keeps its original semantics (absent means clear it);
-    the two fields added in 0009 are only touched when present, so the
-    sign-up step can set a date of birth without clearing a note and the
-    settings form can do the reverse. See ``UpdateProfileRequest``.
+    Every field is touched only when the request actually names it, so the
+    profile step can set a name and a date together, the settings form can
+    edit one without disturbing the other, and neither can silently wipe a
+    field it never mentioned. See ``UpdateProfileRequest``.
     """
     database: Database = request.app.state.database
     named = payload.model_fields_set
     async with database.session() as session:
-        updated = await update_display_name(
-            session, current_user.id, display_name=payload.display_name
-        )
+        updated = current_user
+        if "display_name" in named:
+            updated = await update_display_name(
+                session, current_user.id, display_name=payload.display_name
+            )
         if "date_of_birth" in named and payload.date_of_birth is not None:
             updated = await update_date_of_birth(
                 session,

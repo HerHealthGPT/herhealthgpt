@@ -38,7 +38,9 @@ __all__ = [
     "VLLM_URL_ENV",
     "vllm_api_key",
     "vllm_configured",
+    "vllm_max_attempts",
     "vllm_model",
+    "vllm_timeout",
     "vllm_url",
     "COOKIE_SECURE_ENV",
     "cookie_secure",
@@ -163,6 +165,14 @@ VLLM_MODEL_ENV = "HERHEALTH_VLLM_MODEL"
 #: nothing. See triage/clients.py's VllmReasoningClient.
 VLLM_API_KEY_ENV = "HERHEALTH_VLLM_API_KEY"
 
+#: Seconds to wait on one vLLM request before giving up and failing over.
+#: Deliberately BELOW the reverse proxy's own cut-off — see
+#: :func:`vllm_timeout`.
+VLLM_TIMEOUT_ENV = "HERHEALTH_VLLM_TIMEOUT"
+
+#: How many times the vLLM client re-prompts itself before failing over.
+VLLM_MAX_ATTEMPTS_ENV = "HERHEALTH_VLLM_MAX_ATTEMPTS"
+
 #: Whether ``GET /triage/models`` offers more than the default model, letting
 #: a caller choose per turn. Off by default and deliberately dev-only: the
 #: fine-tuned adapter is not cleared to make triage decisions (CLAUDE.md, and
@@ -227,6 +237,56 @@ def vllm_model() -> str:
 def vllm_api_key() -> str | None:
     """Bearer token for the vLLM server, or ``None`` when it needs none."""
     return os.environ.get(VLLM_API_KEY_ENV) or None
+
+
+def vllm_timeout() -> float:
+    """Seconds to wait on one vLLM request. Default 50.
+
+    **This number exists to lose a race on purpose.** The campus endpoint is
+    reached through JupyterHub's reverse proxy, which cuts a request at
+    roughly 60 seconds and answers ``504 Gateway Time-out``. A turn that is
+    merely slow — 30-120s is normal for this adapter — was therefore
+    indistinguishable from a broken one, and the user saw "a service we rely
+    on is temporarily unavailable".
+
+    Timing out at 50s means *we* give up first, deterministically, and get a
+    clean ``httpx.ReadTimeout`` that ``FallbackReasoningClient`` fails over
+    on. Waiting for the proxy's 504 also fails over — 504 is in the
+    retryable set — but only after burning the full 60s, and only if the
+    proxy actually answers rather than dropping the connection.
+
+    Raise it only if the proxy's own limit is known to be higher. A value
+    above that limit hands control back to the proxy and undoes this.
+    """
+    raw = os.environ.get(VLLM_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return 50.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 50.0
+    return value if value > 0 else 50.0
+
+
+def vllm_max_attempts() -> int:
+    """Self-correcting re-prompts against vLLM before failing over. Default 2.
+
+    Lower than the OpenRouter client's 3, and the whole reason is the time
+    budget. ``app/triage/routes.py`` allows ``REASONING_TIMEOUT_SECONDS``
+    (150) for a turn. At two attempts the adapter can spend at most
+    2 x :func:`vllm_timeout` = 100s, leaving room for the base model to
+    answer inside the same turn. At three it could spend 150s alone and the
+    fallback would never get to run — which is what turned a recoverable
+    turn into a 504 measured at 119s on 2026-09-09.
+    """
+    raw = os.environ.get(VLLM_MAX_ATTEMPTS_ENV, "").strip()
+    if not raw:
+        return 2
+    try:
+        value = int(raw)
+    except ValueError:
+        return 2
+    return value if value >= 1 else 2
 
 
 def vllm_configured() -> bool:

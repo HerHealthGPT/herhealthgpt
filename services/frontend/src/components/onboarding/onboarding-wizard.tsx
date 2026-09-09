@@ -7,6 +7,7 @@ import { ArrowRight, Sparkles, X } from "lucide-react";
 
 import { ProfileDetailsStep } from "@/components/onboarding/profile-details-step";
 import { Button } from "@/components/ui/button";
+import { Illustration } from "@/components/ui/illustration";
 import { useAuth } from "@/contexts/auth-context";
 import { ONBOARDING_STEPS } from "@/lib/onboarding-content";
 import { markOnboardingComplete } from "@/lib/onboarding";
@@ -151,6 +152,18 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
                 </li>
               ))}
             </ul>
+          ) : null}
+
+          {/* Fills the tall column this centred layout leaves under short
+              copy — the emptiest space in the app. `mt-auto` pushes it to
+              the bottom of the free area rather than leaving a gap beneath
+              it, and it renders nothing at all when the file is absent, so
+              the step still reads correctly on a fresh clone. */}
+          {current.illustration ? (
+            <Illustration
+              name={current.illustration}
+              className="mt-auto max-h-[22vh] w-full max-w-[220px] shrink object-contain pt-6"
+            />
           ) : null}
         </div>
 

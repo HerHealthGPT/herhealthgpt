@@ -1,23 +1,32 @@
 import type { LucideIcon } from "lucide-react";
 import { BookOpen, Heart, MessageCircle, Shield } from "lucide-react";
 
+import type { IllustrationName } from "@/components/ui/illustration";
+
 export type OnboardingStep = {
   id: string;
   icon: LucideIcon;
   title: string;
   body: string | null;
   bullets?: string[];
+  /** Fills the tall empty column below this step's copy. Optional in
+   *  practice as well as in the type: the file may not be present (see
+   *  public/illustrations/README.md), and the step must read correctly
+   *  without it. */
+  illustration?: IllustrationName;
 };
 
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     id: "welcome",
+    illustration: "welcome",
     icon: Heart,
     title: "Welcome to HerHealthGPT",
     body: "Not sure what to do about a symptom? Tell us in your own words — we'll help you work out how urgently to seek care.",
   },
   {
     id: "how",
+    illustration: "conversation",
     icon: MessageCircle,
     title: "How it works",
     body: null,
@@ -29,6 +38,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: "safety",
+    illustration: "safety",
     icon: Shield,
     title: "Good to know",
     body: "We give urgency guidance and information — we never diagnose. If something feels urgent, seek care right away rather than waiting for a reply.",
@@ -40,6 +50,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
   },
   {
     id: "sources",
+    illustration: "sources",
     icon: BookOpen,
     title: "Trusted sources",
     body: "Answers cite reviewed pages from MedlinePlus, Office on Women's Health, NICHD, CDC, and the NHS.",

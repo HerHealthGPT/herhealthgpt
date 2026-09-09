@@ -16,6 +16,7 @@ from herhealth_backend.triage.clients import (
     OpenRouterReasoningClient,
     VllmReasoningClient,
     _parse_chat_completion_payload,
+    _reject_leaked_internals,
     _strip_thinking_blocks,
 )
 
@@ -90,6 +91,116 @@ def test_fallback_uses_openrouter_when_vllm_is_unreachable() -> None:
 
     assert result.action_code is ActionCode.ROUTINE_APPOINTMENT
     fallback.decide.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "rationale",
+    [
+        "Please go to an emergency room now or call your local emergency number.",
+        "This is a medical emergency — do not wait.",
+        "Bleeding in pregnancy is best checked right away.",
+        "Heavy bleeding with faintness needs same-day care.",
+    ],
+)
+def test_reject_leaked_internals_allows_ordinary_english(rationale: str) -> None:
+    """The words a real answer needs must not trip the guard. "emergency room"
+    is the correct thing to say; only the all-caps code is machine leakage.
+    """
+    _reject_leaked_internals(
+        TriageDecision(
+            type=DecisionType.CONCLUDE,
+            action_code=ActionCode.EMERGENCY,
+            citations=("0123456789abcdef",),
+            rationale=rationale,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "rationale",
+    [
+        "This matches a red-flag warning: pelvic pain with faintness or collapse",
+        "CODE EMERGENCY",
+        "action_code: URGENT_SAME_DAY",
+        "matched red_flag_id pelvic_pain_with_fever",
+        "see passage_id a6bf0793b2a9a509 for details",
+        "I set matching_conditions to endometriosis",
+    ],
+)
+def test_reject_leaked_internals_flags_machine_text(rationale: str) -> None:
+    """Every string here is text this system actually produced, or a direct
+    variant of it. ``rationale`` is rendered to the user verbatim, so these
+    must fail validation and be retried rather than displayed.
+    """
+    with pytest.raises(ValueError, match="internal machinery"):
+        _reject_leaked_internals(
+            TriageDecision(
+                type=DecisionType.CONCLUDE,
+                action_code=ActionCode.EMERGENCY,
+                citations=("0123456789abcdef",),
+                rationale=rationale,
+            )
+        )
+
+
+def test_reject_leaked_internals_checks_question_text_too() -> None:
+    with pytest.raises(ValueError, match="question_text"):
+        _reject_leaked_internals(
+            TriageDecision(
+                type=DecisionType.ASK,
+                next_feature_id="pregnancy_status",
+                question_text="To check the red flag rule, are you pregnant?",
+                citations=("0123456789abcdef",),
+                rationale="Checking whether pregnancy applies.",
+            )
+        )
+
+
+def test_fallback_uses_openrouter_when_primary_returns_no_valid_decision() -> None:
+    """The fine-tuned adapter's dominant failure is not being unreachable — it
+    is answering with JSON that never validates (an ``ask`` with empty
+    ``citations``, measured at roughly one turn in four on 2026-09-09). The
+    client raises ``ValueError`` once its own retries are spent, and the base
+    model is a genuinely different model that can succeed where it failed.
+    """
+    conclude = TriageDecision(
+        type=DecisionType.CONCLUDE,
+        action_code=ActionCode.ROUTINE_APPOINTMENT,
+        citations=("0123456789abcdef",),
+        rationale="fallback",
+    )
+    primary = MagicMock()
+    primary.decide.side_effect = ValueError(
+        "reasoning model returned malformed JSON: a decision must be grounded "
+        "in at least one citation or a red_flag_id"
+    )
+    fallback = MagicMock()
+    fallback.decide.return_value = conclude
+
+    client = FallbackReasoningClient(primary=primary, fallback=fallback)
+    result = client.decide(system_prompt="sys", history=[], context=[])
+
+    assert result.action_code is ActionCode.ROUTINE_APPOINTMENT
+    fallback.decide.assert_called_once()
+
+
+def test_fallback_reraises_client_error_statuses_without_calling_fallback() -> None:
+    """A 400/401 is a bug in our request, not a sick server. Retrying it
+    against a second provider would hide the bug and bill for it twice.
+    """
+    primary = MagicMock()
+    primary.decide.side_effect = httpx.HTTPStatusError(
+        "unauthorized",
+        request=httpx.Request("POST", "http://x/v1/chat/completions"),
+        response=httpx.Response(401),
+    )
+    fallback = MagicMock()
+
+    client = FallbackReasoningClient(primary=primary, fallback=fallback)
+    with pytest.raises(httpx.HTTPStatusError):
+        client.decide(system_prompt="sys", history=[], context=[])
+
+    fallback.decide.assert_not_called()
 
 
 def test_vllm_client_posts_to_chat_completions(monkeypatch: pytest.MonkeyPatch) -> None:

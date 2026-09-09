@@ -82,13 +82,18 @@ export function updateProfile(displayName: string | null) {
 
 /** PATCH /accounts/me → 200, or 400 if the date is implausible.
  *
- *  `dateOfBirth` is ISO `YYYY-MM-DD`. Sent on its own rather than through
- *  `updateProfile`, because that call's `display_name` key means "clear the
- *  name" when absent — see UpdateProfileRequest on the backend. */
-export function updateDateOfBirth(dateOfBirth: string) {
+ *  Sets BOTH mandatory profile fields in one request, and it has to be one
+ *  request: the backend's `display_name` key means "clear the name" when
+ *  absent (see UpdateProfileRequest), so a call sending only a date of birth
+ *  wipes the name as a side effect. The previous `updateDateOfBirth` did
+ *  exactly that — harmless while nothing set a name, a data-loss bug the
+ *  moment one is collected.
+ *
+ *  `dateOfBirth` is ISO `YYYY-MM-DD`. */
+export function completeProfile(displayName: string, dateOfBirth: string) {
   return apiRequest<UserSummary>("/accounts/me", {
     method: "PATCH",
-    body: { display_name: null, date_of_birth: dateOfBirth },
+    body: { display_name: displayName, date_of_birth: dateOfBirth },
   });
 }
 

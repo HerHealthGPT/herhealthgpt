@@ -26,7 +26,8 @@ see `CLAUDE.md` for what changed and why.
 
 | If you want to… | Read |
 |---|---|
-| **Start every local service and test Base / Fine-tuned** | [Run the full app](#run-the-full-app-local-laptop) · [Fine-tuned on campus](#fine-tuned-model-campus-vm--laptop) |
+| **Start every local service and test Base / Fine-tuned** | [`docs/runbooks/running-the-app.md`](docs/runbooks/running-the-app.md) — both machines, verified end to end 2026-09-09 |
+| Start the pieces individually | [Run the full app](#run-the-full-app-local-laptop) · [Fine-tuned on campus](#fine-tuned-model-campus-vm--laptop) |
 | Understand how the reasoning works, **with diagrams** | [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) |
 | Find your way around the repository | [`docs/REPO_MAP.md`](docs/REPO_MAP.md) |
 | Know what we are doing now and next | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
@@ -589,8 +590,26 @@ On campus we serve a local checkout at
 
 **The adapter is experimental / phrasing-trained.** It was not trained on
 clarifying-question turns and must not be treated as a reviewed triage
-decision-maker. See ADR 0011 / ADR 0016. The UI shows an unreviewed-model
-warning.
+decision-maker. See ADR 0011 / ADR 0016.
+
+**The per-answer unreviewed-model notice was removed on 2026-09-09** at the
+project owner's direction, and the Fine-tuned option is now marked
+`reviewed=True` in `_build_reasoning_models`. Nothing about the adapter's
+training changed — the paragraph above still stands. What still scopes it is
+`HERHEALTH_MODEL_SELECTOR`, off by default: per ADR 0016 the Fine-tuned option
+is **absent**, not merely unlabelled, in any deployment someone is being shown,
+and `default_model_id` still resolves to the base model so the adapter is only
+ever reached by an explicit click.
+
+**The base model is now an automatic fallback for the Fine-tuned tab.** When the
+adapter is unreachable, returns 502/503/504, or produces nothing that validates
+after its own three corrective retries, `FallbackReasoningClient` re-asks
+OpenRouter's base model and returns that instead. Measured 2026-09-09: 3/4
+identical in-scope turns succeeded against the adapter alone, 4/4 with the
+fallback, one turn taking 101 s because the adapter's retries are spent before
+the handover. A fallback is **not** surfaced to the user or recorded on the
+turn — `reasoning_model` still reports the model that was selected, not the one
+that answered.
 
 Full detail: [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md).
 

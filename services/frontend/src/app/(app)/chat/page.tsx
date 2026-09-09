@@ -9,6 +9,7 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessage } from "@/components/chat/chat-message";
 import { ChatShell } from "@/components/chat/chat-shell";
+import { Illustration } from "@/components/ui/illustration";
 import { ChatStarterPrompts } from "@/components/chat/chat-starter-prompts";
 import { ConclusionCard } from "@/components/chat/conclusion-card";
 import { DeclineCard } from "@/components/chat/decline-card";
@@ -19,26 +20,16 @@ import { friendlyTriageError } from "@/lib/api/errors";
 import {
   deleteTriageSession,
   getTriageSession,
-  listReasoningModels,
   listTriageSessions,
   sendTriageTurn,
 } from "@/lib/api/triage";
 import type {
   CitedPassage,
   DecisionReasoningModel,
-  ReasoningModelSummary,
   TriageDecision,
   TriageSessionMessage,
   TriageSessionSummary,
 } from "@/lib/api/types";
-import {
-  preferredReasoningModel,
-  setPreferredReasoningModel,
-} from "@/lib/model-preference";
-import {
-  setShowReasoning,
-  shouldShowReasoning,
-} from "@/lib/reasoning-preference";
 import { routes } from "@/lib/routes";
 
 type ChatEntry =
@@ -155,67 +146,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Read in an effect, not in the initialiser: localStorage does not exist
-  // during the server render, and seeding state from it directly would
-  // hydrate a different value than the server produced.
-  const [showReasoning, setShowReasoningState] = useState(true);
-  const [models, setModels] = useState<ReasoningModelSummary[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState<string | null>("base");
   const messagesRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setShowReasoningState(shouldShowReasoning());
-  }, []);
-
-  function handleToggleReasoning() {
-    setShowReasoningState((current) => {
-      const next = !current;
-      setShowReasoning(next);
-      return next;
-    });
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadModels() {
-      try {
-        const offered = await listReasoningModels();
-        if (cancelled) {
-          return;
-        }
-        setModels(offered);
-        if (offered.length === 0) {
-          return;
-        }
-        const preferred = preferredReasoningModel();
-        const preferredOffered = offered.find((model) => model.id === preferred);
-        const fallback = offered.find((model) => model.is_default) ?? offered[0];
-        setSelectedModelId((current) => {
-          if (current) {
-            return current;
-          }
-          return (preferredOffered ?? fallback).id;
-        });
-      } catch {
-        // Selector stays hidden — same as a deployment that does not offer it.
-        if (!cancelled) {
-          setModels([]);
-        }
-      }
-    }
-
-    void loadModels();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  function handleSelectModel(modelId: string) {
-    setSelectedModelId(modelId);
-    setPreferredReasoningModel(modelId);
-  }
 
   const isConcluded =
     sessionStatus === "concluded" || entries.some((entry) => entry.kind === "conclusion");
@@ -301,12 +232,10 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         setSessionId(detail.id);
         setSessionStatus(detail.status);
         setEntries(transcriptToEntries(detail.messages));
-        const usedModel = detail.messages
-          .map((message) => message.decision?.reasoning_model)
-          .find((model) => model !== undefined);
-        if (usedModel) {
-          setSelectedModelId(usedModel.id);
-        }
+        // Reopening a chat no longer restores which model produced it: the
+        // app runs one reasoning path and the selector is gone. Stored turns
+        // still carry `reasoning_model`, so an evaluation run can tell which
+        // model answered — it just does not steer the UI any more.
         setLastFailedMessage(null);
       } catch (error) {
         if (!cancelled) {
@@ -350,7 +279,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     setErrorMessage(null);
 
     try {
-      const response = await sendTriageTurn(sessionId, text, selectedModelId);
+      const response = await sendTriageTurn(sessionId, text, null);
       setSessionId(response.session_id);
       setSessionStatus(response.decision.type === "conclude" ? "concluded" : "active");
 
@@ -410,16 +339,33 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     async (sessionIdToDelete: string) => {
       try {
         await deleteTriageSession(sessionIdToDelete);
+        // Drop it immediately so the row cannot be clicked again while the
+        // refetch is in flight...
         setSessions((current) => current.filter((session) => session.id !== sessionIdToDelete));
-        if (sessionId === sessionIdToDelete || requestedSessionId === sessionIdToDelete) {
-          router.push(routes.chat);
-        }
         toast.success("Chat deleted");
+
+        if (sessionId === sessionIdToDelete || requestedSessionId === sessionIdToDelete) {
+          // Deleting the chat you are reading. `ChatPageContent` keys this
+          // component on the session id, so this navigation remounts it and
+          // its own effect refetches — reloading here as well would be a
+          // duplicate request against a component about to be torn down.
+          router.push(routes.chat);
+          return;
+        }
+
+        // ...then reconcile with the server, which is the authority. The
+        // optimistic filter alone left the pane wrong whenever local state
+        // and the server had diverged for any other reason, and a stale row
+        // pointing at a deleted chat 404s when clicked.
+        await reloadSessions();
       } catch (error) {
         toast.error(friendlyTriageError(error));
+        // The delete may still have landed before the failure. Re-read
+        // rather than leave the pane asserting something we do not know.
+        await reloadSessions();
       }
     },
-    [requestedSessionId, router, sessionId],
+    [reloadSessions, requestedSessionId, router, sessionId],
   );
 
   return (
@@ -434,12 +380,6 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       onSelectSession={handleSelectSession}
       onNewChat={handleNewChat}
       onDeleteSession={handleDeleteSession}
-      showReasoning={showReasoning}
-      onToggleReasoning={handleToggleReasoning}
-      models={models}
-      selectedModelId={selectedModelId}
-      onSelectModel={handleSelectModel}
-      modelLocked={userTurnCount > 0}
     >
       <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden">
         <div
@@ -462,7 +402,6 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
                     text={entry.text}
                     citedPassages={entry.citedPassages}
                     rationale={entry.rationale}
-                    showReasoning={showReasoning}
                     reasoningModel={entry.reasoningModel}
                   />
                 );
@@ -508,6 +447,13 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         <div className="shrink-0">
           {isConcluded ? (
             <div className="border-t border-border/60 bg-muted/20 p-4">
+              {/* The end of a consultation is a resolution, not a dead end.
+                  Absent until the SVG is added, which is why the copy below
+                  still carries the moment on its own. */}
+              <Illustration
+                name="resolved"
+                className="mx-auto mb-3 w-24"
+              />
               <p className="mb-3 text-center text-sm text-muted-foreground">
                 This chat is complete. Start a new one if something else comes up.
               </p>
@@ -528,6 +474,15 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
               onSend={handleSend}
             />
           )}
+          {/* Persistent, always under the composer — the disclaimers inside a
+              conclusion card only appear once an answer exists, so nothing
+              carried this while she was typing. One line, deliberately: the
+              longer this gets the faster it becomes furniture nobody reads,
+              and the "not a diagnosis" half is the part that has to land. */}
+          <p className="px-4 pb-3 text-center text-xs text-muted-foreground">
+            HerHealthGPT can make mistakes. It gives urgency guidance, not a
+            diagnosis.
+          </p>
         </div>
       </div>
     </ChatShell>
