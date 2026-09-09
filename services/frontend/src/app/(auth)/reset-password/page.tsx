@@ -70,7 +70,7 @@ function ResetPasswordForm() {
         </>
       }
     >
-      <form onSubmit={(event) => void handleSubmit(event)} className="space-y-6">
+      <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
         <AuthErrorAlert error={error} />
 
         <FieldGroup>

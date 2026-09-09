@@ -7,6 +7,7 @@ import { ArrowRight, Sparkles, X } from "lucide-react";
 
 import { ProfileDetailsStep } from "@/components/onboarding/profile-details-step";
 import { Button } from "@/components/ui/button";
+import { Illustration } from "@/components/ui/illustration";
 import { useAuth } from "@/contexts/auth-context";
 import { ONBOARDING_STEPS } from "@/lib/onboarding-content";
 import { markOnboardingComplete } from "@/lib/onboarding";
@@ -24,11 +25,12 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
   const [step, setStep] = useState(0);
   const isReview = mode === "review";
 
-  // The details step runs before the intro slides, and only for a first-time
-  // user who has no date of birth yet. Accounts predating this field see it
-  // too, on their next visit to onboarding, but are never blocked elsewhere
-  // in the app — see ADR 0015 on why it is not a hard gate.
-  const needsProfileDetails = !isReview && user !== null && user.date_of_birth === null;
+  // The details step runs before the intro slides, for anyone whose profile
+  // is incomplete. Keyed on `profile_complete` — the server's own definition
+  // — rather than on `date_of_birth` alone, now that a name is mandatory
+  // too. `AuthGuard` sends incomplete accounts here and refuses every other
+  // page until it is done, so this is a hard gate rather than a suggestion.
+  const needsProfileDetails = !isReview && user !== null && !user.profile_complete;
   const [detailsDone, setDetailsDone] = useState(false);
   const showProfileDetails = needsProfileDetails && !detailsDone;
 
@@ -152,6 +154,18 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
               ))}
             </ul>
           ) : null}
+
+          {/* Fills the tall column this centred layout leaves under short
+              copy — the emptiest space in the app. `mt-auto` pushes it to
+              the bottom of the free area rather than leaving a gap beneath
+              it, and it renders nothing at all when the file is absent, so
+              the step still reads correctly on a fresh clone. */}
+          {current.illustration ? (
+            <Illustration
+              name={current.illustration}
+              className="mt-auto max-h-[22vh] w-full max-w-[220px] shrink object-contain pt-6"
+            />
+          ) : null}
         </div>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:justify-between">
@@ -195,7 +209,9 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
           </Button>
         </div>
 
-        {!isReview ? (
+        {/* No skip link while the profile is incomplete: AuthGuard sends
+            her straight back, so offering the escape only produces a loop. */}
+        {!isReview && user?.profile_complete ? (
           <p className="mt-6 text-center text-xs text-muted-foreground">
             Ready to go?{" "}
             <button

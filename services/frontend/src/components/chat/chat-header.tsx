@@ -1,60 +1,40 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { Brain, LayoutDashboard, Menu, Trash2, X } from "lucide-react";
+import { ArrowLeft, Menu, X } from "lucide-react";
 
-import { ModelSelector } from "@/components/chat/model-selector";
 import { Button } from "@/components/ui/button";
-import type { ReasoningModelSummary } from "@/lib/api/types";
+
 import { routes } from "@/lib/routes";
-import { cn } from "@/lib/utils";
 
 type ChatHeaderProps = {
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
-  /** The open consultation, if any. No session yet means a blank new chat
-   *  with nothing to delete. */
-  sessionId: string | null;
-  onDeleteSession: (sessionId: string) => void | Promise<void>;
-  showReasoning: boolean;
-  onToggleReasoning: () => void;
-  models: ReasoningModelSummary[];
-  selectedModelId: string | null;
-  onSelectModel: (modelId: string) => void;
-  modelLocked: boolean;
 };
 
-export function ChatHeader({
-  onToggleSidebar,
-  sidebarOpen,
-  sessionId,
-  onDeleteSession,
-  showReasoning,
-  onToggleReasoning,
-  models,
-  selectedModelId,
-  onSelectModel,
-  modelLocked,
-}: ChatHeaderProps) {
-  const [confirming, setConfirming] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  async function handleConfirmDelete() {
-    if (!sessionId) {
-      return;
-    }
-    setDeleting(true);
-    try {
-      await onDeleteSession(sessionId);
-    } finally {
-      setDeleting(false);
-      setConfirming(false);
-    }
-  }
-
+/**
+ * The chat's top bar: get to the conversation list, get back to the
+ * dashboard. Nothing else.
+ *
+ * Three controls were removed from here on 2026-09-09, each for its own
+ * reason:
+ *
+ * - **The Base / Fine-tuned selector.** The app now runs a single reasoning
+ *   path (`HERHEALTH_TRIAGE_MODE=vllm`, the fine-tuned adapter with the base
+ *   model as an automatic fallback), so there was nothing left to choose
+ *   between. `ModelSelector` and the `/triage/models` endpoint still exist
+ *   for side-by-side evaluation; they are simply not wired into the chat.
+ * - **The Reasoning toggle.** It surfaced the decision's `rationale` a
+ *   second time, behind a disclosure, on top of the answer the user is
+ *   already reading. Two versions of the same sentence is not transparency.
+ * - **Delete chat.** Deleting lived in two places at once, and the one up
+ *   here acted on "the chat you happen to have open" rather than on a chat
+ *   you pointed at. Deletion now belongs to the sidebar row it deletes,
+ *   where the thing being destroyed is the thing under the cursor.
+ */
+export function ChatHeader({ onToggleSidebar, sidebarOpen }: ChatHeaderProps) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-3 backdrop-blur sm:px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background/95 px-3 backdrop-blur sm:px-4">
       <Button
         variant="ghost"
         size="icon"
@@ -65,86 +45,21 @@ export function ChatHeader({
         {sidebarOpen ? <X className="size-5" /> : <Menu className="size-5" />}
       </Button>
 
-      <div className="flex min-w-0 flex-1 justify-center">
-        <ModelSelector
-          models={models}
-          selectedId={selectedModelId}
-          onSelect={onSelectModel}
-          disabled={modelLocked}
-        />
-      </div>
+      {/* Spacer on desktop, where the sidebar toggle is hidden, so the
+          dashboard control stays pinned right instead of jumping left. */}
+      <div className="hidden lg:block" aria-hidden />
 
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          role="switch"
-          aria-checked={showReasoning}
-          onClick={onToggleReasoning}
-          title={
-            showReasoning
-              ? "Hide the reasoning behind each reply"
-              : "Show the reasoning behind each reply"
-          }
-          className={cn(
-            "shrink-0",
-            showReasoning ? "text-primary" : "text-muted-foreground",
-          )}
-        >
-          <Brain className="size-4" />
-          <span className="hidden sm:inline">Reasoning</span>
-        </Button>
-
-        {sessionId ? (
-          confirming ? (
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={deleting}
-                onClick={() => setConfirming(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                disabled={deleting}
-                onClick={() => void handleConfirmDelete()}
-              >
-                <Trash2 className="size-3.5" />
-                Delete
-              </Button>
-            </div>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="shrink-0 text-muted-foreground hover:text-destructive"
-              onClick={() => setConfirming(true)}
-            >
-              <Trash2 className="size-4" />
-              <span className="hidden sm:inline">Delete chat</span>
-            </Button>
-          )
-        ) : null}
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          asChild
-          title="Home"
-        >
-          <Link href={routes.dashboard} aria-label="Home">
-            <LayoutDashboard className="size-5" />
-          </Link>
-        </Button>
-      </div>
+      {/* Says where it goes, not what it is. This is the only way out of the
+          chat, and as a bare grid glyph nobody read it as one — so it gets a
+          back arrow, a full label, and an outline rather than ghost styling.
+          The label stays "Back to dashboard" at every width: shortening it to
+          an icon on mobile is exactly the case where it was being missed. */}
+      <Button variant="outline" size="sm" className="shrink-0 gap-2" asChild>
+        <Link href={routes.dashboard}>
+          <ArrowLeft className="size-4" aria-hidden />
+          Back to dashboard
+        </Link>
+      </Button>
     </header>
   );
 }

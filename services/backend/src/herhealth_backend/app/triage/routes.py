@@ -37,6 +37,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from herhealth_backend.app.accounts.current_user import get_current_user
 from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.profile import health_note_for
+from herhealth_backend.app.config import reasoning_timeout as configured_reasoning_timeout
 from herhealth_backend.app.db import Database
 from herhealth_backend.app.triage.models import ConsultationSession
 from herhealth_backend.app.triage.models import Message as MessageRow
@@ -66,7 +67,7 @@ _USER_FACING_ERROR = "Something went wrong. Please try again."
 #: that, not a tight bound — see _run_turn's docstring for why this exists
 #: at all (containment for an intermittent hang, not a normal request
 #: budget).
-REASONING_TIMEOUT_SECONDS = 150.0
+REASONING_TIMEOUT_SECONDS = configured_reasoning_timeout()
 #: OpenRouter occasionally returns schema-valid JSON with invented feature ids
 #: or bad citations. One silent retry before surfacing 502 to the client —
 #: observed live 2026-09-02: first attempt 502, identical second attempt 200.

@@ -25,7 +25,7 @@ optional or a suggestion — it's the direct fix for a documented safety failure
 
 | | |
 |---|---|
-| Base model | `Qwen/Qwen3.5-9B` |
+| Base model | `Qwen/Qwen3.5-9B` – a **multimodal hybrid** (vision tower; full attention only every 4th layer), not a text model. See [uni-server-vllm.md §0.2](uni-server-vllm.md). |
 | Adapter | `herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2` (private HF repo), served under the name `herhealth` |
 | Server | vLLM OpenAI-compatible API, `--enable-lora` |
 | Host | vast.ai on-demand GPU rental, single RTX 5090 (32GB VRAM), `vastai/vllm` template |
@@ -59,13 +59,26 @@ it in a few minutes.
       ```
       vllm serve Qwen/Qwen3.5-9B --enable-lora \
         --lora-modules herhealth=herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2 \
-        --max-lora-rank 16 --max-model-len 16384 --port 8001
+        --max-lora-rank 16 --max-model-len 16384 \
+        --limit-mm-per-prompt '{"image":0,"video":0}' --port 8001
       ```
       `--max-model-len 16384` is load-bearing, not a tuning knob you can drop:
       the base model's native 262144-token context makes vLLM try to reserve
       KV cache for the full length by default, which fails to fit a single
       24–32GB card. 16384 comfortably covers a triage turn's injected
-      `red_flags.yaml` + retrieved passages + conversation history.
+      `red_flags.yaml` + retrieved passages + conversation history. **Never go
+      below 8192** – the system prompt alone is ~3,200–3,600 tokens before
+      retrieval.
+
+      `--limit-mm-per-prompt '{"image":0,"video":0}'` was added 2026-09-09:
+      the base carries a vision tower, and without **both** keys at 0 the
+      engine profiles a video item and reserves a 12,288-token encoder cache
+      this text-only system never uses. Look for `running in text-only mode`.
+
+      **On any host with more than one GPU, add `--disable-custom-all-reduce`**
+      unless you have confirmed GPU peer-to-peer access works. Without it,
+      corrupted all-reduce produces replies of `!!!!!!!!!!!` and deadlocks
+      startup – see [uni-server-vllm.md §0.1](uni-server-vllm.md).
 - [ ] Verify: `curl http://localhost:8001/v1/models` should list both
       `Qwen/Qwen3.5-9B` and `herhealth`.
 
@@ -98,6 +111,14 @@ server are actually up before debugging anything more specific.
 - **Observed code-switching**: one test response inserted Chinese characters
   mid-English sentence, unprompted. Not characterized beyond one occurrence —
   don't assume output is reliably monolingual.
+- **`!!!!!!!!!!!` replies mean NaN logits, not a bad prompt.** `!` is token 0
+  in Qwen's byte-level BPE vocabulary, and `argmax` over an all-NaN logit
+  vector returns index 0. On multi-GPU hosts the cause is vLLM's custom
+  all-reduce running over a link without peer-to-peer access; fix with
+  `--disable-custom-all-reduce` and `rm -rf ~/.cache/vllm`. Diagnosed
+  2026-09-09 on the campus VM – [uni-server-vllm.md §0.1](uni-server-vllm.md)
+  carries the evidence and the list of things already ruled out (the adapter
+  is clean; `/dev/shm` is not implicated).
 - **Register variance**: the same question asked twice produced a casual
   bullet-point answer once and a terse clinical-register answer (naming
   specific lab panels: LH/FSH ratio, prolactin, pelvic ultrasound) the other

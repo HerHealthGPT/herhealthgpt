@@ -87,13 +87,26 @@ source ~/vllm-env/bin/activate
 vllm serve Qwen/Qwen3.5-9B --enable-lora \
   --lora-modules herhealth=herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2 \
   --max-lora-rank 16 --max-model-len 16384 \
+  --limit-mm-per-prompt '{"image":0,"video":0}' \
   --host 0.0.0.0 --port 8002
 ```
 
+**If the friend's PC has more than one GPU**, add `--tensor-parallel-size 2`
+*and* `--disable-custom-all-reduce`. The second flag is not optional on any
+host where GPU peer-to-peer access is unavailable: vLLM's custom all-reduce
+then corrupts activations until the logits are NaN and every reply comes back
+as `!!!!!!!!!!!`. Diagnosed on the campus VM 2026-09-09 —
+[uni-server-vllm.md §0.1](uni-server-vllm.md).
+
+`--limit-mm-per-prompt '{"image":0,"video":0}'` is needed because the base is
+a multimodal hybrid, not a text model; **both** keys must be 0 or the engine
+reserves an encoder cache this system never uses.
+
 First run downloads ~20 GB of weights — can take 30–60 minutes.
 
-**Leave this terminal open.** When ready you should see something like
-`Uvicorn running on http://0.0.0.0:8002`.
+**Leave this terminal open.** When ready you should see
+`Application startup complete.` (older vLLM builds print
+`Uvicorn running on http://0.0.0.0:8002` instead).
 
 ---
 

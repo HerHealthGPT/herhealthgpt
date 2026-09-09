@@ -558,6 +558,46 @@ What follows from that, and what does not:
   projections (`q/k/v/o_proj`, `gate/up/down_proj`). Base model confirmed as
   `Qwen/Qwen3.5-9B`. Trained via Unsloth, `peft==0.19.1`. `max_lora_rank=16` is
   sufficient for serving.
+- **The adapter's weights were verified clean on 2026-09-09**: every tensor
+  `float32`, zero NaN, zero Inf, max |weight| ~0.41 (typical 0.03-0.08). When
+  a serve produces garbage, the adapter is not the place to look — see the
+  serving constraints below.
+
+### The base is a multimodal hybrid, not a text model
+
+Established 2026-09-09 from a live serve, and it corrects what the rest of this
+document and `README.md` previously implied. `Qwen/Qwen3.5-9B` loads as
+**`Qwen3_5ForConditionalGeneration`**: a vision tower plus a *mixed* attention
+stack in which only every fourth layer is full attention and the remainder are
+gated linear-attention (Mamba-family) blocks. The adapter's own module list is
+independent confirmation — `mlp.{gate,up,down}_proj` on all 32 layers but
+`self_attn.{q,k,v,o}_proj` on layers **3, 7, 11, 15, 19, 23, 27, 31** only,
+under the key prefix `base_model.model.model.language_model.*`.
+
+Three consequences bind anyone serving this model:
+
+1. **Multimodality must be capped on both axes.** `--limit-mm-per-prompt
+   '{"image":0,"video":0}'`. Capping `image` alone still profiles a video item
+   and reserves a 12,288-token encoder cache. The log line
+   `running in text-only mode` is the check.
+2. **On multi-GPU hosts, `--disable-custom-all-reduce` is mandatory where GPU
+   peer-to-peer access is unavailable.** vLLM's custom all-reduce silently
+   corrupts activations across a broken link until the logits are NaN, at
+   which point the sampler emits token 0 — the character `!` in Qwen's
+   byte-level BPE vocabulary. The observed symptom is a reply of
+   `!!!!!!!!!!!`, and the same broken collective deadlocks engine startup.
+   Diagnosed and fixed on the campus VM 2026-09-09;
+   [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md) §0.1
+   is the full write-up and the first thing to read when a serve misbehaves.
+3. **`max_model_len` must exceed the injected prompt.** A triage turn's system
+   prompt is ~3,200-3,600 tokens *before* retrieval — `DEFAULT_SYSTEM_PROMPT`
+   plus the feature vocabulary plus all of `red_flags.yaml` rendered verbatim
+   plus the JSON shape instruction. 4096 leaves nothing to generate into;
+   8192 is the verified working value. `_chat_completions_body` in
+   `services/backend/src/herhealth_backend/triage/clients.py` sends no
+   `max_tokens`, so vLLM defaults to whatever remains in the window — which
+   turns an oversized prompt into a validation failure and a retry loop
+   rather than a clean error. That gap is open.
 
 ## Language scope
 
