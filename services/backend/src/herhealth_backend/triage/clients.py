@@ -92,9 +92,12 @@ def _render_context(context: Sequence[RetrievedPassage]) -> str:
     if not context:
         return "No retrieved passages matched this turn."
     lines = [
-        "Retrieved passages. passage_id is ONLY for `citations` — it is a "
-        "content hash, never a feature or condition id, even though both "
-        "are lowercase strings."
+        "BACKGROUND PASSAGES, retrieved by similarity. These are for wording and "
+        "context, and to cite — they are NOT authored evidence and carry no "
+        "strength, so never take a condition id from one; the EVIDENCE HER "
+        "ANSWERS KEY INTO block above is the authoritative set. passage_id is "
+        "ONLY for `citations` — it is a content hash, never a feature or "
+        "condition id, even though both are lowercase strings."
     ]
     for p in context:
         line = f'- passage_id={p.id} ({p.citation}): "{p.text}"'
@@ -127,7 +130,22 @@ def _render_context(context: Sequence[RetrievedPassage]) -> str:
 #: enforces the schema against this provider.
 _JSON_SHAPE_INSTRUCTION = (
     "\n\nRespond with ONLY a single JSON object, no other text, matching this shape: "
-    '{"type": "ask", "conclude" or "decline", "rationale": "REQUIRED always. '
+    # The shape used to open '{"type": "ask", "conclude" or "decline", ...'.
+    # Read as JSON that is three keys, not one key with three legal values,
+    # and models copied it literally: observed live 2026-09-10 against both
+    # OpenRouter and the campus adapter, which emitted a top-level
+    # `"conclude": false` and were rejected by `extra="forbid"` — a whole turn
+    # lost to a comma.
+    # `observed` leads the shape, and its position is load-bearing. It used to
+    # sit last, after ~1,700 tokens of instruction, and models simply omitted
+    # it: observed live 2026-09-11, "my periods are all over the place" came
+    # back with `observed: {}`, so `cycle_regularity=irregular` never entered
+    # the case vector. Nothing then joined, every question scored 0.000, and
+    # the ranked menu collapsed to alphabetical order — the model was left
+    # choosing a follow-up from an unranked list. Recording what she said has
+    # to happen before anything else is worth doing, so it is asked for first.
+    '{"observed": {"a real feature_id": "one of that feature\'s listed values"}, '
+    '"type": "<exactly one of: ask | conclude | decline>", "rationale": "REQUIRED always. '
     "THIS IS THE TEXT SHE READS, on every decision type — write it to her, in "
     'plain words, second person", '
     '"next_feature_id": "REQUIRED string when type is ask — must be a real '
@@ -146,6 +164,45 @@ _JSON_SHAPE_INSTRUCTION = (
     '\\"a6bf0793b2a9a509\\"; never \\"passage_id=…\\" and never a feature '
     'or condition id; use [] not null"], '
     '"red_flag_id": "a red_flags.yaml id if this decision is driven by one, else null"}. '
+    # Measured 2026-09-11 against the fine-tuned adapter: it emits well-formed
+    # JSON with `observed` correctly filled, then omits `action_code` on a
+    # conclude — on one probe it included it, on the next it did not, from an
+    # identical request. That single missing key is the whole reason the
+    # adapter's turns were being rejected and handed to the base model. The
+    # shape spec already said "required only if type is conclude"; a
+    # conditional requirement buried mid-spec was evidently too weak, so it is
+    # restated here as a flat rule.
+    "\n\nTWO KEYS ARE NEVER OPTIONAL. If type is \"conclude\" you MUST include "
+    "`action_code` — a conclude without one is rejected outright, however good "
+    "the rest of it is. If type is \"ask\" you MUST include both "
+    "`next_feature_id` and `question_text`. Check for these before you answer.\n"
+    "\nFILL `observed` FIRST, BEFORE YOU DECIDE ANYTHING. It is the first key "
+    "in the shape above for a reason: until her words are recorded against the "
+    "feature vocabulary, nothing can be looked up, no warning sign can be "
+    "checked, and the ranked question list you are given below is computed from "
+    "an empty slate and is worth nothing. An empty `observed` on a message that "
+    "plainly says something is the single most damaging mistake you can make "
+    "here, and it is silent — you will still get an answer out, it will just be "
+    "an uninformed one.\n"
+    "Worked example. She writes \"my periods are all over the place\". That "
+    'answers `cycle_regularity`, so observed is {"cycle_regularity": '
+    '"irregular"} — not {}. She writes "I\'ve had really bad pain down there '
+    'for three days and a fever": observed is {"pelvic_pain_severity": '
+    '"severe", "fever": "yes"}. Everyday, indirect and emotional wording still '
+    "counts: map what she means onto the closest listed value rather than "
+    "waiting for her to use the clinical word.\n"
+    "\nRECORDING WHAT SHE JUST SAID — the `observed` field, required on every "
+    "ask and conclude. Read her most recent message and record every feature it "
+    "answers: keys are feature ids from the lists above, values come from that "
+    "feature's own listed values, or \"unknown\" when she was asked and could "
+    "not say. Always include the feature you asked about last turn. A value "
+    "outside that feature's listed values is REJECTED — it cannot be matched "
+    "against a warning sign or looked up in the evidence, so recording "
+    '"quite bad" where the values are mild/moderate/severe throws the answer '
+    "away. Use {} only when her message answered nothing, and always on a "
+    "decline: an off-scope message tells us nothing about her health. This "
+    "field is what makes the next turn's warning-sign check and evidence "
+    "lookup work; an answer you leave out is one she will be asked for twice."
     "MANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
     "an ask as much as a conclude. If you are asking a question because of something a "
     "retrieved passage suggests, cite that passage's id even though you have not "
@@ -189,16 +246,16 @@ _JSON_SHAPE_INSTRUCTION = (
     "sight, and at EMERGENCY that costs her time she may not have.\n"
     "Write it as a calm, competent person would say it out loud. At EMERGENCY, "
     "lead with what she should do, and keep it short.\n\n"
-    "THREE DIFFERENT KINDS OF ID — do not mix them up: "
-    "(1) passage_id, shown on each retrieved passage above — use these ONLY in "
-    "`citations`, never in `next_feature_id` or `matching_conditions`. "
-    "(2) feature_id — a real one is shown only when a retrieved passage's own line "
-    "says `feature_id=...`; if none of the retrieved passages show a feature_id, you "
-    "do not have a real one available and must not invent one — conclude instead of "
-    "asking, or ask a general question and pick the closest real feature_id you "
-    "already know from earlier in this conversation. "
-    "(3) condition_id — same rule: only use one a retrieved passage's `condition_id=` "
-    "field actually showed you, never a passage_id or an invented name. "
+    "THREE DIFFERENT KINDS OF ID — do not mix them up, and each has ONE place "
+    "it comes from: "
+    "(1) passage_id — a 16-character hex string, shown on each retrieved passage. "
+    "Use these ONLY in `citations`, never in `next_feature_id`, `observed` or "
+    "`matching_conditions`. "
+    "(2) feature_id — take it from the QUESTIONS YOU MAY ASK NEXT list, or from "
+    "WHAT SHE HAS ANSWERED SO FAR. Never invent one and never use a hex id. "
+    "(3) condition_id — take it from the EVIDENCE HER ANSWERS KEY INTO block, "
+    "which lists exactly the conditions her answers support. Never invent one, "
+    "never take one from a background passage, and never use a hex id. "
     "If type is ask, next_feature_id and question_text are BOTH mandatory — "
     "never send ask with only rationale and citations. "
     "If you cannot pick a real feature id and the message is in scope, use type "
@@ -231,10 +288,23 @@ def _strip_thinking_blocks(content: str) -> str:
 
 def _parse_chat_completion_payload(payload: object) -> TriageDecision:
     try:
-        assert isinstance(payload, dict)
+        # `assert` rather than a raised ValueError was a real gap, not a
+        # style point: AssertionError is not in the except clause below, so a
+        # provider returning `content: null` escaped as a bare
+        # `AssertionError: ` with no message and no retry — observed
+        # 2026-09-10, a consultation lost after 1,327 seconds to an error
+        # that said nothing about what happened.
+        if not isinstance(payload, dict):
+            raise TypeError(f"expected a JSON object, got {type(payload).__name__}")
         content = payload["choices"][0]["message"]["content"]
-        assert isinstance(content, str)
+        if not isinstance(content, str):
+            raise TypeError(
+                f"message.content was {type(content).__name__}, not a string — the "
+                "model returned no text to parse"
+            )
         cleaned = _strip_thinking_blocks(content)
+        if not cleaned.strip():
+            raise ValueError("model returned an empty message")
         return TriageDecision.model_validate(json.loads(cleaned))
     except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as error:
         raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
@@ -290,8 +360,11 @@ def _available_ids_hint(context: Sequence[RetrievedPassage]) -> str:
         )
     else:
         parts.append(
-            "No retrieved passage carried a condition_id this turn, so "
-            "matching_conditions MUST be []."
+            "No retrieved passage carried a condition_id this turn. Take "
+            "matching_conditions from the EVIDENCE HER ANSWERS KEY INTO block "
+            "in the system prompt instead — those condition ids come from a "
+            "lookup against what she answered and are the authoritative set. "
+            "If that block is empty too, matching_conditions MUST be []."
         )
     if features:
         parts.append(f"Feature ids shown on this turn's passages: {', '.join(features)}.")
@@ -415,7 +488,27 @@ def _decide_via_chat_completions(
             messages=messages,
             enforce_json_object=enforce_json_object,
         )
-        response = client.post(url, headers=headers, json=body)
+        try:
+            response = client.post(url, headers=headers, json=body)
+        except httpx.TimeoutException as error:
+            # A slow answer is not a broken one, and until 2026-09-11 this
+            # call sat outside the try below — so a read timeout escaped the
+            # loop immediately and `max_attempts` only ever retried malformed
+            # JSON. Measured that day against the campus adapter: latency for
+            # an identical request swung between 4.7s and over 45s depending
+            # on GPU contention, and five of six turns in one consultation
+            # fell back to the base model on the first slow response, with no
+            # second attempt. Retrying is worth it precisely because the
+            # variance is this wide — the next attempt is often fast.
+            last_error = error
+            if attempt >= max_attempts:
+                raise
+            logger.warning(
+                "reasoning request timed out (attempt %d/%d) — retrying",
+                attempt,
+                max_attempts,
+            )
+            continue
         response.raise_for_status()
         try:
             decision = _parse_chat_completion_payload(response.json())

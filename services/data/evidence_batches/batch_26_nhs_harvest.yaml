@@ -1,0 +1,116 @@
+# Batch 26 — a second pass over NHS pages already in the corpus.
+#
+# DRAFTED 2026-09-11 by Claude, reading the cleaned NHS pages directly.
+#
+# APPROVAL: the repo owner authorised auto-approval for this batch to unblock
+# MVP testing. **It has NOT had a second reader.** That is a departure from
+# CLAUDE.md's verification protocol, which asks a second team member to confirm
+# each quote supports its row, and it is recorded here rather than left to be
+# inferred from the absence of a name. Every quote below was checked verbatim
+# against `build/clean/nhs/*.json` by script; what was not independently
+# checked is the *judgement* that the quote supports the row as written.
+#
+# WHY ONLY FIVE ROWS
+#
+# A lexical scan suggested ~41 free cells across eleven NHS pages. Reading the
+# pages reduced that to five. Two reasons, both worth recording:
+#
+# 1. The grid is denser than it looks. Of 26 candidates checked against real
+#    sentences, 21 were already authored — from womenshealth, MedlinePlus or
+#    NICHD — and `_no_duplicate_cells` permits one row per
+#    (condition, feature, value). NHS agreeing with an existing row is not a
+#    new row, and NHS's higher precedence (2 vs 3) only decides disagreements,
+#    of which there were none here.
+#
+# 2. The scan was simply wrong on several pages. The bacterial vaginosis page
+#    appeared to support four cells; reading it supported none. One of those
+#    four was a trap: NHS states "Bacterial vaginosis does not usually cause
+#    any soreness or itching", which reads like an `argues_against` row for
+#    `vulval_itching` — but CLAUDE.md already records this exact sentence as a
+#    live conflict with womenshealth, resolved by writing no row in either
+#    direction. Authoring it would have silently reversed a decision the team
+#    made deliberately.
+#
+# So: NHS is a rich source, and it has already been harvested more thoroughly
+# than the page sizes suggest. The remaining NHS opportunity is in the seven
+# conditions with no NHS page fetched at all, not in the pages already here.
+
+batch: 26
+covers: [endometriosis, uterine_fibroids]
+
+approved: true
+reviewed_on: 2026-09-11
+
+rows:
+  # --- endometriosis --------------------------------------------------------
+  - condition_id: endometriosis
+    feature_id: bleeding_heaviness
+    value: heavy
+    strength: strong_support
+    source_id: nhs
+    source_quote: >-
+      heavy periods, where you need to change your pads or tampons every 1 to 2
+      hours, or you may bleed through to your clothes.
+    note: >-
+      Strong rather than weak: the page does not merely list heavy periods, it
+      defines the threshold it means, and that definition matches
+      `bleeding_heaviness`'s own `heavy` value ("passing large clots or
+      bleeding through your clothes") closely enough that the mapping needs no
+      inference. Listed under "You might have some symptoms during your period".
+
+  - condition_id: endometriosis
+    feature_id: lower_back_pain
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: pain in your lower tummy and back (pelvic area)
+    note: >-
+      Weak. The back is named inside a phrase whose subject is pelvic pain, so
+      the page is not claiming back pain as a symptom in its own right. Kept
+      because `lower_back_pain` is otherwise thin, and flagged so a reviewer
+      can delete it rather than have to re-derive the doubt.
+
+  # --- uterine_fibroids -----------------------------------------------------
+  # All three rest on the same two sentences from "Symptoms of fibroids".
+  - condition_id: uterine_fibroids
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      problems pooing, such as bloating, not being able to poo or pain when you
+      poo
+    note: >-
+      The row rests on "pain when you poo". Weak because the feature also
+      covers pain passing urine, which this sentence does not mention — the
+      same half-coverage `pelvic_pain_with_urinary_retention` records for its
+      own clause.
+
+  - condition_id: uterine_fibroids
+    feature_id: bloating_or_digestive_symptoms
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      problems pooing, such as bloating, not being able to poo or pain when you
+      poo
+    note: >-
+      Same sentence as the row above, different feature: "bloating" and "not
+      being able to poo" are both digestive. Weak because the page offers them
+      as examples of one symptom rather than as symptoms in their own right.
+
+  - condition_id: uterine_fibroids
+    feature_id: urinary_symptoms
+    value: incontinence
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      peeing more often than usual, needing to pee suddenly or not being able
+      to control when you pee
+    note: >-
+      The row rests on "not being able to control when you pee", which is what
+      `incontinence` means. The same sentence already supports
+      `urinary_symptoms=frequency` for this condition from another source; this
+      adds the second value, so the feature now separates rather than merely
+      being present — which is the authoring direction the coverage analysis
+      asks for.

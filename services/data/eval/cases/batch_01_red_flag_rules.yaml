@@ -1,0 +1,172 @@
+# Batch 01 — the escalation rules, as runnable cases.
+#
+# DRAFTED 2026-09-11. NOT YET REVIEWED by a second reader.
+#
+# WHAT THESE MEASURE, AND WHAT THEY DO NOT
+#
+# Every label here is traced to the same verbatim source sentence the rule in
+# `red_flags.yaml` was authored from — so the expected action is the NHS's
+# statement, not ours. That satisfies the verification protocol's requirement
+# that a label be a restatement of something a cited source says.
+#
+# It does NOT make these an independent test of whether the rules are
+# clinically right. A case built from a rule and then run against that rule
+# shares its assumptions: if the rule mis-reads its source, this batch agrees
+# with the mistake. What it genuinely checks is the IMPLEMENTATION — clause
+# evaluation, most-severe-wins, the escalation screen, and the interaction
+# between rules that overlap on the same answers. That is not a trivial target:
+# two real defects were found in exactly that machinery on 2026-09-11, one of
+# which hid five live EMERGENCY rules at the moment their completing answer
+# arrived.
+#
+# Report them as implementation verification. Do not report them as accuracy.
+#
+# `label_quote` here is the sentence from the SOURCE PAGE rather than from a
+# benchmark reference answer, because these cases are derived from the rules
+# rather than from the 540-case benchmark. Every quote below was checked
+# verbatim against the cleaned corpus on 2026-09-11.
+
+cases:
+  # -- EMERGENCY, one per rule ------------------------------------------------
+
+  - id: sudden_severe_pelvic_pain_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: severe
+      pain_onset: sudden
+    label:
+      expected_action: EMERGENCY
+      expected_red_flag_id: sudden_severe_pelvic_pain
+      label_quote: have a sharp, sudden and intense pain in your lower tummy
+      note: >-
+        nhs/pelvic_inflammatory_disease, from the "Call 999 or go straight to
+        A&E if:" box. Also matches severe_pelvic_pain (URGENT); the more severe
+        rule must win, which is what this case checks.
+
+  - id: pelvic_pain_with_faintness_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: moderate
+      feeling_faint: "yes"
+    label:
+      expected_action: EMERGENCY
+      expected_red_flag_id: pelvic_pain_with_faintness
+      label_quote: you feel faint, dizzy or lightheaded, or pass out
+      note: >-
+        nhs/pelvic_pain. Severity is deliberately moderate, not severe: the
+        clause is `pelvic_pain_severity not_equals none`, so ANY pain plus
+        faintness escalates. A rule label reading "Pelvic pain with faintness"
+        invites the misreading that severe pain is required.
+
+  - id: pelvic_pain_with_shoulder_tip_pain_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: moderate
+      shoulder_tip_pain: "yes"
+    label:
+      expected_action: EMERGENCY
+      expected_red_flag_id: pelvic_pain_with_shoulder_tip_pain
+      label_quote: you have pain in the tip of your shoulder
+      note: >-
+        nhs/pelvic_pain. This is the ectopic-pregnancy pattern, escalated
+        without naming it — conditions.yaml deliberately does not model it.
+
+  - id: pelvic_pain_with_heavy_bleeding_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: moderate
+      bleeding_heaviness: soaking_hourly
+    label:
+      expected_action: EMERGENCY
+      expected_red_flag_id: pelvic_pain_with_heavy_bleeding
+      label_quote: you have heavy bleeding from your vagina
+      note: >-
+        nhs/pelvic_pain. Checks the `in` operator over a value list —
+        soaking_hourly and heavy both satisfy the clause.
+
+  - id: pelvic_pain_with_breathing_difficulty_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: mild
+      difficulty_breathing: "yes"
+    label:
+      expected_action: EMERGENCY
+      expected_red_flag_id: pelvic_pain_with_breathing_difficulty
+      label_quote: you have difficulty breathing
+      note: nhs/pelvic_pain. Mild pain still escalates; the clause is not_equals none.
+
+  - id: pelvic_pain_with_sudden_confusion_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: moderate
+      sudden_confusion: "yes"
+    label:
+      expected_action: EMERGENCY
+      expected_red_flag_id: pelvic_pain_with_sudden_confusion
+      label_quote: you suddenly feel confused
+      note: nhs/pelvic_pain.
+
+  # -- URGENT_SAME_DAY -------------------------------------------------------
+
+  - id: severe_pelvic_pain_alone_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: severe
+      pain_onset: gradual
+    label:
+      expected_action: URGENT_SAME_DAY
+      expected_red_flag_id: severe_pelvic_pain
+      label_quote: >-
+        your pelvic pain or period pain is severe or worse than usual, and
+        painkillers have not helped
+      note: >-
+        nhs/period_pain. The counterpart to sudden_severe_pelvic_pain_case:
+        severity WITHOUT sudden onset is urgent, not emergency. ADR 0004 records
+        that split and the source conflict behind it. This pair is the whole
+        point of the batch — the same severity answer must land on two different
+        actions depending on onset.
+
+  - id: pelvic_pain_with_fever_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: moderate
+      fever: "yes"
+    label:
+      expected_action: URGENT_SAME_DAY
+      expected_red_flag_id: pelvic_pain_with_fever
+      label_quote: you have a very high temperature (or you feel hot, cold or shivery)
+      note: nhs/pelvic_pain.
+
+  - id: pelvic_pain_with_abnormal_discharge_case
+    topic: Pelvic Pain
+    features:
+      pelvic_pain_severity: mild
+      abnormal_discharge: "yes"
+    label:
+      expected_action: URGENT_SAME_DAY
+      expected_red_flag_id: pelvic_pain_with_abnormal_discharge
+      label_quote: you have unusual discharge, fluid or bleeding from your vagina
+      note: nhs/pelvic_pain.
+
+  # -- no rule fires: the differential must carry it -------------------------
+
+  - id: no_red_flag_pcos_picture_case
+    topic: Irregular Periods
+    features:
+      cycle_regularity: irregular
+      excess_hair_growth: "yes"
+      acne_or_oily_skin: "yes"
+      pelvic_pain_severity: none
+      age_band: 20_to_29
+    label:
+      expected_action: ROUTINE_APPOINTMENT
+      needs_clarification: true
+      label_quote: >-
+        Polycystic ovary syndrome (PCOS) is the name for set of symptoms that
+        are related to an imbalance of hormones.
+      note: >-
+        medlineplus/pcos. No red flag can fire here — every rule in
+        red_flags.yaml needs pain, bleeding or an acute sign, and none is
+        present. The expected action is pcos's baseline_action. This case
+        exists to check that the absence of a rule does not silently escalate,
+        which is the over-triage direction.

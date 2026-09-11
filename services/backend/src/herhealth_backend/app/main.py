@@ -130,6 +130,8 @@ def _build_triage_agent() -> TriageAgent | None:
     if mode == "off":
         return None
     if mode == "demo":
+        # Demo mode keeps the gate off: MvpDemoReasoningClient is scripted and
+        # has no second answer to give when a conclusion is sent back.
         return TriageAgent(
             base=base,
             reasoning=MvpDemoReasoningClient(),
@@ -158,7 +160,12 @@ def _build_triage_agent() -> TriageAgent | None:
                 primary_name="fine-tuned adapter (campus vLLM)",
                 fallback_name="base model (OpenRouter)",
             )
-        return TriageAgent(base=base, reasoning=reasoning, retrieval=retrieval)
+        return TriageAgent(
+            base=base,
+            reasoning=reasoning,
+            retrieval=retrieval,
+            min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
+        )
 
     api_key = configured_openrouter_api_key()
     if api_key is None:
@@ -167,7 +174,16 @@ def _build_triage_agent() -> TriageAgent | None:
         base=base,
         reasoning=OpenRouterReasoningClient(api_key=api_key, decision_validator=validator),
         retrieval=retrieval,
+        min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
     )
+
+
+#: How many of her answers a real deployment wants recorded before it accepts
+#: a conclusion without challenge. Three is deliberately low — enough to stop a
+#: verdict from one sentence, not enough to make a consultation feel like a
+#: form. See ``TriageAgent._refuse_premature_conclusion``: the model still
+#: decides, this only sends an early conclusion back once with the reason.
+MIN_ANSWERS_BEFORE_CONCLUDING = 3
 
 
 def _build_reasoning_models() -> dict[str, ReasoningModelOption]:

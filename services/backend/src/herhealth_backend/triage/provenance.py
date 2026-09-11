@@ -11,13 +11,65 @@ reaches a user.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 
 from herhealth_contracts.decision import DecisionType, TriageDecision
-from herhealth_contracts.knowledge import ActionCode
+from herhealth_contracts.knowledge import ActionCode, KnowledgeBase
 from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 
-__all__ = ["enforce_provenance_cap"]
+__all__ = ["drop_unknown_conditions", "enforce_provenance_cap"]
+
+logger = logging.getLogger(__name__)
+
+
+def drop_unknown_conditions(
+    decision: TriageDecision, base: KnowledgeBase
+) -> TriageDecision:
+    """Remove named conditions that are not in ``conditions.yaml``, keeping the
+    rest of the decision — above all its action code — intact.
+
+    **Why drop rather than reject.** ``vocabulary.validate_against_knowledge_base``
+    raises on an unknown condition id, and rightly so as a *check*; but the
+    route turns that raise into a retry and then a 502, so a decision whose
+    urgency was correct is thrown away over an optional field. Measured
+    2026-09-11: the fine-tuned adapter answered EMERGENCY to sudden severe
+    pelvic pain with faintness — the right call — and lost the whole turn to
+    ``matching_conditions``. The base model did the same with
+    ``poisoned_oil_poisoning``.
+
+    ``matching_conditions`` is explicitly optional even on a qualifying
+    CONCLUDE (see ``TriageDecision``): naming conditions is offered, not
+    required. The action code is not optional and is the part that gets her
+    to care. So the field that may legally be empty is the field that gives
+    way.
+
+    **What this does not do.** It never invents, substitutes or reorders a
+    condition, and it never touches ``action_code`` or ``red_flag_id``. An
+    invented ``red_flag_id`` is deliberately still a hard failure: it is
+    load-bearing for the urgency itself, so silently dropping it would leave
+    an escalation asserting a rule that does not exist.
+
+    Every drop is logged. A model inventing condition names is a real defect
+    and the fix for it is guided decoding, not this function — this only stops
+    that defect costing a woman her answer in the meantime.
+    """
+    if not decision.matching_conditions:
+        return decision
+
+    known = base.conditions_by_id
+    kept = tuple(c for c in decision.matching_conditions if c in known)
+    dropped = [c for c in decision.matching_conditions if c not in known]
+    if not dropped:
+        return decision
+
+    logger.warning(
+        "dropped %d invented condition id(s) from a %s decision: %s",
+        len(dropped),
+        decision.action_code.value if decision.action_code else decision.type.value,
+        ", ".join(sorted(dropped)),
+    )
+    return decision.model_copy(update={"matching_conditions": kept})
 
 
 def enforce_provenance_cap(

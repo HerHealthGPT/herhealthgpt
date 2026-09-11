@@ -551,6 +551,23 @@ What follows from that, and what does not:
   and the base can be served from one process. The adapter was fitted against an
   NF4-quantised base, so serving it against an unquantised base is a small
   distribution shift — usually fine, but **measure it, do not assume it**.
+- **Where the adapter comes from, since none of it is in this tree.**
+  Nothing in this monorepo trains the adapter; this repo only *serves* it,
+  so its provenance was otherwise undiscoverable from here. The retrain that
+  rule 1 makes a precondition for letting the adapter decide anything has to
+  happen in the first of these, not in this repo.
+
+  | what | where |
+  |---|---|
+  | training code | `github.com/Mazen-Bahgat/HerHealthGPT`, branch **`hassan-pc`** — the valid code is on that branch, not the default one |
+  | published weights | `huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2` |
+  | weights as served | `/home/jovyan/models/herhealth-lora-v2` on the campus box, registered as `--lora-modules herhealth=…` |
+
+  **None of these were fetched or reviewed from this session** — they are as
+  supplied by the repo owner. In particular nobody has checked that the
+  branch, the Hugging Face repo and the directory actually served on the
+  campus box are the same weights, and the served path is version-suffixed
+  (`-v2`) in a way that invites exactly that drift.
 - **Rank and target modules, confirmed 2026-08-31 against the real
   `adapter_config.json`** on `herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`
   (private, not gated): `r=16`, `lora_alpha=16`, standard LoRA (`use_dora` and

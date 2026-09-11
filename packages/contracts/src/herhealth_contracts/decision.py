@@ -21,6 +21,7 @@ this schema.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import Self
 
@@ -36,6 +37,11 @@ __all__ = ["DecisionType", "TriageDecision"]
 #: schema validation so one bad format does not cost a full model retry
 #: (observed live: 1–3 retries × ~10–60s each).
 _PASSAGE_ID_PREFIX = re.compile(r"^(?:passage_id\s*=\s*)?", re.IGNORECASE)
+
+#: The shape ``Identifier`` requires. Used to drop malformed condition names
+#: before validation rather than failing the decision on them — see
+#: ``_coerce_null_collections``.
+_IDENTIFIER_SHAPE = re.compile(r"[a-z][a-z0-9_]*")
 
 
 class DecisionType(StrEnum):
@@ -160,6 +166,40 @@ class TriageDecision(BaseModel):
     #: should_stop guaranteed).
     red_flag_id: Identifier | None = None
 
+    #: What she said, mapped onto the closed feature vocabulary — the case
+    #: vector. Keys are ``features.yaml`` ids, values are that feature's
+    #: ``allowed_values`` (or ``unknown``). Filled on the turn the model
+    #: *reads* her answer, not the turn it asks the question, so no extra
+    #: model call is needed to extract it.
+    #:
+    #: This is the field that makes the knowledge base's structure reachable
+    #: at runtime. Without it, ``red_flags.yaml``'s clauses cannot be
+    #: evaluated against anything, and ``evidence.csv``'s 140 keyed rows can
+    #: only be reached by similarity search — which measurably returns none of
+    #: them on a typical query. With it, both become lookups. See
+    #: ``herhealth_backend.triage.context``.
+    #:
+    #: **It records, it does not decide.** Nothing in this package or in
+    #: ``context`` turns an observation into an action code; ADR 0011 leaves
+    #: that with the model. Cross-checking the keys and values against the
+    #: real knowledge base happens in
+    #: ``herhealth_backend.triage.vocabulary``, for the same reason citations
+    #: are checked there — this package has no knowledge base to check against.
+    #:
+    #: Empty on a DECLINE, like citations and for the same reason: an
+    #: off-scope message tells us nothing about her health, so recording a
+    #: symptom from one would put a fact in the case vector that she never
+    #: reported about a topic this system does not cover.
+    #:
+    #: One consequence worth knowing before it surprises someone: a mapping
+    #: field makes this ``frozen=True`` model **unhashable**, and the same
+    #: goes for the frozen dataclasses that hold one (``AgentTurn``). Nothing
+    #: currently puts a decision in a set or uses one as a dict key — they
+    #: only ever go into lists — so this costs nothing today, but a future
+    #: caller that tries will get ``unhashable type: 'dict'`` rather than a
+    #: schema error, which is not an obvious message to debug from.
+    observed: Mapping[Identifier, str] = Field(default_factory=dict)
+
     #: Why, in the model's own words. Logged verbatim alongside the decision.
     rationale: NonEmptyText
 
@@ -179,6 +219,39 @@ class TriageDecision(BaseModel):
         for key in ("matching_conditions", "citations"):
             if patched.get(key) is None:
                 patched[key] = []
+        if patched.get("observed") is None:
+            patched["observed"] = {}
+
+        # Drop condition names that are not even shaped like an id, rather
+        # than failing the whole decision on them.
+        #
+        # Observed live 2026-09-11 against the fine-tuned adapter: asked about
+        # sudden severe pelvic pain it answered EMERGENCY — the right urgency —
+        # and attached ``["appendicitis", "tubal pregnancy", "ovarian cyst
+        # torsion", "ovarian-cyst rupture", "bowel obstruction"]``. Three of
+        # those contain spaces or hyphens, so ``Identifier`` rejected them and
+        # nine validation errors sank the entire turn. The user got a 502 and
+        # no urgency at all.
+        #
+        # Naming conditions is explicitly optional on a CONCLUDE (see
+        # ``matching_conditions`` below), while the action code is the
+        # safety-critical part. Throwing away an unusable *name* and keeping a
+        # correct EMERGENCY is strictly better than discarding both, and it is
+        # the same direction as every other tie-break in this project: prefer
+        # the outcome that still gets her to care.
+        #
+        # This only removes the malformed ones. An id that is well-shaped but
+        # not a real condition still reaches
+        # ``herhealth_backend.triage.provenance.drop_unknown_conditions``,
+        # which has the knowledge base to check it against; this package does
+        # not.
+        raw_conditions = patched.get("matching_conditions")
+        if isinstance(raw_conditions, list):
+            patched["matching_conditions"] = [
+                condition
+                for condition in raw_conditions
+                if isinstance(condition, str) and _IDENTIFIER_SHAPE.fullmatch(condition.strip())
+            ]
         raw_citations = patched.get("citations")
         if isinstance(raw_citations, list):
             patched["citations"] = [
@@ -204,6 +277,12 @@ class TriageDecision(BaseModel):
                 "red_flag_id": self.red_flag_id,
                 "matching_conditions": self.matching_conditions or None,
                 "citations": self.citations or None,
+                # An off-scope message tells us nothing about her health.
+                # Recording a feature value from one would put a symptom in
+                # the case vector that she never reported, about a topic this
+                # system does not cover — and every later turn's red-flag
+                # evaluation and evidence join would then read from it.
+                "observed": dict(self.observed) or None,
             }
             carried = sorted(name for name, value in forbidden.items() if value is not None)
             if carried:

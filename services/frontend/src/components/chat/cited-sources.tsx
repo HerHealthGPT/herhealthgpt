@@ -133,6 +133,15 @@ export function CitedSources({ passages, variant = "conclusion" }: CitedSourcesP
                   · looked up live
                 </span>
               ) : null}
+              {/* Says why this one is here. A warning-sign quote is not
+                  background reading the answer happens to agree with — it is
+                  the rule that set the urgency, and a reader deciding whether
+                  to go to hospital should be able to see that. */}
+              {passage.passage_type === "red_flag" ? (
+                <span className="text-muted-foreground/80">
+                  · warning sign
+                </span>
+              ) : null}
             </p>
           </li>
         ))}

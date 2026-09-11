@@ -28,6 +28,9 @@ BUILD_DIR: Final[Path] = REPO_ROOT / "build"
 #: Flat table exports of the knowledge base. Generated, gitignored.
 TABLES_DIR: Final[Path] = BUILD_DIR / "tables"
 
+#: Readable per-condition and per-answer views of the evidence grid.
+CARDS_DIR: Final[Path] = BUILD_DIR / "cards"
+
 #: Sectioned, quotable text produced by the clean step. Gitignored.
 CLEAN_DIR: Final[Path] = BUILD_DIR / "clean"
 

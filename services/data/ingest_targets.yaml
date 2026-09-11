@@ -207,6 +207,11 @@ documents:
   # reproducibility rather than new content.
   # ---------------------------------------------------------------------------
   - source_id: nhs
+    slug: pcos
+    url: https://www.nhs.uk/conditions/polyendocrine-metabolic-ovarian-syndrome-pmos/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
     slug: pelvic_pain
     url: https://www.nhs.uk/symptoms/pelvic-pain/
     licence: Crown copyright. Quote with attribution only; never redistribute.

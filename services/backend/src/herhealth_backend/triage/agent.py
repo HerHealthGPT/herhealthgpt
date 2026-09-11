@@ -29,13 +29,19 @@ produces no action code on its own; see :class:`MaxTurnsExceeded`.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.knowledge import KnowledgeBase, RedFlagRule
 from herhealth_contracts.retrieval import RetrievedPassage
+
+from herhealth_backend.triage.context import (
+    TurnContext,
+    build_turn_context,
+    render_turn_context,
+)
 
 __all__ = [
     "AgentTranscript",
@@ -125,8 +131,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "or paracetamol, the contraceptive pill, metformin, antibiotics, or "
     "anything a pharmacist might sell — do not tell her to take it, do not "
     "tell her not to take it as if you had reviewed her, and do not suggest "
-    "a dose or an alternative drug. Say plainly that you cannot diagnose and "
-    "cannot advise on medicines, and that a doctor or pharmacist must decide "
+    "a dose or an alternative drug. Say plainly that deciding on a medicine is "
+    "not something this tool does, and that a doctor or pharmacist must decide "
+    # Deliberately NOT "say you cannot diagnose": that phrasing matches
+    # `clients._LEAKED_INTERNALS`, so the prompt would be commanding a reply
+    # the validator then rejects — the same contradiction fixed above, on the
+    # medicine path instead of the in-scope one.
     "whether that medicine is right for her. If the same message also "
     "describes in-scope symptoms, you may still ask about those symptoms or "
     "give urgency guidance for them — but the medicine question itself is "
@@ -156,13 +166,20 @@ DEFAULT_SYSTEM_PROMPT = (
     "clarifying question at a time, or give urgency guidance — exactly one "
     "of SELF_CARE, ROUTINE_APPOINTMENT, URGENT_SAME_DAY, or EMERGENCY — or "
     "decline as scope requires. "
-    "Remind her plainly, in your own words, that you are an AI tool, not a "
-    "clinician, and that this is based on her answers and the cited "
-    "evidence, not a diagnosis. End every in-scope reply, question or final "
-    "answer alike, with: \"Urgency guidance only, from cited sources. Not a "
-    "diagnosis.\" A decline ends differently, because it rests on no source "
-    "and gives no urgency: end that one with \"This tool covers women's "
-    "reproductive health only, and does not provide diagnoses.\" "
+    # REMOVED 2026-09-11. These two sentences commanded the model to write
+    # exactly the strings `clients._LEAKED_INTERNALS` rejects — "urgency
+    # guidance", "cited sources", "not a diagnosis", "not a clinician". A
+    # model that obeyed the prompt was guaranteed to fail validation, retry,
+    # obey again, and fail again, burning three slow generations before the
+    # turn timed out. Observed live: every in-scope turn returning 504.
+    #
+    # The disclaimer is not lost. The interface renders it on every reply
+    # ("HerHealthGPT can make mistakes. It gives urgency guidance, not a
+    # diagnosis."), which is strictly better: it is always present, always
+    # worded correctly, and localisable, rather than depending on a model
+    # reproducing a fixed string. `_JSON_SHAPE_INSTRUCTION` already told the
+    # model not to restate any of this; the system prompt simply had not
+    # caught up, and the two halves contradicted each other.
     "Under-triage is the dominant failure mode: when in doubt, "
     "prefer sending her to care sooner rather than later — and when in "
     "doubt between asking and concluding, ask."
@@ -368,6 +385,15 @@ class TriageAgent:
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
     max_turns: int = 12
 
+    #: How many of her answers must be recorded before a conclusion is
+    #: accepted without challenge. **Zero here, and switched on by the
+    #: deployment** (``app/main.py``): refusing a conclusion is a policy about
+    #: how much this product wants to ask before answering, not a property of
+    #: the loop, and a scripted test client has no second answer to give when
+    #: challenged. See :meth:`_refuse_premature_conclusion` for why it cannot
+    #: simply be left to the prompt.
+    min_answers: int = 0
+
     def run_turn(
         self,
         history: Sequence[Message],
@@ -376,6 +402,8 @@ class TriageAgent:
         k: int = 8,
         carried_context: Sequence[RetrievedPassage] = (),
         background: str | None = None,
+        observed: Mapping[str, str] | None = None,
+        asked: Sequence[str] = (),
     ) -> AgentTurn:
         """One retrieve-then-reason step. Does not mutate ``history``.
 
@@ -401,11 +429,23 @@ class TriageAgent:
         for passage in carried_context:
             by_id.setdefault(passage.id, passage)
         context = tuple(by_id.values())
-        system = (
-            f"{self.system_prompt}\n\n"
-            f"{render_feature_vocabulary(self.base)}\n\n"
-            f"{render_red_flags(self.base.red_flags)}"
-        )
+
+        # The grounding block, built by joining the knowledge base against what
+        # she has actually answered rather than by rendering all of it every
+        # turn. Replaces `render_feature_vocabulary` (39 bare ids, no labels,
+        # no value vocabularies) and `render_red_flags` (16 rules with their
+        # `all_of` clauses stripped out, so a rule one answer away was
+        # indistinguishable from one nothing had touched). Both of those
+        # functions are kept — `bootstrap_dataset` still imports them, and the
+        # comparison in docs is worth being able to reproduce — but nothing on
+        # the serving path calls them any more.
+        #
+        # `prose=()` deliberately: the retrieved passages are still rendered by
+        # the reasoning client (`clients._render_context`), which is also what
+        # feeds `_available_ids_hint` on a retry. Rendering them here as well
+        # would put the same text in the prompt twice.
+        turn_context = build_turn_context(self.base, given=observed or {}, asked=asked, prose=())
+        system = f"{self.system_prompt}\n\n{render_turn_context(turn_context)}"
         if background:
             # Appended to the system prompt rather than injected into
             # ``history`` as a turn: she never said it in this consultation,
@@ -413,7 +453,114 @@ class TriageAgent:
             # transcript that is meant to be replayable and auditable.
             system = f"{system}\n\n{background}"
         decision = self.reasoning.decide(system_prompt=system, history=history, context=context)
+        decision = self._refuse_premature_conclusion(
+            decision, turn_context, system, history, context
+        )
         return AgentTurn(history_before=tuple(history), retrieved=context, decision=decision)
+
+    def _refuse_premature_conclusion(
+        self,
+        decision: TriageDecision,
+        turn_context: TurnContext,
+        system: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> TriageDecision:
+        """Send a conclusion back when something material is still unanswered.
+
+        **This is an abstention gate, and it is the one place this module comes
+        close to deciding.** It is worth being precise about what it does and
+        does not do. It never picks an action code, never picks a question, and
+        never converts a CONCLUDE into an ASK itself. It refuses a conclusion
+        and asks the model to think again, naming what is outstanding. The
+        model still chooses everything.
+
+        **Why it has to exist.** ADR 0011 moved ask-vs-conclude to the model,
+        and the system prompt asks for "at least two or three clarifying
+        questions". Measured 2026-09-11 against the fine-tuned adapter: it
+        concluded on the opening message in five of six probes, and in a live
+        consultation concluded after a single question whose answer raised
+        nothing. Instruction alone does not produce question-asking — MediQ
+        (arXiv:2406.00922) reports that prompting a model to ask questions
+        *degrades* performance, and that an explicit abstention step is what
+        recovers it, worth 22.3% diagnostic accuracy there. The adapter's
+        training data contains no example where the correct reply is a
+        question (CLAUDE.md), so there is nothing in it to appeal to.
+
+        Two conditions, and only two:
+
+        * **A more severe warning sign is one answer away.** Concluding at a
+          lower urgency while an EMERGENCY rule needs one more answer is the
+          under-triage this project exists to prevent, and it is what
+          ``should_stop`` rule 1 guaranteed by code before ADR 0011 retired it.
+        * **Almost nothing has been asked.** Fewer than ``min_answers``
+          features recorded while a question with real discriminating value is
+          on the menu. This is a judgement, it is deliberately low, and it is
+          the condition to relax first if consultations start feeling long.
+
+        Both are refusals to accept, not instructions to obey. If the model
+        concludes again after being told, that conclusion stands: the gate
+        gives way rather than looping, because a model that insists is more
+        likely to be right than a rule that cannot see her words.
+        """
+        if decision.type is not DecisionType.CONCLUDE or self.min_answers <= 0:
+            return decision
+
+        met = turn_context.fired.severity if turn_context.fired else -1
+        escalation = next((s for s in turn_context.near_misses if s.severity > met), None)
+
+        # A FIRED RULE IS NEVER CHALLENGED FOR THINNESS. This is the condition
+        # that matters most here, and the first version of this method got it
+        # wrong: a woman with no stored date of birth, reporting severe pelvic
+        # pain and faintness, has two answers recorded when
+        # `pelvic_pain_with_faintness` fires — and the thinness rule would have
+        # sent that EMERGENCY back to ask a third question first. Delaying an
+        # escalation to gather more history is exactly the failure this project
+        # exists to prevent, and the rule was doing it for the sake of a count.
+        #
+        # A fired rule needs no corroboration from question volume: it is the
+        # source's own escalation language, matched clause by clause against
+        # what she actually said. The only thing that may still send an
+        # escalation back is a STRICTLY MORE SEVERE rule one answer away —
+        # which asks her to escalate further, never to wait.
+        thin = (
+            turn_context.fired is None
+            and len(turn_context.given) < self.min_answers
+            and bool(turn_context.askable)
+        )
+        if escalation is None and not thin:
+            return decision
+
+        if escalation is not None:
+            clause = escalation.outstanding[0]
+            why = (
+                f"A more serious warning sign is one answer away: "
+                f"{escalation.rule.id} ({escalation.rule.action.value}) needs "
+                f"{clause.feature_id}. You must ask about {clause.feature_id} "
+                "before concluding at a lower urgency."
+            )
+        else:
+            best = turn_context.askable[0]
+            why = (
+                f"She has answered only {len(turn_context.given)} thing(s), and "
+                f"{best.feature.id} is still unanswered and would change the "
+                "picture. Ask one clarifying question instead of concluding."
+            )
+
+        retry = (
+            f"{system}\n\nYOUR PREVIOUS ANSWER CONCLUDED TOO EARLY AND WAS "
+            f"REJECTED. {why}\nRespond again with type \"ask\", a real "
+            "next_feature_id from the list above, and question_text."
+        )
+        try:
+            return self.reasoning.decide(
+                system_prompt=retry, history=history, context=context
+            )
+        except Exception:
+            # The gate is an improvement, not a guarantee. A client that
+            # cannot answer the re-prompt leaves the original conclusion
+            # standing rather than failing her turn outright.
+            return decision
 
     def run_consultation(
         self, opening_message: str, answer_provider: Callable[[TriageDecision], str]
@@ -432,10 +579,22 @@ class TriageAgent:
         history: list[Message] = [Message(role="user", content=opening_message)]
         turns: list[AgentTurn] = []
         cited_so_far: dict[str, RetrievedPassage] = {}
+        # The case vector, accumulated across turns. Each decision reports what
+        # it understood from the message it just read (`observed`), and those
+        # readings are merged forward — a later turn may correct an earlier
+        # value, which is why this is an update rather than a setdefault.
+        observed: dict[str, str] = {}
+        asked: list[str] = []
 
         for _ in range(self.max_turns):
-            turn = self.run_turn(history, carried_context=tuple(cited_so_far.values()))
+            turn = self.run_turn(
+                history,
+                carried_context=tuple(cited_so_far.values()),
+                observed=observed,
+                asked=asked,
+            )
             turns.append(turn)
+            observed.update(turn.decision.observed)
             by_id = {passage.id: passage for passage in turn.retrieved}
             for citation in turn.decision.citations:
                 if citation in by_id:
@@ -445,6 +604,12 @@ class TriageAgent:
                 return AgentTranscript(turns=tuple(turns), final_decision=turn.decision)
 
             assert turn.decision.question_text is not None  # ASK always carries one
+            # Recorded as asked the moment the question goes out, not when the
+            # answer comes back. A feature she was asked about and could not
+            # answer must still count as asked, or the escalation screen would
+            # keep offering the same probe every turn.
+            if turn.decision.next_feature_id is not None:
+                asked.append(turn.decision.next_feature_id)
             history.append(Message(role="assistant", content=turn.decision.question_text))
             history.append(Message(role="user", content=answer_provider(turn.decision)))
 

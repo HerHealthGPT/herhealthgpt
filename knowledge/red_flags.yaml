@@ -432,3 +432,28 @@ red_flags:
     note: >-
       Corroborated by the pelvic pain page, which lists "you have vomiting and
       diarrhoea, or you feel sick" under the same urgency.
+
+  # Added 2026-09-11 from the NHS pelvic-pain page's "Get help from NHS 111 if:
+  # You have pelvic pain and:" box — the same box that already supplies
+  # pelvic_pain_with_fever, _abnormal_discharge, _urinary_retention,
+  # _nausea_or_vomiting and pelvic_pain_in_pregnancy. This line of that box was
+  # never turned into a rule, so `blood_in_urine_or_stool` carried evidence
+  # rows but appeared in no escalation rule at all.
+  - id: pelvic_pain_with_blood_in_urine_or_stool
+    label: Pelvic pain with blood when passing urine or opening bowels
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: blood_in_urine_or_stool
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: there's blood in your pee or poo
+    note: >-
+      Listed under "Get help from NHS 111 if: You have pelvic pain and:", so the
+      urgency is the source's own and the pain clause is the source's own
+      framing rather than ours. Like pelvic_pain_with_urinary_retention, the
+      source covers urine and stool together while our feature covers both in
+      one yes/no, so no coverage is lost here.

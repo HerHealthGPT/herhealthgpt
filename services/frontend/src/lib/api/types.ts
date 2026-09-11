@@ -66,7 +66,26 @@ export type CitedPassage = {
   citation: string;
   source_id: string;
   url: string | null;
-  passage_type: "source_passage" | "evidence_statement" | "live_fallback";
+  /** `red_flag` is not a retrieved passage at all — it is the warning-sign
+   *  rule a decision fired, carrying that rule's own verbatim source quote.
+   *  It exists because `red_flags.yaml` is deliberately never embedded or
+   *  retrieved, so a red-flag conclusion has no passage id to cite and would
+   *  otherwise display no source whatsoever. It is also the only way NHS
+   *  appears: NHS is `citable_only`, so its passages are filtered out of the
+   *  served index, but quoting a rule with attribution is exactly what that
+   *  licence permits. */
+  /** `evidence_row` is an authored row from the evidence grid, reached by
+   *  looking it up against her answers rather than by similarity search. It
+   *  carries that row's own verbatim source quote. Like `red_flag`, it is the
+   *  only way several sources can be credited at all — NHS is `citable_only`,
+   *  so its passages are filtered out of the served index even though 47 of
+   *  the 140 authored rows are NHS. */
+  passage_type:
+    | "source_passage"
+    | "evidence_statement"
+    | "live_fallback"
+    | "red_flag"
+    | "evidence_row";
 };
 
 /** Mirrors packages/contracts/src/herhealth_contracts/decision.py TriageDecision,
