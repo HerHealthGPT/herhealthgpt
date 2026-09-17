@@ -429,6 +429,17 @@ class RedFlagRule(_KnowledgeModel):
 
     source_id: Identifier
     source_quote: SourceQuote
+    #: The page ``source_quote`` was read from, when it is known.
+    #:
+    #: A red-flag rule records which *source* it came from; it never recorded
+    #: which *page*, so a red-flag citation could only ever link to a source's
+    #: home page — nhs.uk rather than the NHS page the warning sign is on.
+    #: Optional because the identity has to be established, never assumed:
+    #: each value present was set by finding ``source_quote`` verbatim in that
+    #: document under ``build/clean/``, the same check ``make verify-quotes``
+    #: performs. Absent means unknown, and the caller falls back to the home
+    #: page rather than inventing a deep link.
+    source_url: HttpUrl | None = None
     note: str = ""
 
     @field_validator("action")

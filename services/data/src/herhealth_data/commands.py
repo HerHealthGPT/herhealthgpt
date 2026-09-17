@@ -527,6 +527,35 @@ def run_tables(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_cards(args: argparse.Namespace) -> int:
+    """Render the evidence grid as readable cards, by condition and by answer.
+
+    Generated and disposable like ``run_tables``. The by-answer card is the
+    one with a job beyond readability: it reports how many features actually
+    separate conditions by value and lists the presence-only ones, which is
+    the authoring work list.
+    """
+    from herhealth_data.cards import feature_reports, write_cards
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        print("error: the knowledge base does not load; run `make validate` first")
+        for problem in problems:
+            print(problem)
+        return 1
+
+    reports = feature_reports(base)
+    separating = [r for r in reports if r.discriminates]
+    written = write_cards(base, args.out)
+
+    print(f"  features authored        {len(reports):>4}")
+    print(f"  separate by answer       {len(separating):>4}")
+    print(f"  presence-only            {len(reports) - len(separating):>4}")
+    for path in written:
+        print(f"wrote {path}")
+    return 0
+
+
 # --------------------------------------------------------------------------
 # clean
 # --------------------------------------------------------------------------

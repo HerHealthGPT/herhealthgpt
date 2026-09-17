@@ -79,6 +79,13 @@ evidence:
 tables:
 	$(UV) run python -m herhealth_data.cli tables
 
+# Readable views of the evidence grid: one card per condition, and one per
+# feature showing what each ANSWER points at. The second reports how many
+# features actually separate conditions by value, which is the authoring
+# work list. Generated; nothing reads them back.
+cards:
+	$(UV) run python -m herhealth_data.cli cards
+
 # Reads credentials from infra/envs/data.env. Proposes only; --apply to write.
 icd:
 	set -a; . ./infra/envs/data.env; set +a; $(UV) run python -m herhealth_data.cli icd

@@ -144,6 +144,14 @@ def build_parser() -> argparse.ArgumentParser:
     tables_parser.add_argument("--out", type=Path, default=paths.TABLES_DIR)
     tables_parser.set_defaults(func=commands.run_tables)
 
+    cards_parser = subparsers.add_parser(
+        "cards",
+        help="render the evidence grid as readable per-condition and per-answer cards",
+    )
+    cards_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
+    cards_parser.add_argument("--out", type=Path, default=paths.CARDS_DIR)
+    cards_parser.set_defaults(func=commands.run_cards)
+
     clean_parser = subparsers.add_parser("clean", help="turn fetched HTML into sectioned text")
     clean_parser.add_argument("--raw-dir", type=Path, default=paths.RAW_DIR)
     clean_parser.add_argument("--out-dir", type=Path, default=paths.CLEAN_DIR)

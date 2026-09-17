@@ -1,0 +1,63 @@
+# Batch 25 — NHS on PMOS (formerly PCOS).
+#
+# DRAFTED 2026-09-11 by Claude from the freshly fetched NHS page.
+# APPROVED 2026-09-11 by the repo owner, who read the row and its quote.
+# Provenance check, not clinical review — CLAUDE.md's standing limitation
+# applies: the knowledge base is source-traceable, not clinician-adjudicated.
+#
+# WHY THE PAGE WAS FETCHED
+#
+# `pcos` was one of eight conditions with no NHS row at all — not because of
+# the licence, but because no NHS PCOS page had ever been fetched. The NHS has
+# since renamed the condition to PMOS, which is also why the old slug never
+# matched. Fetched 2026-09-11 with approval, robots-checked and permitted:
+#   https://www.nhs.uk/conditions/polyendocrine-metabolic-ovarian-syndrome-pmos/
+#
+# WHY ONLY ONE ROW
+#
+# The page supports eight (feature, value) cells for pcos. Seven are already
+# authored from MedlinePlus, NICHD or womenshealth, and
+# `KnowledgeBase._no_duplicate_cells` permits exactly one row per
+# (condition, feature, value). NHS agrees with the existing rows rather than
+# contradicting them, so there is no precedence conflict to resolve and no
+# reason to displace them — NHS outranks those sources (precedence 2 vs 3) only
+# when they disagree, and here they do not.
+#
+# The cells NHS also supports, already taken, listed so the next reader does
+# not re-derive this:
+#   cycle_regularity=irregular · cycle_length=over_35_days
+#   excess_hair_growth=yes · scalp_hair_thinning=yes · weight_change=gain
+#   difficulty_conceiving=yes · acanthosis_nigricans=yes
+#
+# WHAT THE FETCH IS WORTH BEYOND THE ROW
+#
+# 1. `pcos` gains a fourth source, and its first at precedence 2.
+# 2. `conditions.yaml` already labels the condition "Polyendocrine metabolic
+#    ovarian syndrome (PMOS), formerly polycystic ovary syndrome (PCOS)" with
+#    no NHS backing. The page states the rename directly: "PMOS used to be
+#    called polycystic ovary syndrome (PCOS)." That label is now sourced.
+# 3. `low_mood_or_anxiety` had no pcos row from any source. It is one of the 22
+#    presence-only features, and this does not fix that — the row below is at a
+#    single value, like the rest.
+
+batch: 25
+covers: [pcos]
+
+approved: true
+reviewed_on: 2026-09-11
+
+rows:
+  - condition_id: pcos
+    feature_id: low_mood_or_anxiety
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: mental health problems, such as depression or anxiety
+    note: >-
+      Listed among "The main symptoms of PMOS include:". Weak rather than
+      strong: the page names it as one of six main symptoms without
+      distinguishing it from the many other causes of low mood, and
+      low_mood_or_anxiety carries burden 3 — a sensitive question that should
+      not be pushed up the ranking by an overstated weight. No other condition
+      currently has a row on this feature, so it separates nothing yet; that is
+      a coverage fact, not a reason to inflate it.

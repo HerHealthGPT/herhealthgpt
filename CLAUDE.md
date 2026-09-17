@@ -49,8 +49,8 @@ Consequences, all binding:
    (`packages/contracts/src/herhealth_contracts/decision.py`), a
    schema-constrained structure enforced by vLLM guided decoding — the one
    hard rule left, in place of a log-odds score. **The current QLoRA adapter
-   (trained on `gold_seeds_styled.csv`) may not be handed this decision as
-   it stands** — it was shown no example where the correct move is a
+   (trained on `ft_corpus_v1.jsonl`, 2,700 rows — see below) may not be
+   handed this decision as it stands** — it was shown no example where the correct move is a
    clarifying question, which is the documented cause of clarification
    collapsing to 0.000 in the original evaluation. It must be retrained on
    multi-turn conversational data before it decides anything; until that
@@ -516,15 +516,33 @@ rules sit one answer away, so that case takes ten questions rather than four.
 
 ## The fine-tuned model from our evaluation paper
 
-The paper's model was trained with **QLoRA** on
-`services/data/eval/benchmark/gold_seeds_styled.csv`: 540 rows, 90 distinct
-answers × 6 registers (`canonical`, `layperson`, `clinical`, `ambiguous`,
-`emotionally_concerned`, `indirect_cultural`).
+**The adapter was NOT trained on `gold_seeds_styled.csv`.** That file is the
+*benchmark*, and this line previously said otherwise — corrected 2026-09-11
+after reading the training repository directly. The two datasets are
+deliberately disjoint and must not be conflated.
 
-**No `Answer` in that file contains a question mark.** Not one — while 529 of the
-540 `Question` values do. The dataset has an **`ambiguous` register**, and those
-rows are paired with a complete answer too. So the model was shown 90 ambiguous
-questions and taught, every time, to answer rather than ask.
+| | file | size | what it is |
+|---|---|---|---|
+| **trained on** | `HerHealthGPT-LU_seed/ft_corpus_v1.jsonl` (training repo) | **2,700 rows** | the adaptation corpus |
+| **measured on** | `services/data/eval/benchmark/gold_seeds_styled.csv` (copy in this repo) | 540 rows | the benchmark, 90 seeds × 6 registers |
+
+**The adaptation corpus**, read from the file: fields `instruction`, `input`,
+`output`, `category`, `source_dataset`, `source_row_id`. Balanced at exactly
+**900 rows each** across `menstrual`, `pcos`, `fertility`. Source corpora:
+MENST_train24K 1,471; HealthCareMagic-100k 1,105; ChatDoctor-iCliniq 72;
+MENST_training2K 52. Built 136,109 → 17,939 → 15,510 → 2,700, dropping 2,279
+exact QA duplicates and 150 on answer length, with 317 rows excluded by a
+dual-key leakage check (`(source_dataset, source_row_id)` plus an answer hash
+for MENST). **No row shares either key with any of the 90 frozen benchmark
+seeds** — the disjointness is enforced, not assumed.
+
+**All 2,700 rows carry one fixed `instruction`:** *"You are a supportive
+women's-health information assistant. Answer the patient's question clearly and
+safely, and recommend seeing a clinician for diagnosis or treatment decisions."*
+Every example asks the model to **answer**. Not one asks it to judge whether the
+question can be answered yet. The benchmark shows the same shape from the other
+side: 529 of its 540 `Question` values contain a question mark and **none of the
+540 `Answer` values do**, including the 90 `ambiguous` rows.
 
 That is the mechanical explanation for clarification-seeking collapsing to 0.000.
 It was not an alignment mystery; it is what the data asked for.
@@ -539,8 +557,8 @@ What follows from that, and what does not:
   [ADR 0011](docs/adr/0011-controller-free-triage.md) the reasoning model *is*
   now permitted to decide, in general — but only after this adapter is
   retrained on multi-turn conversational data where the correct assistant turn
-  is sometimes a clarifying question, which does not exist in
-  `gold_seeds_styled.csv` today. Handing the untrained adapter the decision
+  is sometimes a clarifying question, which exists in neither the adaptation
+  corpus nor the benchmark today. Handing the untrained adapter the decision
   would very likely reproduce the 0.994 under-triage collapse this project
   already measured. Bootstrap data for the retrain exists at
   `services/data/eval/benchmark/bootstrap_multi_turn.jsonl`; the retraining run
@@ -551,6 +569,42 @@ What follows from that, and what does not:
   and the base can be served from one process. The adapter was fitted against an
   NF4-quantised base, so serving it against an unquantised base is a small
   distribution shift — usually fine, but **measure it, do not assume it**.
+- **Where the adapter comes from, since none of it is in this tree.**
+  Nothing in this monorepo trains the adapter; this repo only *serves* it,
+  so its provenance was otherwise undiscoverable from here. The retrain that
+  rule 1 makes a precondition for letting the adapter decide anything has to
+  happen in the first of these, not in this repo.
+
+  | what | where |
+  |---|---|
+  | training code and data | `github.com/Mazen-Bahgat/HerHealthGPT`, branch **`hassan-pc`** — the valid branch, not the default one |
+  | adaptation corpus | `HerHealthGPT-LU_seed/ft_corpus_v1.jsonl` on that branch |
+  | benchmark, EN / AR / FR | `Used_Datasets/Consolidated_Datasets/200_Seed_Dataset/gold_seeds_styled{,_ar,_fr}.jsonl` |
+  | translation workflow | `HerHealthGPT-LU_seed/translation_handoff/` — per-row translator, reviewer, status and notes |
+  | lineage audit | `EXPERIMENT_LINEAGE_AUDIT.md` — **read this before comparing any two result sets** |
+  | published weights | `huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2` |
+  | weights as served | `/home/jovyan/models/herhealth-lora-v2` on the campus box, registered as `--lora-modules herhealth=…` |
+
+- **Arabic exists in two registers, and this is an asset that is easy to miss.**
+  Every benchmark row carries both Modern Standard Arabic (`ar_text`) and an
+  Egyptian-Arabic rendering (`ar_text_slang_eg`), and the two differ in **all
+  540 rows**. The evaluation reported in the paper uses MSA for terminological
+  consistency. Egyptian-Arabic text therefore already exists and does not need
+  to be created for the dialect work — do not plan to generate it.
+
+- **There are two benchmarks in the project history, and their numbers are not
+  interchangeable.** `gold_seeds_styled` ("gss") is what the paper's results are
+  computed on. `benchmark_multilingual_v1` ("menst") is a later, separate
+  benchmark used for subsequent runs; its gold is 100% `see-doctor`, so its
+  denominators differ. `EXPERIMENT_LINEAGE_AUDIT.md` establishes that both are
+  internally valid and that comparing across them is invalid. Quote a figure
+  together with the benchmark it came from, always.
+
+  **None of these were fetched or reviewed from this session** — they are as
+  supplied by the repo owner. In particular nobody has checked that the
+  branch, the Hugging Face repo and the directory actually served on the
+  campus box are the same weights, and the served path is version-suffixed
+  (`-v2`) in a way that invites exactly that drift.
 - **Rank and target modules, confirmed 2026-08-31 against the real
   `adapter_config.json`** on `herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`
   (private, not gated): `r=16`, `lora_alpha=16`, standard LoRA (`use_dora` and

@@ -18,7 +18,12 @@ from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.knowledge import ActionCode
 from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 
-from herhealth_backend.triage.agent import Message
+from herhealth_backend.triage.agent import (
+    AttemptOutcome,
+    Message,
+    ReasoningAttempt,
+    ReasoningResult,
+)
 
 __all__ = ["DEMO_PASSAGE", "MvpDemoReasoningClient", "StaticRetrievalClient"]
 
@@ -131,7 +136,27 @@ class StaticRetrievalClient:
 class MvpDemoReasoningClient:
     """Scenario-aware scripted triage for local MVP — ask once, then conclude."""
 
+    #: Named like the real clients so a demo turn is attributable too — a
+    #: screenshot of a demo answer should never be mistakable for a served one.
+    name = "demo:scripted"
+
     def decide(
+        self,
+        *,
+        system_prompt: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> ReasoningResult:
+        """Wraps :meth:`_decide` so the scripted body keeps its many return
+        points instead of every one of them having to build a result."""
+        return ReasoningResult(
+            decision=self._decide(
+                system_prompt=system_prompt, history=history, context=context
+            ),
+            attempts=(ReasoningAttempt(client=self.name, outcome=AttemptOutcome.OK),),
+        )
+
+    def _decide(
         self,
         *,
         system_prompt: str,

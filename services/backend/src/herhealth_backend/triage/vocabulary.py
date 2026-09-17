@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from herhealth_contracts.decision import DecisionType, TriageDecision
-from herhealth_contracts.knowledge import KnowledgeBase
+from herhealth_contracts.knowledge import UNKNOWN_VALUE, KnowledgeBase
 from herhealth_contracts.retrieval import RetrievedPassage
 
 __all__ = ["ClosedVocabularyViolation", "validate_against_knowledge_base"]
@@ -67,6 +67,31 @@ def validate_against_knowledge_base(
         if decision.red_flag_id not in real_red_flag_ids:
             raise ClosedVocabularyViolation(
                 f"red_flag_id {decision.red_flag_id!r} is not a real rule in red_flags.yaml"
+            )
+
+    for feature_id, value in decision.observed.items():
+        feature = base.features_by_id.get(feature_id)
+        if feature is None:
+            raise ClosedVocabularyViolation(
+                f"observed references {feature_id!r}, not a real feature in features.yaml"
+            )
+        # ``unknown`` is always legal and is not in any feature's
+        # ``allowed_values``: "she was asked and could not say" has to be
+        # recordable, or the feature would look unasked forever and the
+        # escalation screen would keep probing it. A feature with no authored
+        # ``allowed_values`` is free text and is not checked.
+        if (
+            feature.allowed_values
+            and value != UNKNOWN_VALUE
+            and value not in feature.allowed_values
+        ):
+            allowed = ", ".join(feature.allowed_values)
+            raise ClosedVocabularyViolation(
+                f"observed[{feature_id!r}] = {value!r} is not one of that "
+                f"feature's allowed_values ({allowed}) — an answer outside "
+                "the value vocabulary cannot be matched against a red-flag "
+                "clause or joined to an evidence row, so it is silently "
+                "inert rather than merely untidy"
             )
 
     retrieved_ids = {passage.id for passage in context}

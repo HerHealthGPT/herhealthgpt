@@ -21,14 +21,15 @@ import asyncio
 import functools
 import logging
 import uuid
-from collections.abc import Sequence
-from dataclasses import replace
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from herhealth_contracts.decision import DecisionType, TriageDecision
+from herhealth_contracts.knowledge import KnowledgeBase
 from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
@@ -46,8 +47,18 @@ from herhealth_backend.app.triage.reasoning_models import (
     default_model_id,
 )
 from herhealth_backend.triage.age_bands import age_band_for
-from herhealth_backend.triage.agent import Message, TriageAgent, render_known_background
-from herhealth_backend.triage.provenance import enforce_provenance_cap
+from herhealth_backend.triage.agent import (
+    AttemptOutcome,
+    Message,
+    ReasoningAttempt,
+    TriageAgent,
+    render_known_background,
+)
+from herhealth_backend.triage.context import join_evidence
+from herhealth_backend.triage.provenance import (
+    drop_unknown_conditions,
+    enforce_provenance_cap,
+)
 from herhealth_backend.triage.vocabulary import (
     ClosedVocabularyViolation,
     validate_against_knowledge_base,
@@ -118,6 +129,10 @@ class SessionMessage(BaseModel):
     role: str
     content: str
     decision: dict[str, Any] | None = None
+    #: ``None`` on her own messages, and on every assistant turn recorded
+    #: before migration 0010 — those are unattributable, not "the default
+    #: model", and a reader of this field must not assume otherwise.
+    served_by: dict[str, Any] | None = None
     created_at: datetime
 
 
@@ -251,12 +266,48 @@ async def _run_turn(
     regardless of the above: a multi-second-to-multi-minute idle transaction
     during an unrelated external HTTP call is wasteful on its own terms.
     """
-    session_id, history, carried = await _load_session(request, user, database)
+    loaded = await _load_session(request, user, database)
+    session_id, history, carried = loaded.session_id, loaded.history, loaded.carried
     history.append(Message(role="user", content=request.message))
     background = await _known_background(user, database)
 
+    # Her stored age band is an ANSWER, not just prose. Seeding the case
+    # vector with it does two things the background block alone cannot:
+    # `age_band` stops being offered as a question, and the value takes part
+    # in the evidence join like any other answer.
+    #
+    # Observed live 2026-09-10 and the reason this exists: the background
+    # block told the model "do not ask her age again" while the ranked
+    # question menu — built from the case vector, which knew nothing about
+    # her profile — offered `age_band` as its top entry, because age_band
+    # separates 12 condition/value pairs and nothing marked it answered. The
+    # prompt contradicted itself, and the model followed the half that named
+    # a feature id. A rule stated in prose cannot beat a menu built from data.
+    #
+    # Profile is the weakest source: anything she has said in this
+    # consultation wins, because the band is derived from a date she typed
+    # once and her own words are about today.
+    observed: dict[str, str] = {}
+    profile_band = _profile_age_band(user)
+    if profile_band is not None:
+        observed["age_band"] = profile_band
+    observed.update(loaded.observed)
+
+    # The feature she was asked about last turn and has not yet answered. Her
+    # incoming message is that answer, so a decision that does not record it
+    # has dropped something she actually said — see _require_the_pending_answer.
+    pending = next(
+        (feature_id for feature_id in reversed(loaded.asked) if feature_id not in observed),
+        None,
+    )
+
     turn = None
     last_retryable_error: Exception | None = None
+    # Calls made by turns this loop threw away. Kept because a discarded turn
+    # still cost a real call to a real backend: dropping it would understate
+    # how much work a turn took, and counting it as a success would overstate
+    # how often that backend answered usefully.
+    discarded: list[ReasoningAttempt] = []
     for attempt in range(1, MAX_REASONING_ATTEMPTS + 1):
         try:
             loop = asyncio.get_running_loop()
@@ -268,11 +319,22 @@ async def _run_turn(
                         history,
                         carried_context=carried,
                         background=background,
+                        observed=observed,
+                        asked=loaded.asked,
                     ),
                 ),
                 timeout=REASONING_TIMEOUT_SECONDS,
             )
+            # Repair before checking, not after: an invented condition name is
+            # the one vocabulary fault worth surviving, because the field is
+            # optional and the action code beside it is not. Everything else
+            # the validator rejects — an unreal feature, an unreal rule, a
+            # citation that was never retrieved — still fails the turn.
+            turn = replace(
+                turn, decision=drop_unknown_conditions(turn.decision, agent.base)
+            )
             validate_against_knowledge_base(turn.decision, agent.base, turn.retrieved)
+            _warn_if_the_pending_answer_was_dropped(turn.decision, pending)
             break
         except TimeoutError as error:
             # Containment for the still-unexplained intermittent hang this
@@ -294,6 +356,9 @@ async def _run_turn(
             ) from error
         except (ValidationError, ClosedVocabularyViolation, ValueError) as error:
             last_retryable_error = error
+            if turn is not None:
+                discarded.extend(_mark_rejected(turn.attempts, error))
+                turn = None
             if attempt < MAX_REASONING_ATTEMPTS:
                 logger.warning(
                     "reasoning attempt %s/%s failed (%s) — retrying",
@@ -325,16 +390,149 @@ async def _run_turn(
         )
 
     decision = enforce_provenance_cap(turn.decision, turn.retrieved)
-    payload = _decision_payload(decision, turn.retrieved, model=model)
-    await _persist_turn(session_id, request.message, decision, payload, database)
+    payload = _decision_payload(
+        decision, turn.retrieved, base=agent.base, observed=observed, model=model
+    )
+    served_by = _served_by_payload((*discarded, *turn.attempts))
+    await _persist_turn(session_id, request.message, decision, payload, database, served_by)
 
-    return {"session_id": str(session_id), "decision": payload}
+    return {"session_id": str(session_id), "decision": payload, "served_by": served_by}
+
+
+def _red_flag_citation(decision: TriageDecision, base: KnowledgeBase) -> dict[str, Any] | None:
+    """The warning-sign rule a decision fired, as a citable source.
+
+    Without this a red-flag conclusion shows **no sources at all**, which is
+    the exact opposite of what it deserves: ``TriageDecision`` lets citations
+    be empty precisely when ``red_flag_id`` is set, because ``red_flags.yaml``
+    is deliberately never embedded or retrieved (see
+    ``agent.render_red_flags``) and so produces no passage id to cite. The
+    rule still carries a real ``source_id`` and a verbatim ``source_quote`` —
+    the most load-bearing quote in the whole answer — and it was simply never
+    rendered.
+
+    **This is also the only route by which NHS can be cited, and that is a
+    licence constraint, not an oversight.** NHS is ``citable_only``: its text
+    may be quoted with attribution but may never enter the served corpus, so
+    ``services/model``'s ``/search`` filters every NHS passage out (707 of
+    4,454). Quoting a rule's ``source_quote`` with attribution is exactly the
+    use its licence permits. Most of ``red_flags.yaml`` is NHS-derived, so in
+    practice this is where NHS appears.
+
+    The URL prefers the rule's own ``source_url`` — the page its
+    ``source_quote`` was found in, verbatim — and falls back to the source's
+    home page from ``sources.yaml`` when that is unknown. It used to be the
+    home page always, which sent a woman reading a warning sign to nhs.uk
+    rather than to the NHS page the warning sign is on.
+
+    The fallback is not a formality: ``severe_pelvic_pain``'s quote appears on
+    two NHS pages, so which one it was read from is genuinely unknown and it
+    keeps the home-page link. A deep link there would be invented provenance,
+    which is the thing the original comment here was right to refuse.
+    """
+    if decision.red_flag_id is None:
+        return None
+    rule = next((r for r in base.red_flags if r.id == decision.red_flag_id), None)
+    if rule is None:
+        return None
+    source = base.sources_by_id.get(rule.source_id)
+    return {
+        "id": rule.id,
+        "text": rule.source_quote,
+        "citation": f"{rule.source_id} § {rule.label}",
+        "source_id": rule.source_id,
+        "url": str(rule.source_url or source.url) if (rule.source_url or source) else None,
+        "passage_type": "red_flag",
+    }
+
+
+def _warn_if_the_pending_answer_was_dropped(
+    decision: TriageDecision, pending: str | None
+) -> None:
+    """Log when she answered a question and the answer was not recorded.
+
+    The one case where a missing ``observed`` entry is provably wrong rather
+    than merely suspicious: a feature was put to her last turn, her reply is
+    the message just read, and the decision still does not say what she said.
+    Her opening message is deliberately not covered — it may genuinely answer
+    nothing, and guessing would turn "I feel unwell" into a failed request.
+
+    **Warns rather than raises, and the choice is deliberate.** Raising would
+    put this through the corrective-retry path, which costs a whole extra
+    generation — 110-190s against the current provider — and, if the second
+    attempt also forgot, would turn a usable answer into a 502. The harm from
+    a dropped answer is that she gets asked the same question twice: annoying,
+    not unsafe. The harm from a failed turn is that she gets nothing. The
+    actual remedy is in the prompt, where ``observed`` now leads the output
+    shape and carries a worked example; this is the instrument that says
+    whether that worked.
+
+    ``"unknown"`` counts as recorded: "I'm not sure" is an answer, and it is
+    what stops the same question being asked again.
+    """
+    if pending is None or decision.type is DecisionType.DECLINE:
+        return
+    if pending in decision.observed:
+        return
+    logger.warning(
+        "dropped answer: she was asked about %r and the decision recorded "
+        "nothing for it (observed=%s). She will be asked again.",
+        pending,
+        dict(decision.observed),
+    )
+
+
+def _evidence_citations(
+    decision: TriageDecision, base: KnowledgeBase, observed: Mapping[str, str]
+) -> list[dict[str, Any]]:
+    """The authored evidence rows behind the conditions this decision named.
+
+    **Why this exists.** A citation in this API is a ``PassageId`` — a hash of
+    something the similarity search returned. That silently excludes the single
+    largest body of reviewed clinical claims in the project: the 140 rows of
+    ``evidence.csv``, which reach the model through
+    ``context.join_evidence`` and never through retrieval at all. A conclusion
+    could be grounded in four authored rows and still display "no sources".
+
+    It matters most for NHS. NHS is ``citable_only``, so all 707 of its
+    passages are filtered out of the served index — meaning **not one of its 47
+    evidence rows could ever appear as a source**, however central it was to
+    the answer. Quoting a row's ``source_quote`` with attribution is precisely
+    what that licence permits, and it is what the row was authored as.
+
+    Only rows the decision actually rests on are returned: rows keyed by an
+    answer she gave, for a condition the model named. Nothing here widens the
+    claim — it reports the join that already happened.
+    """
+    if not decision.matching_conditions:
+        return []
+    named = set(decision.matching_conditions)
+    sources = base.sources_by_id
+    citations: list[dict[str, Any]] = []
+    for group in join_evidence(base, observed):
+        if group.condition.id not in named:
+            continue
+        for row in group.supporting:
+            source = sources.get(row.source_id)
+            citations.append(
+                {
+                    "id": f"{row.condition_id}:{row.feature_id}:{row.value}",
+                    "text": row.source_quote,
+                    "citation": f"{row.source_id} § {group.condition.label}",
+                    "source_id": row.source_id,
+                    "url": str(source.url) if source is not None else None,
+                    "passage_type": "evidence_row",
+                }
+            )
+    return citations
 
 
 def _decision_payload(
     decision: TriageDecision,
     retrieved: Sequence[RetrievedPassage],
     *,
+    base: KnowledgeBase,
+    observed: Mapping[str, str] | None = None,
     model: ReasoningModelOption | None = None,
 ) -> dict[str, Any]:
     """``TriageDecision`` as JSON, plus the passages its ``citations`` name.
@@ -358,18 +556,25 @@ def _decision_payload(
     """
     by_id = {passage.id: passage for passage in retrieved}
     cited = [by_id[citation] for citation in decision.citations if citation in by_id]
+    # The rule leads, when there is one: it is why the decision has the
+    # urgency it has, so it outranks the background reading behind it.
+    rule_citation = _red_flag_citation(decision, base)
     payload: dict[str, Any] = {
         **decision.model_dump(mode="json"),
         "cited_passages": [
-            {
-                "id": passage.id,
-                "text": passage.text,
-                "citation": passage.citation,
-                "source_id": passage.source_id,
-                "url": passage.url,
-                "passage_type": passage.passage_type.value,
-            }
-            for passage in cited
+            *([rule_citation] if rule_citation is not None else []),
+            *_evidence_citations(decision, base, observed or {}),
+            *[
+                {
+                    "id": passage.id,
+                    "text": passage.text,
+                    "citation": passage.citation,
+                    "source_id": passage.source_id,
+                    "url": passage.url,
+                    "passage_type": passage.passage_type.value,
+                }
+                for passage in cited
+            ],
         ],
     }
     if model is not None:
@@ -413,6 +618,17 @@ def _choose_reasoning_model(
     return option
 
 
+def _profile_age_band(user: User) -> str | None:
+    """Her age band from her stored date of birth, or ``None``.
+
+    Derived on every turn rather than read from a column, so a consultation
+    running on her birthday uses the band she is in today.
+    """
+    if user.date_of_birth is None:
+        return None
+    return age_band_for(user.date_of_birth, today=date.today())
+
+
 async def _known_background(user: User, database: Database) -> str | None:
     """Her stored age band and health note, rendered for the system prompt.
 
@@ -424,11 +640,7 @@ async def _known_background(user: User, database: Database) -> str | None:
     read from a column, so a consultation that runs on her birthday uses the
     band she is in today. See ``triage.age_bands``.
     """
-    age_band = (
-        age_band_for(user.date_of_birth, today=date.today())
-        if user.date_of_birth is not None
-        else None
-    )
+    age_band = _profile_age_band(user)
     async with database.session() as session:
         note = await health_note_for(session, user.id)
     return render_known_background(
@@ -460,18 +672,40 @@ def _passage_from_cited(raw: object) -> RetrievedPassage | None:
         return None
 
 
+@dataclass(frozen=True, slots=True)
+class LoadedSession:
+    """Everything a turn needs from the stored consultation, as plain data."""
+
+    session_id: uuid.UUID
+    history: list[Message]
+
+    #: Every passage this consultation has already cited. Without it, turn two
+    #: of a live session 502s when the model re-cites turn-one evidence that
+    #: this turn's retrieval did not return — see ``build_retrieval_query``.
+    carried: tuple[RetrievedPassage, ...]
+
+    #: The case vector, replayed from every stored decision's ``observed``.
+    #: Rebuilt rather than stored on the session row so it stays derivable
+    #: from the transcript — the same discipline that replays the verbatim
+    #: history rather than summarising it. A later turn's reading of a
+    #: feature overwrites an earlier one, which is why this is applied in
+    #: chronological order.
+    observed: dict[str, str]
+
+    #: Features already put to her, whether or not she could answer. Kept
+    #: separate from ``observed`` because "asked and she said unknown" and
+    #: "asked and she answered" must both stop the screen re-offering the
+    #: same probe, while only the second one can satisfy a clause.
+    asked: list[str]
+
+
 async def _load_session(
     request: TriageTurnRequest, user: User, database: Database
-) -> tuple[uuid.UUID, list[Message], tuple[RetrievedPassage, ...]]:
+) -> LoadedSession:
     """A short-lived session: create or look up the consultation, load its
     prior messages, and return plain data — nothing SQLAlchemy-attached
     survives past this function, so nothing here can be lazy-loaded later
     outside its session's greenlet.
-
-    The third value is every passage this consultation has already cited,
-    rebuilt from stored assistant decisions. Without it, turn two of a
-    live session 502s when the model re-cites turn-one evidence that this
-    turn's retrieval did not return — see ``build_retrieval_query``.
     """
     async with database.session() as session:
         consultation: ConsultationSession | None
@@ -479,7 +713,9 @@ async def _load_session(
             consultation = ConsultationSession(user_id=user.id)
             session.add(consultation)
             await session.commit()
-            return consultation.id, [], ()
+            return LoadedSession(
+                session_id=consultation.id, history=[], carried=(), observed={}, asked=[]
+            )
 
         consultation = await session.get(ConsultationSession, request.session_id)
         if consultation is None or consultation.user_id != user.id:
@@ -500,6 +736,8 @@ async def _load_session(
         )
         history: list[Message] = []
         carried_by_id: dict[str, RetrievedPassage] = {}
+        observed: dict[str, str] = {}
+        asked: list[str] = []
         for row in rows:
             history.append(Message(role=row.role, content=row.content))
             if row.role != "assistant" or not isinstance(row.decision, dict):
@@ -508,7 +746,86 @@ async def _load_session(
                 passage = _passage_from_cited(raw)
                 if passage is not None:
                     carried_by_id.setdefault(passage.id, passage)
-        return consultation.id, history, tuple(carried_by_id.values())
+            stored_observed = row.decision.get("observed")
+            if isinstance(stored_observed, dict):
+                observed.update(
+                    {
+                        str(k): str(v)
+                        for k, v in stored_observed.items()
+                        if isinstance(k, str) and isinstance(v, str)
+                    }
+                )
+            feature_id = row.decision.get("next_feature_id")
+            if isinstance(feature_id, str):
+                asked.append(feature_id)
+        return LoadedSession(
+            session_id=consultation.id,
+            history=history,
+            carried=tuple(carried_by_id.values()),
+            observed=observed,
+            asked=asked,
+        )
+
+
+def _mark_rejected(
+    attempts: Sequence[ReasoningAttempt], error: Exception
+) -> list[ReasoningAttempt]:
+    """Relabel a discarded turn's successful call as ``REJECTED``.
+
+    The client was happy — it returned a schema-valid ``TriageDecision`` —
+    and this layer refused it anyway, because the decision named a feature,
+    rule or citation that is not in the knowledge base. Only the last
+    successful call is relabelled: the earlier entries in the trail are
+    failures already, and their reasons are their own.
+    """
+    marked = list(attempts)
+    for index in range(len(marked) - 1, -1, -1):
+        if marked[index].outcome is AttemptOutcome.OK:
+            marked[index] = replace(
+                marked[index],
+                outcome=AttemptOutcome.REJECTED,
+                detail=_attempt_detail(error),
+            )
+            break
+    return marked
+
+
+def _attempt_detail(error: Exception) -> str:
+    """A short reason, capped — this is read by a human out of a database."""
+    text = str(error).strip() or type(error).__name__
+    return text if len(text) <= 200 else f"{text[:199]}…"
+
+
+def _served_by_payload(attempts: Sequence[ReasoningAttempt]) -> dict[str, Any] | None:
+    """The attribution record stored on the turn and returned to the caller.
+
+    ``final`` is the backend whose decision she actually read — the last one
+    that succeeded, which on a fallback is **not** the one tried first.
+    ``attempts`` is every call the turn took, in order, so a fallback rate can
+    be measured from the stored rows rather than estimated from server logs.
+
+    ``None`` when nothing reported an attempt, which is what a client
+    predating this contract looks like. Reported as unknown, never as a
+    default model.
+    """
+    if not attempts:
+        return None
+    final: str | None = None
+    for attempt in reversed(attempts):
+        if attempt.outcome is AttemptOutcome.OK:
+            final = attempt.client
+            break
+    return {
+        "final": final,
+        "attempts": [
+            {
+                "client": attempt.client,
+                "outcome": attempt.outcome.value,
+                "detail": attempt.detail,
+            }
+            for attempt in attempts
+        ],
+    }
 
 
 async def _persist_turn(
@@ -517,6 +834,7 @@ async def _persist_turn(
     decision: TriageDecision,
     payload: dict[str, Any],
     database: Database,
+    served_by: dict[str, Any] | None = None,
 ) -> None:
     """A second short-lived session: write this turn's two messages, and
     close out the consultation if it concluded.
@@ -542,6 +860,9 @@ async def _persist_turn(
                 role="assistant",
                 content=assistant_content,
                 decision=payload,
+                # Beside the decision, never inside it — see the column's own
+                # note in app/triage/models.py.
+                served_by=served_by,
             )
         )
         if decision.type is DecisionType.CONCLUDE:
@@ -656,6 +977,7 @@ async def get_session(
                         role=row.role,
                         content=row.content,
                         decision=row.decision,
+                        served_by=row.served_by,
                         created_at=row.created_at,
                     )
                     for row in rows

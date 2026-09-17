@@ -30,7 +30,7 @@ from herhealth_model.config import (
     ingest_lock_path,
     min_score,
 )
-from herhealth_model.source_urls import SourceUrlIndex, load_source_urls
+from herhealth_model.source_urls import SourceUrlIndex, load_source_urls, resolve_url
 from herhealth_model.web_fallback import (
     CandidateUrlFinder,
     FallbackPassage,
@@ -61,7 +61,12 @@ def _passage_to_retrieved(
     ``url`` is resolved from ``(source_id, slug)`` against the ingest lock
     (see ``source_urls.py``) — ``Passage`` itself carries no url, so this is
     the only point where a citation stops being an internal label and
-    becomes a page a user can open. Unresolved is ``None``, never a guess.
+    becomes a page a user can open.
+
+    Evidence-statement passages carry a synthetic slug that is never in
+    the lock, so ``resolve_url`` falls back to the source's page for the
+    condition — a weaker, inferred claim, spelled out in ``source_urls``.
+    Still ``None`` rather than a guessed destination when nothing matches.
     """
     return RetrievedPassage(
         id=passage.id,  # type: ignore[attr-defined]
@@ -70,8 +75,11 @@ def _passage_to_retrieved(
         text=passage.text,  # type: ignore[attr-defined]
         citation=passage.citation,  # type: ignore[attr-defined]
         score=score,
-        url=source_urls.get(
-            (passage.source_id, passage.slug)  # type: ignore[attr-defined]
+        url=resolve_url(
+            source_urls,
+            passage.source_id,  # type: ignore[attr-defined]
+            passage.slug,  # type: ignore[attr-defined]
+            passage.condition_id,  # type: ignore[attr-defined]
         ),
         condition_id=passage.condition_id,  # type: ignore[attr-defined]
         feature_id=passage.feature_id,  # type: ignore[attr-defined]
