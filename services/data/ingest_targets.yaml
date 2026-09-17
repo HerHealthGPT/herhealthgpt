@@ -474,9 +474,16 @@ documents:
       required: Courtesy of MedlinePlus from the National Library of Medicine.
 
   # PROBE, 2026-08-19: two-source check for primary_ovarian_insufficiency.
+  #
+  # URL updated 2026-09-17 from medlineplus.gov/prematureovarianfailure.html,
+  # which 301s here. The old address still worked, but nothing had ever been
+  # fetched under it: the cleaned corpus held a document and the index carried
+  # 79 passages, while ingest.lock.jsonl had no record — so every citation
+  # from this page rendered with no link. Pointing at the address MedlinePlus
+  # actually serves is what lets `make fetch` record it.
   - source_id: medlineplus
     slug: primary_ovarian_insufficiency
-    url: https://medlineplus.gov/prematureovarianfailure.html
+    url: https://medlineplus.gov/primaryovarianinsufficiency.html
     licence: >-
       Public domain, National Library of Medicine, IF confirmed. Attribution
       required: Courtesy of MedlinePlus from the National Library of Medicine.

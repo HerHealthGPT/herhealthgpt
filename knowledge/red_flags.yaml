@@ -97,6 +97,7 @@ red_flags:
         value: severe
     action: EMERGENCY
     source_id: nhs
+    source_url: https://www.nhs.uk/conditions/pelvic-inflammatory-disease-pid/
     source_quote: >-
       have a sharp, sudden and intense pain in your lower tummy
     note: >-
@@ -117,6 +118,7 @@ red_flags:
         value: "yes"
     action: EMERGENCY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you feel faint, dizzy or lightheaded, or pass out
 
@@ -131,6 +133,7 @@ red_flags:
         value: "yes"
     action: EMERGENCY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you have pain in the tip of your shoulder
     note: >-
@@ -152,6 +155,7 @@ red_flags:
         value: "yes"
     action: EMERGENCY
     source_id: nhs
+    source_url: https://www.nhs.uk/conditions/pelvic-inflammatory-disease-pid/
     source_quote: >-
       have pain under your ribs on the right side and in your right shoulder
     note: >-
@@ -177,6 +181,7 @@ red_flags:
         value: [heavy, soaking_hourly]
     action: EMERGENCY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you have heavy bleeding from your vagina
     note: >-
@@ -196,6 +201,7 @@ red_flags:
         value: "yes"
     action: EMERGENCY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you have difficulty breathing
 
@@ -210,6 +216,7 @@ red_flags:
         value: "yes"
     action: EMERGENCY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you suddenly feel confused
 
@@ -225,6 +232,7 @@ red_flags:
         value: "yes"
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/conditions/menopause-and-perimenopause/symptoms/
     source_quote: >-
       Postmenopausal bleeding is not usually serious but can be a sign of
       cancer. Cancer may be easier to treat if it's found early.
@@ -298,6 +306,7 @@ red_flags:
         value: none
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/vaginal-bleeding-between-periods-or-after-sex/
     source_quote: >-
       you have recently missed a period, have unusual vaginal bleeding, and have
       pain anywhere in your tummy (abdomen), including your lower tummy (pelvic
@@ -319,6 +328,7 @@ red_flags:
         value: "yes"
     action: URGENT_SAME_DAY
     source_id: womenshealth
+    source_url: https://womenshealth.gov/pregnancy/youre-pregnant-now-what/pregnancy-complications
     source_quote: Are bleeding or leaking fluid from the vagina
     note: >-
       THE SECOND RULE WITH NO PELVIC-PAIN CLAUSE (see bleeding_after_menopause
@@ -364,6 +374,7 @@ red_flags:
         value: [pregnant, possibly_pregnant]
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you are pregnant or may be pregnant
     note: >-
@@ -381,6 +392,7 @@ red_flags:
         value: "yes"
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you have a very high temperature (or you feel hot, cold or shivery)
 
@@ -395,6 +407,7 @@ red_flags:
         value: "yes"
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you have unusual discharge, fluid or bleeding from your vagina
 
@@ -409,6 +422,7 @@ red_flags:
         value: difficulty_passing_urine
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: >-
       you find it difficult to pee or poo
     note: >-
@@ -426,6 +440,7 @@ red_flags:
         value: "yes"
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/conditions/ovarian-cyst/
     source_quote: >-
       you have pain in your tummy (abdomen) and you also feel sick (nausea) or
       are being sick (vomiting)
@@ -450,6 +465,7 @@ red_flags:
         value: "yes"
     action: URGENT_SAME_DAY
     source_id: nhs
+    source_url: https://www.nhs.uk/symptoms/pelvic-pain/
     source_quote: there's blood in your pee or poo
     note: >-
       Listed under "Get help from NHS 111 if: You have pelvic pain and:", so the

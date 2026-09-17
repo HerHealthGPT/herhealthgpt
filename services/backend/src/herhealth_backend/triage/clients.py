@@ -19,10 +19,17 @@ from collections.abc import Callable, Sequence
 
 import httpx
 from herhealth_contracts.decision import TriageDecision
+from herhealth_contracts.knowledge import ActionCode
 from herhealth_contracts.retrieval import RetrievedPassage
 from pydantic import TypeAdapter, ValidationError
 
-from herhealth_backend.triage.agent import Message, ReasoningClient
+from herhealth_backend.triage.agent import (
+    AttemptOutcome,
+    Message,
+    ReasoningAttempt,
+    ReasoningClient,
+    ReasoningResult,
+)
 
 __all__ = [
     "DEFAULT_MODEL",
@@ -203,7 +210,10 @@ _JSON_SHAPE_INSTRUCTION = (
     "decline: an off-scope message tells us nothing about her health. This "
     "field is what makes the next turn's warning-sign check and evidence "
     "lookup work; an answer you leave out is one she will be asked for twice."
-    "MANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
+    # Its own paragraph, deliberately. It used to be concatenated straight
+    # onto the sentence above with no break, so the single most-violated
+    # rule in the prompt was buried mid-paragraph.
+    "\n\nMANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
     "an ask as much as a conclude. If you are asking a question because of something a "
     "retrieved passage suggests, cite that passage's id even though you have not "
     "concluded yet. An ask or conclude with empty citations and no red_flag_id is "
@@ -286,6 +296,47 @@ def _strip_thinking_blocks(content: str) -> str:
     return _THINKING_BLOCK.sub("", content).strip()
 
 
+def _drop_conditions_named_beside_a_red_flag(raw: object) -> object:
+    """Strip ``matching_conditions`` from a red-flag conclusion below EMERGENCY.
+
+    ``TriageDecision`` rejects that combination outright — ADR 0013: a red
+    flag escalates on a symptom pattern without asserting what it is, and
+    EMERGENCY is the one deliberate exception. That is the right rule and it
+    is not being relaxed here: this removes the offending field so the rule
+    holds, rather than letting the pair through.
+
+    Rejecting is correct for a *check*, but this check runs during model
+    construction, so the entire turn is lost and retried — and the model
+    reliably repeats the mistake. Observed live 2026-09-17 on the base model:
+    three attempts, ~132 seconds, then a 504, on a decision whose action code
+    and red flag were both right.
+
+    Same trade as ``triage.provenance.drop_unknown_conditions``: the field
+    that may legally be empty gives way, and the field that gets her to care
+    does not. ``action_code`` and ``red_flag_id`` are never touched, so the
+    only thing removed is an assertion about what she has — which is the
+    direction the rule wanted in the first place.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    if not raw.get("red_flag_id") or not raw.get("matching_conditions"):
+        return raw
+    if raw.get("action_code") in (
+        ActionCode.EMERGENCY.value,
+        ActionCode.URGENT_SAME_DAY.value,
+    ):
+        return raw
+    repaired = dict(raw)
+    repaired["matching_conditions"] = []
+    logger.info(
+        "dropped matching_conditions from a red-flag %s decision (red_flag_id=%s); "
+        "the escalation is unchanged",
+        raw.get("action_code"),
+        raw.get("red_flag_id"),
+    )
+    return repaired
+
+
 def _parse_chat_completion_payload(payload: object) -> TriageDecision:
     try:
         # `assert` rather than a raised ValueError was a real gap, not a
@@ -305,7 +356,9 @@ def _parse_chat_completion_payload(payload: object) -> TriageDecision:
         cleaned = _strip_thinking_blocks(content)
         if not cleaned.strip():
             raise ValueError("model returned an empty message")
-        return TriageDecision.model_validate(json.loads(cleaned))
+        return TriageDecision.model_validate(
+            _drop_conditions_named_beside_a_red_flag(json.loads(cleaned))
+        )
     except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as error:
         raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
 
@@ -353,6 +406,20 @@ def _available_ids_hint(context: Sequence[RetrievedPassage]) -> str:
     conditions = sorted({p.condition_id for p in context if p.condition_id is not None})
     features = sorted({p.feature_id for p in context if p.feature_id is not None})
     parts = []
+    # Passage ids first, because the commonest rejection by far is an ASK sent
+    # with empty citations — measured 2026-09-11 against the campus adapter,
+    # four of five ASK decisions. The retry text told the model citations had
+    # to be bare hex ids but never said which ones existed, so the correction
+    # it was given was unactionable: the ids were only ever in the system
+    # prompt it had already failed to use them from.
+    passage_ids = [p.id for p in context]
+    if passage_ids:
+        parts.append(
+            "The passage ids available to cite this turn, copied exactly: "
+            f"{', '.join(passage_ids)}. citations must contain at least one of "
+            "these unless red_flag_id is set — this is true for an ask as much "
+            "as a conclude."
+        )
     if conditions:
         parts.append(
             "The ONLY condition ids you may use in matching_conditions this turn, "
@@ -580,6 +647,10 @@ class OpenRouterReasoningClient:
         # inside the turn's own budget rather than racing it.
         timeout: float = 120.0,
         decision_validator: DecisionValidator | None = None,
+        #: How this client identifies itself in a ``ReasoningAttempt``. The
+        #: model id is in it by default because the report needs to say which
+        #: model, not merely which provider.
+        name: str | None = None,
     ) -> None:
         key = api_key or os.environ.get(OPENROUTER_API_KEY_ENV)
         if not key:
@@ -591,6 +662,11 @@ class OpenRouterReasoningClient:
         self._client = client or httpx.Client(timeout=timeout)
         self._headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         self._validator = decision_validator
+        self._name = name or f"openrouter:{model}"
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     def decide(
         self,
@@ -598,8 +674,8 @@ class OpenRouterReasoningClient:
         system_prompt: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
-    ) -> TriageDecision:
-        return _decide_via_chat_completions(
+    ) -> ReasoningResult:
+        decision = _decide_via_chat_completions(
             client=self._client,
             url=_OPENROUTER_URL,
             headers=self._headers,
@@ -608,6 +684,10 @@ class OpenRouterReasoningClient:
             history=history,
             context=context,
             validator=self._validator,
+        )
+        return ReasoningResult(
+            decision=decision,
+            attempts=(ReasoningAttempt(client=self._name, outcome=AttemptOutcome.OK),),
         )
 
 
@@ -637,6 +717,10 @@ class VllmReasoningClient:
         timeout: float = 50.0,
         decision_validator: DecisionValidator | None = None,
         max_attempts: int = 2,
+        #: See OpenRouterReasoningClient's ``name``. Defaults to the adapter
+        #: name as registered with ``--lora-modules``, so "vllm:herhealth" in
+        #: a report is unambiguously the fine-tuned adapter.
+        name: str | None = None,
     ) -> None:
         raw_url = base_url or os.environ.get(VLLM_URL_ENV, "http://127.0.0.1:8002")
         self._url = f"{raw_url.rstrip('/')}{_CHAT_COMPLETIONS_PATH}"
@@ -652,6 +736,11 @@ class VllmReasoningClient:
             self._headers["Authorization"] = f"Bearer {key}"
         self._validator = decision_validator
         self._max_attempts = max_attempts
+        self._name = name or f"vllm:{self._model}"
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     def decide(
         self,
@@ -659,8 +748,8 @@ class VllmReasoningClient:
         system_prompt: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
-    ) -> TriageDecision:
-        return _decide_via_chat_completions(
+    ) -> ReasoningResult:
+        decision = _decide_via_chat_completions(
             client=self._client,
             url=self._url,
             headers=self._headers,
@@ -672,6 +761,24 @@ class VllmReasoningClient:
             validator=self._validator,
             max_attempts=self._max_attempts,
         )
+        return ReasoningResult(
+            decision=decision,
+            attempts=(ReasoningAttempt(client=self._name, outcome=AttemptOutcome.OK),),
+        )
+
+
+#: Failure detail is stored and later rendered in a report, so it is capped:
+#: an unbounded exception string can carry a whole HTTP body, and this ends up
+#: in a database column read by a human.
+_MAX_ATTEMPT_DETAIL = 200
+
+
+def _attempt_detail(error: Exception) -> str:
+    """A short, readable reason a call failed. Never the whole exception."""
+    text = str(error).strip() or type(error).__name__
+    if len(text) > _MAX_ATTEMPT_DETAIL:
+        return f"{text[: _MAX_ATTEMPT_DETAIL - 1]}…"
+    return text
 
 
 class FallbackReasoningClient:
@@ -704,11 +811,23 @@ class FallbackReasoningClient:
 
     **This does not make the primary's output trustworthy** — it makes a
     failed turn recoverable. The decision that reaches the user in that case
-    came from the fallback, and the turn's recorded ``reasoning_model`` is
-    still the one the caller selected, so a fallback is not visible
-    downstream. If which model actually answered ever needs to be
-    attributable per turn, that has to be plumbed through
-    ``TriageDecision``; it is not today.
+    came from the fallback, and ``reasoning_model`` still names the model the
+    *caller selected*, which on a fallback is not the one that answered.
+
+    **Which model actually answered is recorded.** Every call is appended to
+    :attr:`~herhealth_backend.triage.agent.ReasoningResult.attempts` as a
+    :class:`~herhealth_backend.triage.agent.ReasoningAttempt` — the client's
+    name, how the call ended, and why it failed when it did. That trail
+    reaches the API response and the ``messages.served_by`` column, so a
+    fallback is visible downstream and the fallback *rate* is measurable
+    rather than anecdotal. It is deliberately **not** carried on
+    ``TriageDecision``: that schema is ``extra="forbid"`` and is what guided
+    decoding constrains, so a field there would be the model asserting its
+    own identity instead of the transport observing it.
+
+    Naming is owned here, not by the children: this class labels both
+    backends, so a nested fallback flattens to the outer labels. Pass
+    ``primary_name``/``fallback_name`` to override what a child calls itself.
 
     What is still **not** caught here: ``ClosedVocabularyViolation``, raised
     by ``app/triage/routes.py`` *after* ``decide`` returns, so this client
@@ -727,13 +846,20 @@ class FallbackReasoningClient:
         # a demo client in a test without special-casing.
         primary: ReasoningClient,
         fallback: ReasoningClient,
-        primary_name: str = "vllm",
-        fallback_name: str = "openrouter",
+        primary_name: str | None = None,
+        fallback_name: str | None = None,
     ) -> None:
         self._primary = primary
         self._fallback = fallback
-        self._primary_name = primary_name
-        self._fallback_name = fallback_name
+        # ``getattr`` rather than ``primary.name``: the Protocol requires the
+        # attribute, but a test double predating it should degrade to a
+        # readable label instead of an AttributeError mid-turn.
+        self._primary_name = primary_name or getattr(primary, "name", "vllm")
+        self._fallback_name = fallback_name or getattr(fallback, "name", "openrouter")
+
+    @property
+    def name(self) -> str:
+        return f"{self._primary_name} -> {self._fallback_name}"
 
     def decide(
         self,
@@ -741,9 +867,9 @@ class FallbackReasoningClient:
         system_prompt: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
-    ) -> TriageDecision:
+    ) -> ReasoningResult:
         try:
-            return self._primary.decide(
+            served = self._primary.decide(
                 system_prompt=system_prompt, history=history, context=context
             )
         except httpx.HTTPStatusError as error:
@@ -755,12 +881,22 @@ class FallbackReasoningClient:
                 error.response.status_code,
                 self._fallback_name,
             )
+            failure = ReasoningAttempt(
+                client=self._primary_name,
+                outcome=AttemptOutcome.UPSTREAM_UNAVAILABLE,
+                detail=f"HTTP {error.response.status_code}",
+            )
         except (httpx.ConnectError, httpx.TimeoutException) as error:
             logger.warning(
                 "%s unreachable (%s) — falling back to %s",
                 self._primary_name,
                 error,
                 self._fallback_name,
+            )
+            failure = ReasoningAttempt(
+                client=self._primary_name,
+                outcome=AttemptOutcome.UNREACHABLE,
+                detail=_attempt_detail(error),
             )
         except ValueError as error:
             # Raised by _decide_via_chat_completions after MAX_DECISION_ATTEMPTS
@@ -774,9 +910,33 @@ class FallbackReasoningClient:
                 error,
                 self._fallback_name,
             )
+            failure = ReasoningAttempt(
+                client=self._primary_name,
+                outcome=AttemptOutcome.INVALID_DECISION,
+                detail=_attempt_detail(error),
+            )
+        else:
+            # The primary answered. Relabelled to this class's name for the
+            # primary rather than passed through, so one turn's trail reads in
+            # one vocabulary — see the naming note in the class docstring.
+            return ReasoningResult(
+                decision=served.decision,
+                attempts=(
+                    ReasoningAttempt(
+                        client=self._primary_name, outcome=AttemptOutcome.OK
+                    ),
+                ),
+            )
 
-        return self._fallback.decide(
+        recovered = self._fallback.decide(
             system_prompt=system_prompt, history=history, context=context
+        )
+        return ReasoningResult(
+            decision=recovered.decision,
+            attempts=(
+                failure,
+                ReasoningAttempt(client=self._fallback_name, outcome=AttemptOutcome.OK),
+            ),
         )
 
 

@@ -1,0 +1,612 @@
+# ingest_targets.yaml — exactly which documents get fetched, and from where.
+#
+# Tracked in git. `raw/` is not, so this file plus ingest.lock.jsonl is what
+# makes a fetch reproducible: the targets say what to get, the lock records what
+# was got and its hash.
+#
+# `excluded_path_fragments` is a licensing guard, not an optimisation. A URL
+# matching one of these is refused before any request is made, so a licence rule
+# is enforced by code rather than by remembering. See CLAUDE.md.
+
+# Per-source user agent, for sources whose edge rejects the default.
+# The default identifies us honestly and works for NICHD and MedlinePlus.
+user_agents:
+  # cdc.gov sits behind a WAF that allowlists known client tokens and returns
+  # 403 to everything else — including an honest project user agent, an empty
+  # one, and no User-Agent header at all. Only requests whose agent leads with a
+  # recognised token get through. We prepend that token and keep our own
+  # identifier after it, so the request is still attributable to this project.
+  # We do NOT impersonate a browser. Verified 2026-08-03.
+  cdc: curl/8.0 HerHealthGPT-research/0.1 (academic capstone)
+
+excluded_path_fragments:
+  medlineplus:
+    # A.D.A.M. Medical Encyclopedia. Licensed to MedlinePlus only, and its terms
+    # state: "You may not ingest and/or brand the copyrighted content found on
+    # MedlinePlus in an EHR, patient portal, or other health IT system."
+    # That clause names systems like this one.
+    - /ency/
+
+documents:
+  # ---------------------------------------------------------------------------
+  # NICHD — US federal government work, public domain
+  # ---------------------------------------------------------------------------
+  - source_id: nichd
+    slug: pcos
+    url: https://www.nichd.nih.gov/health/topics/pcos
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: endometriosis
+    url: https://www.nichd.nih.gov/health/topics/endometriosis
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids
+    url: https://www.nichd.nih.gov/health/topics/uterine
+    licence: US federal government work, public domain
+
+  # NICHD topic pages are hubs — a paragraph and a set of links. The substance
+  # lives under conditioninfo/. Endometriosis has no conditioninfo section at
+  # all, which is why its NICHD coverage is one paragraph and MedlinePlus
+  # carries that condition.
+  - source_id: nichd
+    slug: pcos_symptoms
+    url: https://www.nichd.nih.gov/health/topics/pcos/conditioninfo/symptoms
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: pcos_causes
+    url: https://www.nichd.nih.gov/health/topics/pcos/conditioninfo/causes
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: pcos_treatments
+    url: https://www.nichd.nih.gov/health/topics/pcos/conditioninfo/treatments
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids_symptoms
+    url: https://www.nichd.nih.gov/health/topics/uterine/conditioninfo/symptoms
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids_causes
+    url: https://www.nichd.nih.gov/health/topics/uterine/conditioninfo/causes
+    licence: US federal government work, public domain
+
+  - source_id: nichd
+    slug: fibroids_treatments
+    url: https://www.nichd.nih.gov/health/topics/uterine/conditioninfo/treatments
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
+  # MedlinePlus — health topic pages only. Public domain.
+  # Attribution: "Courtesy of MedlinePlus from the National Library of Medicine"
+  # ---------------------------------------------------------------------------
+  - source_id: medlineplus
+    slug: pcos
+    url: https://medlineplus.gov/polycysticovarysyndrome.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: medlineplus
+    slug: endometriosis
+    url: https://medlineplus.gov/endometriosis.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: medlineplus
+    slug: fibroids
+    url: https://medlineplus.gov/uterinefibroids.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # ---------------------------------------------------------------------------
+  # Normal menstruation — for the `normal_variation` condition.
+  #
+  # Not a disease, which is exactly why it is needed: without a source
+  # describing what is normal, SELF_CARE is unreachable and the system routes
+  # every healthy user to a doctor. Three sources because normal_variation has
+  # to be as well grounded as anything it competes with in the differential.
+  # ---------------------------------------------------------------------------
+  - source_id: medlineplus
+    slug: menstruation
+    url: https://medlineplus.gov/menstruation.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: nichd
+    slug: menstruation
+    url: https://www.nichd.nih.gov/health/topics/menstruation
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: menstruation
+    url: https://womenshealth.gov/a-z-topics/menstruation-and-menstrual-cycle
+    licence: US federal government work, public domain
+
+  # For `perimenopause` later — fetched now while the licence work is done.
+  - source_id: medlineplus
+    slug: menopause
+    url: https://medlineplus.gov/menopause.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # ---------------------------------------------------------------------------
+  # Office on Women's Health — US federal government work, public domain.
+  #
+  # The richest patient-facing source for the phase 1 conditions. Added to give
+  # endometriosis genuine two-source backing; its symptom lists name features
+  # (pain during sex, infertility) that MedlinePlus omits entirely.
+  # ---------------------------------------------------------------------------
+  - source_id: womenshealth
+    slug: endometriosis
+    url: https://womenshealth.gov/a-z-topics/endometriosis
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: pcos
+    url: https://womenshealth.gov/a-z-topics/polycystic-ovary-syndrome
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: fibroids
+    url: https://womenshealth.gov/a-z-topics/uterine-fibroids
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: pelvic_inflammatory_disease
+    url: https://womenshealth.gov/a-z-topics/pelvic-inflammatory-disease
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
+  # CDC — US federal government work, public domain.
+  #
+  # CDC has no dedicated endometriosis or uterine fibroid page. It supplements
+  # NICHD and MedlinePlus rather than replacing them: PCOS via its metabolic
+  # framing, and heavy menstrual bleeding, which is where the escalation
+  # language relevant to fibroids actually lives.
+  # ---------------------------------------------------------------------------
+  - source_id: cdc
+    slug: pcos
+    url: https://www.cdc.gov/diabetes/risk-factors/pcos-polycystic-ovary-syndrome.html
+    licence: US federal government work, public domain
+
+  - source_id: cdc
+    slug: heavy_menstrual_bleeding
+    url: https://www.cdc.gov/ncbddd/blooddisorders/women/menorrhagia.html
+    licence: US federal government work, public domain
+
+  - source_id: cdc
+    slug: pelvic_inflammatory_disease
+    url: https://www.cdc.gov/pid/about/index.html
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
+  # NHS — Crown copyright, status citable_only.
+  #
+  # CITABLE_ONLY IS UNCHANGED BY FETCHING THESE. Text may appear in a
+  # source_quote with attribution; it must never enter passages.parquet. That is
+  # a licence constraint, not a politeness one, and the validator enforces it
+  # independently of how the text was obtained.
+  #
+  # Every request is checked against nhs.uk/robots.txt first, by RobotsPolicy,
+  # which refuses a disallowed path before any request is made. Note robots.txt
+  # disallows "/Conditions/" with a capital C while the live URLs are lowercase;
+  # matching is case-sensitive per RFC 9309, so the outcome is whatever the
+  # standard says rather than whatever we guess it meant. The fetch record
+  # states which it was.
+  #
+  # These are the pages already read manually, so fetching them adds
+  # reproducibility rather than new content.
+  # ---------------------------------------------------------------------------
+  - source_id: nhs
+    slug: pcos
+    url: https://www.nhs.uk/conditions/polyendocrine-metabolic-ovarian-syndrome-pmos/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: pelvic_pain
+    url: https://www.nhs.uk/symptoms/pelvic-pain/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: period_pain
+    url: https://www.nhs.uk/symptoms/period-pain/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: bleeding_between_periods
+    url: https://www.nhs.uk/symptoms/vaginal-bleeding-between-periods-or-after-sex/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: heavy_periods
+    url: https://www.nhs.uk/conditions/heavy-periods/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: endometriosis
+    url: https://www.nhs.uk/conditions/endometriosis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: fibroids
+    url: https://www.nhs.uk/conditions/fibroids/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: irregular_periods
+    url: https://www.nhs.uk/conditions/irregular-periods/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: pelvic_inflammatory_disease
+    url: https://www.nhs.uk/conditions/pelvic-inflammatory-disease-pid/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # ---------------------------------------------------------------------------
+  # Deliberately absent
+  # ---------------------------------------------------------------------------
+  # NHS PMOS/PCOS page — the slug moved with the PMOS rename and has not been
+  #           confirmed; add it once the URL is known.
+  # Old note, superseded: NHS was "manual reading in a browser, never fetched". Its
+  #           robots.txt disallows the conditions section.
+  # NICE,
+  # RCOG,
+  # ACOG,
+  # UMLS    — licence not satisfiable. Removed from sources.yaml entirely.
+
+  # Added to support the outstanding validator warnings: bleeding_after_menopause
+  # needs a source describing postmenopausal bleeding, and large_clots needs the
+  # heavy-periods definition (already fetched above).
+  - source_id: nhs
+    slug: menopause
+    url: https://www.nhs.uk/conditions/menopause-and-perimenopause/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: menopause_symptoms
+    url: https://www.nhs.uk/conditions/menopause-and-perimenopause/symptoms/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: nhs
+    slug: stopped_or_missed_periods
+    url: https://www.nhs.uk/conditions/stopped-or-missed-periods/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # ---------------------------------------------------------------------------
+  # Ovarian cyst, UTI and STI — added 2026-08-04.
+  #
+  # Not in the original fourteen. Added after auditing what our own sources name
+  # as differentials: NHS lists all three as causes of pelvic pain. They are the
+  # benign and infective alternatives the differential was missing, and without
+  # them several existing features point at the wrong condition.
+  # ---------------------------------------------------------------------------
+  - source_id: medlineplus
+    slug: ovarian_cyst
+    url: https://medlineplus.gov/ovariancysts.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: ovarian_cyst
+    url: https://womenshealth.gov/a-z-topics/ovarian-cysts
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: ovarian_cyst
+    url: https://www.nhs.uk/conditions/ovarian-cyst/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: medlineplus
+    slug: urinary_tract_infection
+    url: https://medlineplus.gov/urinarytractinfections.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: urinary_tract_infection
+    url: https://womenshealth.gov/a-z-topics/urinary-tract-infections
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: urinary_tract_infection
+    url: https://www.nhs.uk/conditions/urinary-tract-infections-utis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: medlineplus
+    slug: chlamydia
+    url: https://medlineplus.gov/chlamydiainfections.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: sexually_transmitted_infection
+    url: https://womenshealth.gov/a-z-topics/sexually-transmitted-infections
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: sexually_transmitted_infection
+    url: https://www.nhs.uk/conditions/sexually-transmitted-infections-stis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # ---------------------------------------------------------------------------
+  # Thrush and bacterial vaginosis — added 2026-08-04.
+  #
+  # The commonest BENIGN causes of abnormal discharge. Until now that feature
+  # pointed only at PID (urgent baseline) and STI, both serious, so discharge
+  # systematically over-triaged. Same argument that justified adding UTI.
+  # ---------------------------------------------------------------------------
+  - source_id: medlineplus
+    slug: thrush
+    url: https://medlineplus.gov/yeastinfections.html
+    licence: >-
+      Public domain, National Library of Medicine. Attribution required:
+      Courtesy of MedlinePlus from the National Library of Medicine.
+
+  - source_id: womenshealth
+    slug: thrush
+    url: https://womenshealth.gov/a-z-topics/vaginal-yeast-infections
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: thrush
+    url: https://www.nhs.uk/conditions/thrush-in-men-and-women/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: womenshealth
+    slug: bacterial_vaginosis
+    url: https://womenshealth.gov/a-z-topics/bacterial-vaginosis
+    licence: US federal government work, public domain
+
+  - source_id: nhs
+    slug: bacterial_vaginosis
+    url: https://www.nhs.uk/conditions/bacterial-vaginosis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # Adenomyosis — NHS is the only usable source. Authored under the documented
+  # single-source exception; see docs/adr/0006 and the condition's
+  # single_source_reason.
+  - source_id: nhs
+    slug: adenomyosis
+    url: https://www.nhs.uk/conditions/adenomyosis/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  # PROBED 2026-08-18 and confirmed absent — NOT re-added as live targets.
+  # medlineplus.gov/adenomyosis.html and nichd.nih.gov/health/topics/adenomyosis
+  # both failed to fetch (no page at either URL), matching the 2026-08-04
+  # finding in ADR 0006 and the condition's single_source_reason. Re-probed
+  # because adenomyosis is the priority for a second source; still single-
+  # source. See conditions.yaml for the standing record — do not re-probe
+  # again without a reason to think a page now exists.
+
+  # ---------------------------------------------------------------------------
+  # Pregnancy-related bleeding — added 2026-08-19.
+  #
+  # nhs/bleeding_between_periods names "vaginal bleeding in pregnancy" as a
+  # separate topic without giving a resolvable URL (the cleaner strips actual
+  # hyperlinks). PROBE, not a confirmed URL: nhs.uk's standard path for this
+  # topic under /pregnancy/related-conditions/complications/. If it 404s, that
+  # is recorded rather than the target silently removed.
+  #
+  # Serves two things: the "pregnancy + any bleeding" red flag (Deliverable 4)
+  # and the pregnancy_related_bleeding condition named as unblocked in the
+  # current data-generation task (Deliverable 3) — same womenshealth URL
+  # either way, so one fetch covers both rather than two separate ones later.
+  - source_id: nhs
+    slug: pregnancy_bleeding
+    url: https://www.nhs.uk/pregnancy/related-conditions/complications/vaginal-bleeding/
+    licence: Crown copyright. Quote with attribution only; never redistribute.
+
+  - source_id: womenshealth
+    slug: pregnancy_bleeding
+    url: https://womenshealth.gov/pregnancy/youre-pregnant-now-what/pregnancy-complications
+    licence: US federal government work, public domain
+
+  # ---------------------------------------------------------------------------
+  # Deliverable 3, new conditions — added 2026-08-19.
+  #
+  # All 8 URLs below were confirmed to return 200 against womenshealth.gov on
+  # 2026-08-17, per the current data-generation task. A 200 confirms one
+  # source only — the two-source rule against medlineplus/nichd/cdc is still
+  # checked per condition before anything is authored from these pages.
+  # ---------------------------------------------------------------------------
+
+  - source_id: womenshealth
+    slug: primary_ovarian_insufficiency
+    url: https://womenshealth.gov/menopause/early-or-premature-menopause
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: inherited_bleeding_disorder
+    url: https://womenshealth.gov/a-z-topics/bleeding-disorders
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: hypothyroidism
+    url: https://womenshealth.gov/a-z-topics/thyroid-disease
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: hashimotos
+    url: https://womenshealth.gov/a-z-topics/hashimotos-disease
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: bladder_pain
+    url: https://womenshealth.gov/a-z-topics/bladder-pain
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: pelvic_organ_prolapse
+    url: https://womenshealth.gov/a-z-topics/pelvic-organ-prolapse
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: iron_deficiency_anaemia
+    url: https://womenshealth.gov/a-z-topics/iron-deficiency-anemia
+    licence: US federal government work, public domain
+
+  - source_id: womenshealth
+    slug: infertility
+    url: https://womenshealth.gov/a-z-topics/infertility
+    licence: US federal government work, public domain
+
+  # PROBE, 2026-08-19: two-source check for hypothyroidism, going
+  # condition-by-condition per review decision. MedlinePlus has a well-known
+  # dedicated hypothyroidism topic page; this is a high-confidence guess, not
+  # a blind one.
+  - source_id: medlineplus
+    slug: hypothyroidism
+    url: https://medlineplus.gov/hypothyroidism.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for primary_ovarian_insufficiency.
+  - source_id: medlineplus
+    slug: primary_ovarian_insufficiency
+    url: https://medlineplus.gov/prematureovarianfailure.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for inherited_bleeding_disorder.
+  # First two guesses for a dedicated VWD page (vonwillebranddisease.html,
+  # vonwillebranddiseases.html) both 404'd. Trying MedlinePlus's more general
+  # "bleeding disorders" topic page instead.
+  - source_id: medlineplus
+    slug: inherited_bleeding_disorder
+    url: https://medlineplus.gov/bleedingdisorders.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBED 2026-08-19 and CONFIRMED STILL BLOCKED — not re-added as a live
+  # target. Four URLs tried for a second source: medlineplus.gov/
+  # bleedingduringpregnancy.html (404), medlineplus.gov/
+  # pregnancycomplications.html (404), nichd.nih.gov/health/topics/pregnancy/
+  # conditioninfo/complications (404), and nichd.nih.gov/health/topics/
+  # pregnancy (200, but the entire page is one generic definitional sentence
+  # with no bleeding-specific or symptom content at all — resolves technically
+  # without satisfying the two-source rule in substance). Matches the task's
+  # own 2026-08-04 finding that this condition has no usable dedicated page.
+  # See conditions.yaml — this condition remains unauthored.
+
+  # PROBE, 2026-08-19: two-source check for bladder_pain. MedlinePlus's
+  # standard topic name for this condition is "interstitial cystitis".
+  - source_id: medlineplus
+    slug: bladder_pain
+    url: https://medlineplus.gov/interstitialcystitis.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for pelvic_organ_prolapse.
+  # pelvicorganprolapse.html and uterineprolapse.html on MedlinePlus both
+  # 404'd. Trying NICHD.
+  - source_id: nichd
+    slug: pelvic_organ_prolapse
+    url: https://www.nichd.nih.gov/health/topics/pelvicfloor
+    licence: US federal government work, public domain, IF confirmed.
+
+  # PROBE, 2026-08-19: two-source check for iron_deficiency_anaemia.
+  # irondeficiencyanemia.html 404'd; trying the general "anemia" topic page.
+  - source_id: medlineplus
+    slug: iron_deficiency_anaemia
+    url: https://medlineplus.gov/anemia.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBE, 2026-08-19: two-source check for infertility.
+  - source_id: medlineplus
+    slug: infertility
+    url: https://medlineplus.gov/infertility.html
+    licence: >-
+      Public domain, National Library of Medicine, IF confirmed. Attribution
+      required: Courtesy of MedlinePlus from the National Library of Medicine.
+
+  # PROBED 2026-08-19 and CONFIRMED STILL BLOCKED — not re-added as a live
+  # target. Three URLs tried: medlineplus.gov/hyperprolactinemia.html (404 —
+  # confirms only the excluded /ency/ encyclopedia entry exists on
+  # MedlinePlus, matching CLAUDE.md's 2026-08-04 "MedlinePlus only" finding),
+  # nichd.nih.gov/health/topics/hyperprolactinemia (404), and
+  # womenshealth.gov/a-z-topics/hyperprolactinemia (404, not in the task's
+  # confirmed-200 list, a genuine guess). Zero usable sources across three
+  # attempts. This condition remains unauthored.
+
+  # PROBED 2026-08-19 and CONFIRMED STILL BLOCKED — not re-added as a live
+  # target. Three URLs tried: medlineplus.gov/endometrialpolyps.html (404),
+  # nichd.nih.gov/health/topics/uterine/conditioninfo/polyps (404),
+  # womenshealth.gov/a-z-topics/uterine-polyps (404). CDC not probed — its
+  # coverage in this corpus is population-health focused (PCOS/diabetes,
+  # menorrhagia, PID) and a benign structural finding like this is a very low-
+  # probability guess there; not worth a speculative request against CDC's
+  # WAF-protected edge. Zero usable sources across three attempts, matching
+  # CLAUDE.md's 2026-08-04 finding exactly. This condition remains
+  # unauthored.
+
+  # PROBED 2026-08-19 — CONFIRMED STILL BLOCKED for the condition as named
+  # (functional_hypothalamic_amenorrhoea specifically), though one general
+  # source exists. Task notes: "no amenorrhea or period-problems page on
+  # womenshealth" as of 2026-08-17, confirmed unchanged. Three URLs tried:
+  # medlineplus.gov/amenorrhea.html (404), medlineplus.gov/
+  # hypothalamicamenorrhea.html (404), nichd.nih.gov/health/topics/amenorrhea
+  # (200 — kept as a live target below). That NICHD page is real prose, not a
+  # content-free hub: it defines primary vs secondary amenorrhea with clinical
+  # thresholds (no period by 16; absence of 3+ cycles after regular periods)
+  # and names PCOS and FXPOI as common causes of secondary amenorrhea. But it
+  # is about amenorrhea IN GENERAL — it never names the hypothalamic
+  # mechanism the task's condition is specifically about, and remains ONE
+  # source regardless. Not authored: one source describing a broader category
+  # than the condition asked for does not satisfy the two-source rule for the
+  # narrower condition, and ADR 0006's single-source exception requires an
+  # argued reason a condition belongs despite that — "the source doesn't
+  # actually describe this specific condition" is not that argument. This
+  # condition remains unauthored.
+  - source_id: nichd
+    slug: functional_hypothalamic_amenorrhoea
+    url: https://www.nichd.nih.gov/health/topics/amenorrhea
+    licence: US federal government work, public domain, IF confirmed.
+
+  # PROBED 2026-08-19 — NHS checked for all three remaining blocked
+  # conditions, none unblocked.
+  #
+  # hyperprolactinaemia: two URLs tried, both FAILED (not robots-excluded —
+  # a genuine HTTP failure past robots.txt, consistent with 404 given NHS's
+  # otherwise reliable /conditions/<slug>/ pattern used throughout this
+  # session): nhs.uk/conditions/hyperprolactinaemia/ and
+  # nhs.uk/conditions/prolactinoma/ (its most common cause, tried as an
+  # alternate naming). NHS has no page under either name.
+  #
+  # endometrial_polyp: two URLs tried, both FAILED: nhs.uk/conditions/
+  # womb-polyps/ and nhs.uk/conditions/polyps/. NHS has no page under either
+  # name.
+  #
+  # functional_hypothalamic_amenorrhoea: no new fetch — checked directly
+  # against nhs/stopped_or_missed_periods (already fetched and cleaned
+  # earlier this session for the perimenopause work) for "hypothalamic",
+  # "stress", "exercise", "weight". Only "weight" and "stress" appear, and
+  # both are brief treatment-advice mentions ("A GP can also provide advice
+  # or therapy to help you reduce stress and help you to maintain a healthy
+  # weight") — not a named cause tied to a hypothalamic mechanism, and the
+  # term "functional hypothalamic amenorrhoea" does not appear on this page
+  # at all.
+  #
+  # CONCLUSION: five sources now checked across all three conditions
+  # (MedlinePlus, NICHD, womenshealth, CDC not probed for the two structural/
+  # endocrine ones as a low-probability guess, NHS) with zero usable
+  # dedicated content for any of the three as specifically named. All three
+  # remain unauthored — see conditions.yaml note pending / CLAUDE.md coverage
+  # gaps for the standing record.

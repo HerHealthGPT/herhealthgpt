@@ -31,6 +31,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from herhealth_contracts.decision import DecisionType, TriageDecision
@@ -46,10 +47,13 @@ from herhealth_backend.triage.context import (
 __all__ = [
     "AgentTranscript",
     "AgentTurn",
+    "AttemptOutcome",
     "DEFAULT_SYSTEM_PROMPT",
     "MaxTurnsExceeded",
     "Message",
+    "ReasoningAttempt",
     "ReasoningClient",
+    "ReasoningResult",
     "RetrievalClient",
     "ScriptedReasoningClient",
     "TriageAgent",
@@ -157,11 +161,11 @@ DEFAULT_SYSTEM_PROMPT = (
     "perimenopause.\" Name only a handful of the closest matches (at most "
     "five, and usually fewer) — a long list of everything not yet ruled out "
     "is not useful guidance. When a red-flag warning sign is the reason for "
-    "concluding, name a specific condition only if the urgency is EMERGENCY — "
-    "at EMERGENCY, do name the matching conditions so she knows what patterns "
-    "the warning sign relates to; at any lesser urgency a red-flag conclusion "
-    "names no condition, because red flags escalate on a symptom pattern "
-    "without asserting what it is. Every citation, whether for a matched "
+    "concluding, you may name matching conditions if the urgency is EMERGENCY "
+    "or URGENT_SAME_DAY — at those two urgencies, do name them so she knows "
+    "what patterns the warning sign relates to; at any lesser urgency a "
+    "red-flag conclusion names no condition, because red flags escalate on a "
+    "symptom pattern without asserting what it is. Every citation, whether for a matched "
     "condition or an urgency level, is tied to a cited source. Ask one "
     "clarifying question at a time, or give urgency guidance — exactly one "
     "of SELF_CARE, ROUTINE_APPOINTMENT, URGENT_SAME_DAY, or EMERGENCY — or "
@@ -180,6 +184,19 @@ DEFAULT_SYSTEM_PROMPT = (
     # reproducing a fixed string. `_JSON_SHAPE_INSTRUCTION` already told the
     # model not to restate any of this; the system prompt simply had not
     # caught up, and the two halves contradicted each other.
+    # Added 2026-09-17. The validator has always rejected case-note framing
+    # in rationale and question_text (clients._LEAKED_INTERNALS), but the
+    # prompt never said so, and the model reached for "You mentioned…" /
+    # "You have reported…" unprompted — 4 of the retries logged that day,
+    # each costing a full extra model call of roughly 100 seconds. Same shape
+    # as the 2026-09-11 fix above: a rule the checker knew and the model was
+    # never told.
+    "Write to her directly and never write about her. Do not open with "
+    "\"You mentioned\", \"You have reported\", \"You stated\", \"You "
+    "indicated\" or \"You shared\" — that is case-note language about a "
+    "patient, and she is the person being spoken to. Refer to what she said "
+    "in plain terms instead: \"Pain this severe with a fever\" rather than "
+    "\"You reported severe pain and a fever\". "
     "Under-triage is the dominant failure mode: when in doubt, "
     "prefer sending her to care sooner rather than later — and when in "
     "doubt between asking and concluding, ask."
@@ -201,9 +218,87 @@ class RetrievalClient(Protocol):
     def search(self, query: str, *, k: int = 8) -> list[RetrievedPassage]: ...
 
 
+class AttemptOutcome(StrEnum):
+    """How one call to one reasoning backend ended.
+
+    A plain string enum enforced in the application layer, matching this
+    repo's existing preference (``ActionCode`` and friends in
+    ``herhealth_contracts``) over a database enum.
+    """
+
+    OK = "ok"
+    #: ``httpx.ConnectError`` / ``httpx.TimeoutException`` — nothing answered.
+    UNREACHABLE = "unreachable"
+    #: HTTP 502/503/504 — something answered, and it was a sick gateway.
+    UPSTREAM_UNAVAILABLE = "upstream_unavailable"
+    #: Answered, but never produced a schema-valid ``TriageDecision``.
+    INVALID_DECISION = "invalid_decision"
+    #: Produced a decision the client accepted and the **server** then refused
+    #: — a closed-vocabulary violation, or a citation that was never retrieved.
+    #: Recorded because the API layer retries the whole turn when this happens,
+    #: and counting the discarded call as ``OK`` would overstate how often a
+    #: backend answered usefully. See ``app/triage/routes.py``'s retry loop.
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningAttempt:
+    """One call to one named backend, and how it ended.
+
+    Recorded per call rather than per turn because a single turn can involve
+    several: :class:`~herhealth_backend.triage.clients.FallbackReasoningClient`
+    hands over to a **different model** on failure, and
+    :meth:`TriageAgent._refuse_premature_conclusion` calls ``decide`` a second
+    time. "Which model answered this turn" is therefore a sequence, not a
+    value, and collapsing it to a value early is what made the question
+    unanswerable before this existed.
+    """
+
+    client: str
+    outcome: AttemptOutcome
+    #: Why it failed, when it failed. ``None`` on :attr:`AttemptOutcome.OK`.
+    detail: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReasoningResult:
+    """A decision, and the record of what it took to get it.
+
+    **Deliberately not a field on ``TriageDecision``.** That schema is
+    ``extra="forbid"`` and is the structure vLLM guided decoding constrains,
+    so every field in it is *generated by the model* — a model reporting its
+    own identity could report it wrongly or invent one. Attribution is
+    observed at the transport and travels beside the decision, never inside
+    it.
+    """
+
+    decision: TriageDecision
+    attempts: tuple[ReasoningAttempt, ...] = ()
+
+    @property
+    def served_by(self) -> str | None:
+        """The backend this decision actually came from.
+
+        The last attempt that succeeded, not the first that was tried — on a
+        fallback those are different clients, which is the whole point.
+        ``None`` only when a client reported no attempts at all.
+        """
+        for attempt in reversed(self.attempts):
+            if attempt.outcome is AttemptOutcome.OK:
+                return attempt.client
+        return None
+
+
 @runtime_checkable
 class ReasoningClient(Protocol):
-    """Anything that can turn a turn's inputs into a validated decision."""
+    """Anything that can turn a turn's inputs into a validated decision.
+
+    ``name`` is part of the contract because attribution is: a client that
+    cannot say what it is cannot be reported on.
+    """
+
+    @property
+    def name(self) -> str: ...
 
     def decide(
         self,
@@ -211,7 +306,7 @@ class ReasoningClient(Protocol):
         system_prompt: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
-    ) -> TriageDecision: ...
+    ) -> ReasoningResult: ...
 
 
 class MaxTurnsExceeded(RuntimeError):
@@ -356,11 +451,24 @@ def render_red_flags(red_flags: Sequence[RedFlagRule]) -> str:
 
 @dataclass(frozen=True, slots=True)
 class AgentTurn:
-    """One decision, and what it was made from."""
+    """One decision, what it was made from, and which backend produced it."""
 
     history_before: tuple[Message, ...]
     retrieved: tuple[RetrievedPassage, ...]
     decision: TriageDecision
+    #: Every ``decide`` call this turn took, in order. Defaulted so the many
+    #: tests that build an AgentTurn directly keep working; a turn that went
+    #: through :meth:`TriageAgent.run_turn` always has at least one.
+    attempts: tuple[ReasoningAttempt, ...] = ()
+
+    @property
+    def served_by(self) -> str | None:
+        """The backend whose decision reached the caller. See
+        :attr:`ReasoningResult.served_by`."""
+        for attempt in reversed(self.attempts):
+            if attempt.outcome is AttemptOutcome.OK:
+                return attempt.client
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,20 +560,25 @@ class TriageAgent:
             # and inventing a user message would put words in her mouth in a
             # transcript that is meant to be replayable and auditable.
             system = f"{system}\n\n{background}"
-        decision = self.reasoning.decide(system_prompt=system, history=history, context=context)
-        decision = self._refuse_premature_conclusion(
-            decision, turn_context, system, history, context
+        result = self.reasoning.decide(system_prompt=system, history=history, context=context)
+        result = self._refuse_premature_conclusion(
+            result, turn_context, system, history, context
         )
-        return AgentTurn(history_before=tuple(history), retrieved=context, decision=decision)
+        return AgentTurn(
+            history_before=tuple(history),
+            retrieved=context,
+            decision=result.decision,
+            attempts=result.attempts,
+        )
 
     def _refuse_premature_conclusion(
         self,
-        decision: TriageDecision,
+        result: ReasoningResult,
         turn_context: TurnContext,
         system: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
-    ) -> TriageDecision:
+    ) -> ReasoningResult:
         """Send a conclusion back when something material is still unanswered.
 
         **This is an abstention gate, and it is the one place this module comes
@@ -503,8 +616,9 @@ class TriageAgent:
         gives way rather than looping, because a model that insists is more
         likely to be right than a rule that cannot see her words.
         """
+        decision = result.decision
         if decision.type is not DecisionType.CONCLUDE or self.min_answers <= 0:
-            return decision
+            return result
 
         met = turn_context.fired.severity if turn_context.fired else -1
         escalation = next((s for s in turn_context.near_misses if s.severity > met), None)
@@ -529,7 +643,7 @@ class TriageAgent:
             and bool(turn_context.askable)
         )
         if escalation is None and not thin:
-            return decision
+            return result
 
         if escalation is not None:
             clause = escalation.outstanding[0]
@@ -553,14 +667,21 @@ class TriageAgent:
             "next_feature_id from the list above, and question_text."
         )
         try:
-            return self.reasoning.decide(
+            retried = self.reasoning.decide(
                 system_prompt=retry, history=history, context=context
             )
         except Exception:
             # The gate is an improvement, not a guarantee. A client that
             # cannot answer the re-prompt leaves the original conclusion
             # standing rather than failing her turn outright.
-            return decision
+            return result
+        # Both calls are kept, in order: a turn where the adapter concluded
+        # early and the base model answered the re-prompt is two different
+        # models in one turn, and reporting only the second would hide that.
+        return ReasoningResult(
+            decision=retried.decision,
+            attempts=(*result.attempts, *retried.attempts),
+        )
 
     def run_consultation(
         self, opening_message: str, answer_provider: Callable[[TriageDecision], str]
@@ -628,9 +749,14 @@ class ScriptedReasoningClient:
     model decides *well*.
     """
 
-    def __init__(self, decisions: Sequence[TriageDecision]) -> None:
+    def __init__(self, decisions: Sequence[TriageDecision], *, name: str = "scripted") -> None:
         self._decisions = list(decisions)
         self._calls = 0
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     def decide(
         self,
@@ -638,9 +764,12 @@ class ScriptedReasoningClient:
         system_prompt: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
-    ) -> TriageDecision:
+    ) -> ReasoningResult:
         if self._calls >= len(self._decisions):
             raise IndexError("ScriptedReasoningClient ran out of scripted decisions")
         decision = self._decisions[self._calls]
         self._calls += 1
-        return decision
+        return ReasoningResult(
+            decision=decision,
+            attempts=(ReasoningAttempt(client=self._name, outcome=AttemptOutcome.OK),),
+        )

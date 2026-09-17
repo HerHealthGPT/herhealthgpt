@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
+from unittest.mock import MagicMock
 
+import httpx
 import pytest
 import pytest_asyncio
 from herhealth_contracts.decision import DecisionType, TriageDecision
@@ -24,8 +26,18 @@ from httpx import ASGITransport, AsyncClient
 from conftest import RecordingEmailSender
 from herhealth_backend.app import Database, create_app
 from herhealth_backend.app.accounts.google_identity import UnconfiguredGoogleTokenVerifier
-from herhealth_backend.triage.agent import Message, ScriptedReasoningClient, TriageAgent
+from herhealth_backend.app.triage.routes import _mark_rejected, _served_by_payload
+from herhealth_backend.triage.agent import (
+    AttemptOutcome,
+    Message,
+    ReasoningAttempt,
+    ReasoningResult,
+    ScriptedReasoningClient,
+    TriageAgent,
+)
+from herhealth_backend.triage.clients import FallbackReasoningClient
 from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient
+from herhealth_backend.triage.vocabulary import ClosedVocabularyViolation
 
 REPO = Path(__file__).resolve().parents[4]
 KNOWLEDGE = REPO / "knowledge"
@@ -76,13 +88,18 @@ class RecordingReasoningClient:
     it was shown on each call — so a test can confirm a later turn actually
     saw an earlier one, not just that persistence exists."""
 
+    name = "recording"
+
     def __init__(self, decisions: tuple[TriageDecision, ...]) -> None:
         self._decisions = list(decisions)
         self.histories: list[list[Message]] = []
 
-    def decide(self, *, system_prompt: str, history, context) -> TriageDecision:
+    def decide(self, *, system_prompt: str, history, context) -> ReasoningResult:
         self.histories.append(list(history))
-        return self._decisions.pop(0)
+        return ReasoningResult(
+            decision=self._decisions.pop(0),
+            attempts=(ReasoningAttempt(client=self.name, outcome=AttemptOutcome.OK),),
+        )
 
 
 def _scripted_agent(*decisions: TriageDecision) -> TriageAgent:
@@ -473,3 +490,134 @@ async def test_delete_someone_elses_session_is_not_found(database_url: str) -> N
         response = await client.delete(f"/triage/sessions/{session_id}")
 
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Attribution (migration 0010): which backend actually answered
+# ---------------------------------------------------------------------------
+
+
+async def test_a_turn_reports_and_stores_the_backend_that_answered(
+    database_url: str,
+) -> None:
+    """``served_by`` reaches both the response and the row.
+
+    Both matter and for different reasons: the response is what a live
+    experiment reads, the row is what the write-up is reconstructed from
+    weeks later.
+    """
+    base = load_knowledge_base(KNOWLEDGE)
+    agent = TriageAgent(
+        base=base,
+        reasoning=ScriptedReasoningClient([_A_CONCLUDE_DECISION], name="vllm:herhealth"),
+        retrieval=StaticRetrievalClient(),
+    )
+    async for client in _build_client(database_url, agent):
+        await _register_and_sign_in(client, "triage-servedby@example.com")
+
+        response = await client.post(
+            "/triage/turn", json={"session_id": None, "message": "irregular periods"}
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+
+        assert body["served_by"]["final"] == "vllm:herhealth"
+        assert body["served_by"]["attempts"] == [
+            {"client": "vllm:herhealth", "outcome": "ok", "detail": None}
+        ]
+
+        # And it survives a reload, which is the point of the column.
+        detail = await client.get(f"/triage/sessions/{body['session_id']}")
+        assert detail.status_code == 200, detail.text
+        assistant = [m for m in detail.json()["messages"] if m["role"] == "assistant"]
+        assert assistant[0]["served_by"]["final"] == "vllm:herhealth"
+
+        # Her own message carries no attribution — nothing answered it.
+        user_messages = [m for m in detail.json()["messages"] if m["role"] == "user"]
+        assert user_messages[0]["served_by"] is None
+
+
+async def test_a_fallback_is_attributed_to_the_model_that_finished_the_turn(
+    database_url: str,
+) -> None:
+    """The case the console log used to be the only record of.
+
+    The adapter is unreachable, OpenRouter finishes the turn, and the answer
+    she reads is the base model's. Reporting this turn as the adapter's would
+    be wrong in exactly the direction that matters for the write-up.
+    """
+    base = load_knowledge_base(KNOWLEDGE)
+    unreachable = MagicMock()
+    unreachable.name = "fine-tuned adapter (campus vLLM)"
+    unreachable.decide.side_effect = httpx.ConnectError("connection refused")
+
+    agent = TriageAgent(
+        base=base,
+        reasoning=FallbackReasoningClient(
+            primary=unreachable,
+            fallback=ScriptedReasoningClient(
+                [_A_CONCLUDE_DECISION], name="base model (OpenRouter)"
+            ),
+        ),
+        retrieval=StaticRetrievalClient(),
+    )
+    async for client in _build_client(database_url, agent):
+        await _register_and_sign_in(client, "triage-fallback@example.com")
+
+        response = await client.post(
+            "/triage/turn", json={"session_id": None, "message": "irregular periods"}
+        )
+        assert response.status_code == 200, response.text
+        served = response.json()["served_by"]
+
+        assert served["final"] == "base model (OpenRouter)"
+        assert [(a["client"], a["outcome"]) for a in served["attempts"]] == [
+            ("fine-tuned adapter (campus vLLM)", "unreachable"),
+            ("base model (OpenRouter)", "ok"),
+        ]
+        assert "connection refused" in served["attempts"][0]["detail"]
+
+
+def test_a_turn_the_server_threw_away_is_not_counted_as_a_success() -> None:
+    """``_mark_rejected`` is what stops the adapter's success rate being
+    inflated by turns this layer refused.
+
+    The client returned a schema-valid decision, so its own trail says ``ok``.
+    The route then rejected it for naming something outside the closed
+    vocabulary and retried the whole turn. Left as ``ok``, that call would be
+    counted as the backend having answered usefully, which it did not.
+    """
+    trail = (
+        ReasoningAttempt("vllm:herhealth", AttemptOutcome.UNREACHABLE, "refused"),
+        ReasoningAttempt("openrouter:base", AttemptOutcome.OK),
+    )
+    marked = _mark_rejected(trail, ClosedVocabularyViolation("menopause is not a condition"))
+
+    # Only the successful call is relabelled — the earlier failure keeps its
+    # own reason, which is a different fact about a different backend.
+    assert [(a.client, a.outcome) for a in marked] == [
+        ("vllm:herhealth", AttemptOutcome.UNREACHABLE),
+        ("openrouter:base", AttemptOutcome.REJECTED),
+    ]
+    assert marked[0].detail == "refused"
+    assert marked[1].detail == "menopause is not a condition"
+
+
+def test_served_by_names_the_last_backend_that_succeeded() -> None:
+    payload = _served_by_payload(
+        (
+            ReasoningAttempt("vllm:herhealth", AttemptOutcome.REJECTED, "bad feature id"),
+            ReasoningAttempt("openrouter:base", AttemptOutcome.OK),
+        )
+    )
+    assert payload is not None
+    assert payload["final"] == "openrouter:base"
+    assert [a["outcome"] for a in payload["attempts"]] == ["rejected", "ok"]
+
+
+def test_no_attempts_reports_unknown_rather_than_a_default() -> None:
+    """A client predating this contract reports nothing. That turn is
+    unattributable, and saying so is the honest answer — inventing the
+    configured default would put a number in the report that nothing
+    measured."""
+    assert _served_by_payload(()) is None

@@ -47,7 +47,13 @@ from herhealth_backend.app.triage.reasoning_models import (
     default_model_id,
 )
 from herhealth_backend.triage.age_bands import age_band_for
-from herhealth_backend.triage.agent import Message, TriageAgent, render_known_background
+from herhealth_backend.triage.agent import (
+    AttemptOutcome,
+    Message,
+    ReasoningAttempt,
+    TriageAgent,
+    render_known_background,
+)
 from herhealth_backend.triage.context import join_evidence
 from herhealth_backend.triage.provenance import (
     drop_unknown_conditions,
@@ -123,6 +129,10 @@ class SessionMessage(BaseModel):
     role: str
     content: str
     decision: dict[str, Any] | None = None
+    #: ``None`` on her own messages, and on every assistant turn recorded
+    #: before migration 0010 — those are unattributable, not "the default
+    #: model", and a reader of this field must not assume otherwise.
+    served_by: dict[str, Any] | None = None
     created_at: datetime
 
 
@@ -293,6 +303,11 @@ async def _run_turn(
 
     turn = None
     last_retryable_error: Exception | None = None
+    # Calls made by turns this loop threw away. Kept because a discarded turn
+    # still cost a real call to a real backend: dropping it would understate
+    # how much work a turn took, and counting it as a success would overstate
+    # how often that backend answered usefully.
+    discarded: list[ReasoningAttempt] = []
     for attempt in range(1, MAX_REASONING_ATTEMPTS + 1):
         try:
             loop = asyncio.get_running_loop()
@@ -341,6 +356,9 @@ async def _run_turn(
             ) from error
         except (ValidationError, ClosedVocabularyViolation, ValueError) as error:
             last_retryable_error = error
+            if turn is not None:
+                discarded.extend(_mark_rejected(turn.attempts, error))
+                turn = None
             if attempt < MAX_REASONING_ATTEMPTS:
                 logger.warning(
                     "reasoning attempt %s/%s failed (%s) — retrying",
@@ -375,9 +393,10 @@ async def _run_turn(
     payload = _decision_payload(
         decision, turn.retrieved, base=agent.base, observed=observed, model=model
     )
-    await _persist_turn(session_id, request.message, decision, payload, database)
+    served_by = _served_by_payload((*discarded, *turn.attempts))
+    await _persist_turn(session_id, request.message, decision, payload, database, served_by)
 
-    return {"session_id": str(session_id), "decision": payload}
+    return {"session_id": str(session_id), "decision": payload, "served_by": served_by}
 
 
 def _red_flag_citation(decision: TriageDecision, base: KnowledgeBase) -> dict[str, Any] | None:
@@ -400,9 +419,16 @@ def _red_flag_citation(decision: TriageDecision, base: KnowledgeBase) -> dict[st
     use its licence permits. Most of ``red_flags.yaml`` is NHS-derived, so in
     practice this is where NHS appears.
 
-    The URL is the source's own home page from ``sources.yaml``, not a deep
-    link: a red-flag rule records which source it came from, not which page,
-    so pretending to a page-level link would be inventing provenance.
+    The URL prefers the rule's own ``source_url`` — the page its
+    ``source_quote`` was found in, verbatim — and falls back to the source's
+    home page from ``sources.yaml`` when that is unknown. It used to be the
+    home page always, which sent a woman reading a warning sign to nhs.uk
+    rather than to the NHS page the warning sign is on.
+
+    The fallback is not a formality: ``severe_pelvic_pain``'s quote appears on
+    two NHS pages, so which one it was read from is genuinely unknown and it
+    keeps the home-page link. A deep link there would be invented provenance,
+    which is the thing the original comment here was right to refuse.
     """
     if decision.red_flag_id is None:
         return None
@@ -415,7 +441,7 @@ def _red_flag_citation(decision: TriageDecision, base: KnowledgeBase) -> dict[st
         "text": rule.source_quote,
         "citation": f"{rule.source_id} § {rule.label}",
         "source_id": rule.source_id,
-        "url": str(source.url) if source is not None else None,
+        "url": str(rule.source_url or source.url) if (rule.source_url or source) else None,
         "passage_type": "red_flag",
     }
 
@@ -741,12 +767,74 @@ async def _load_session(
         )
 
 
+def _mark_rejected(
+    attempts: Sequence[ReasoningAttempt], error: Exception
+) -> list[ReasoningAttempt]:
+    """Relabel a discarded turn's successful call as ``REJECTED``.
+
+    The client was happy — it returned a schema-valid ``TriageDecision`` —
+    and this layer refused it anyway, because the decision named a feature,
+    rule or citation that is not in the knowledge base. Only the last
+    successful call is relabelled: the earlier entries in the trail are
+    failures already, and their reasons are their own.
+    """
+    marked = list(attempts)
+    for index in range(len(marked) - 1, -1, -1):
+        if marked[index].outcome is AttemptOutcome.OK:
+            marked[index] = replace(
+                marked[index],
+                outcome=AttemptOutcome.REJECTED,
+                detail=_attempt_detail(error),
+            )
+            break
+    return marked
+
+
+def _attempt_detail(error: Exception) -> str:
+    """A short reason, capped — this is read by a human out of a database."""
+    text = str(error).strip() or type(error).__name__
+    return text if len(text) <= 200 else f"{text[:199]}…"
+
+
+def _served_by_payload(attempts: Sequence[ReasoningAttempt]) -> dict[str, Any] | None:
+    """The attribution record stored on the turn and returned to the caller.
+
+    ``final`` is the backend whose decision she actually read — the last one
+    that succeeded, which on a fallback is **not** the one tried first.
+    ``attempts`` is every call the turn took, in order, so a fallback rate can
+    be measured from the stored rows rather than estimated from server logs.
+
+    ``None`` when nothing reported an attempt, which is what a client
+    predating this contract looks like. Reported as unknown, never as a
+    default model.
+    """
+    if not attempts:
+        return None
+    final: str | None = None
+    for attempt in reversed(attempts):
+        if attempt.outcome is AttemptOutcome.OK:
+            final = attempt.client
+            break
+    return {
+        "final": final,
+        "attempts": [
+            {
+                "client": attempt.client,
+                "outcome": attempt.outcome.value,
+                "detail": attempt.detail,
+            }
+            for attempt in attempts
+        ],
+    }
+
+
 async def _persist_turn(
     session_id: uuid.UUID,
     user_message: str,
     decision: TriageDecision,
     payload: dict[str, Any],
     database: Database,
+    served_by: dict[str, Any] | None = None,
 ) -> None:
     """A second short-lived session: write this turn's two messages, and
     close out the consultation if it concluded.
@@ -772,6 +860,9 @@ async def _persist_turn(
                 role="assistant",
                 content=assistant_content,
                 decision=payload,
+                # Beside the decision, never inside it — see the column's own
+                # note in app/triage/models.py.
+                served_by=served_by,
             )
         )
         if decision.type is DecisionType.CONCLUDE:
@@ -886,6 +977,7 @@ async def get_session(
                         role=row.role,
                         content=row.content,
                         decision=row.decision,
+                        served_by=row.served_by,
                         created_at=row.created_at,
                     )
                     for row in rows
