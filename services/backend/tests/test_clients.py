@@ -10,7 +10,7 @@ import pytest
 from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.knowledge import ActionCode
 
-from herhealth_backend.triage.agent import Message
+from herhealth_backend.triage.agent import AttemptOutcome, Message, ReasoningResult
 from herhealth_backend.triage.clients import (
     FallbackReasoningClient,
     OpenRouterReasoningClient,
@@ -64,14 +64,18 @@ def test_parse_chat_completion_payload_validates_decision() -> None:
 
 def test_fallback_uses_primary_when_it_succeeds() -> None:
     primary = MagicMock()
-    primary.decide.return_value = _VALID_DECISION
+    primary.name = "vllm:herhealth"
+    primary.decide.return_value = ReasoningResult(decision=_VALID_DECISION)
     fallback = MagicMock()
+    fallback.name = "openrouter:base"
 
     client = FallbackReasoningClient(primary=primary, fallback=fallback)
     result = client.decide(system_prompt="sys", history=[], context=[])
 
-    assert result is _VALID_DECISION
+    assert result.decision is _VALID_DECISION
     fallback.decide.assert_not_called()
+    assert result.served_by == "vllm:herhealth"
+    assert [a.outcome for a in result.attempts] == [AttemptOutcome.OK]
 
 
 def test_fallback_uses_openrouter_when_vllm_is_unreachable() -> None:
@@ -82,15 +86,25 @@ def test_fallback_uses_openrouter_when_vllm_is_unreachable() -> None:
         rationale="fallback",
     )
     primary = MagicMock()
+    primary.name = "vllm:herhealth"
     primary.decide.side_effect = httpx.ConnectError("connection refused")
     fallback = MagicMock()
-    fallback.decide.return_value = conclude
+    fallback.name = "openrouter:base"
+    fallback.decide.return_value = ReasoningResult(decision=conclude)
 
     client = FallbackReasoningClient(primary=primary, fallback=fallback)
     result = client.decide(system_prompt="sys", history=[], context=[])
 
-    assert result.action_code is ActionCode.ROUTINE_APPOINTMENT
+    assert result.decision.action_code is ActionCode.ROUTINE_APPOINTMENT
     fallback.decide.assert_called_once()
+
+    # The whole point of the trail: the turn is attributable to the model that
+    # actually answered, and the one that failed is still named.
+    assert result.served_by == "openrouter:base"
+    assert [(a.client, a.outcome) for a in result.attempts] == [
+        ("vllm:herhealth", AttemptOutcome.UNREACHABLE),
+        ("openrouter:base", AttemptOutcome.OK),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -170,18 +184,22 @@ def test_fallback_uses_openrouter_when_primary_returns_no_valid_decision() -> No
         rationale="fallback",
     )
     primary = MagicMock()
+    primary.name = "vllm:herhealth"
     primary.decide.side_effect = ValueError(
         "reasoning model returned malformed JSON: a decision must be grounded "
         "in at least one citation or a red_flag_id"
     )
     fallback = MagicMock()
-    fallback.decide.return_value = conclude
+    fallback.name = "openrouter:base"
+    fallback.decide.return_value = ReasoningResult(decision=conclude)
 
     client = FallbackReasoningClient(primary=primary, fallback=fallback)
     result = client.decide(system_prompt="sys", history=[], context=[])
 
-    assert result.action_code is ActionCode.ROUTINE_APPOINTMENT
+    assert result.decision.action_code is ActionCode.ROUTINE_APPOINTMENT
     fallback.decide.assert_called_once()
+    assert result.attempts[0].outcome is AttemptOutcome.INVALID_DECISION
+    assert "malformed JSON" in (result.attempts[0].detail or "")
 
 
 def test_fallback_reraises_client_error_statuses_without_calling_fallback() -> None:
@@ -189,6 +207,7 @@ def test_fallback_reraises_client_error_statuses_without_calling_fallback() -> N
     against a second provider would hide the bug and bill for it twice.
     """
     primary = MagicMock()
+    primary.name = "vllm:herhealth"
     primary.decide.side_effect = httpx.HTTPStatusError(
         "unauthorized",
         request=httpx.Request("POST", "http://x/v1/chat/completions"),
@@ -228,7 +247,7 @@ def test_vllm_client_posts_to_chat_completions(monkeypatch: pytest.MonkeyPatch) 
         system_prompt="system",
         history=[Message(role="user", content="hello")],
         context=[],
-    )
+    ).decision
 
     assert captured["url"] == "http://gpu-pc:8002/v1/chat/completions"
     body = captured["json"]
@@ -273,7 +292,7 @@ def test_openrouter_retries_after_invalid_json(monkeypatch: pytest.MonkeyPatch) 
             return FakeResponse()
 
     client = OpenRouterReasoningClient(api_key="test-key", client=FakeClient())  # type: ignore[arg-type]
-    decision = client.decide(system_prompt="system", history=[], context=[])
+    decision = client.decide(system_prompt="system", history=[], context=[]).decision
 
     assert calls["count"] == 2
     assert decision.type is DecisionType.ASK

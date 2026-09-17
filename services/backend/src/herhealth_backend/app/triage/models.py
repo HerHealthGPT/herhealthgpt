@@ -89,6 +89,21 @@ class Message(Base):
     role: Mapped[str] = mapped_column(Text, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     decision: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: Which reasoning backend actually answered, and what it took — the
+    #: ``{"final": ..., "attempts": [...]}`` shape built by
+    #: ``routes._served_by_payload``. Assistant messages only.
+    #:
+    #: **A column of its own, deliberately not a key inside ``decision``.**
+    #: That blob is the validated ``TriageDecision``, whose schema is
+    #: ``extra="forbid"``; an extra key in it would break anyone who later
+    #: validates a stored decision, and would also imply the model reported
+    #: its own identity. This is an observation about the transport, made by
+    #: the server, so it is stored beside the decision rather than within it.
+    #:
+    #: Nullable, and null on every row written before this column existed —
+    #: those turns are genuinely unattributable and must not be reported as
+    #: anything else.
+    served_by: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
