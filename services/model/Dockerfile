@@ -43,6 +43,13 @@ COPY services/model services/model
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra retrieval --extra ingest
 
+# Regression guard. This host has no GPU, so a CUDA build of torch (and the
+# ~1.5 GB of nvidia-*/triton wheels it drags in) is dead weight in the image and
+# in every pull. Fail the build here, loudly, if one ever returns to uv.lock.
+RUN /app/.venv/bin/python -c "import sys, torch; sys.exit(1 if torch.version.cuda else 0)" \
+ && ! ls /app/.venv/lib/python3.12/site-packages | grep -E '^(nvidia|triton|cuda)' \
+ || { echo "ERROR: a CUDA torch or nvidia/triton packages are installed; see [[tool.uv.index]] pytorch-cpu in pyproject.toml" >&2; exit 1; }
+
 
 FROM python:3.12-slim AS runtime
 
