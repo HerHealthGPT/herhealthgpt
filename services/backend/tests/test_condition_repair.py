@@ -13,9 +13,9 @@ deliberately does not model.
 
 from __future__ import annotations
 
+from herhealth_contracts.decision import DecisionType, TriageDecision
 from triage_factories import build
 
-from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_backend.triage.provenance import drop_unknown_conditions
 from herhealth_backend.triage.vocabulary import (
     ClosedVocabularyViolation,
