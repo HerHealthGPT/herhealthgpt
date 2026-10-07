@@ -78,7 +78,13 @@ send a real email; this runbook is that gap's Google equivalent.
    backend verifies tokens issued to a web client.)
 2. **Name:** `HerHealthGPT backend` (cosmetic, shown only in the console).
 3. **Authorized JavaScript origins:** add whatever origin you will actually
-   sign in from while testing — see §4. For the OAuth Playground method,
+   sign in from while testing — see §4. **For the production deployment, add
+   `https://herhealthgpt.org`** (the apex, where the frontend is served; not
+   `api.` and not `www.`), and add it to the **Authorized redirect URIs** too.
+   The Client ID is also a *build-time* value for the frontend image
+   (`NEXT_PUBLIC_GOOGLE_CLIENT_ID`, repository variable) as well as a runtime
+   secret for the backend — see
+   [aws-deploy.md](aws-deploy.md#google-sign-in-in-production). For the OAuth Playground method,
    nothing here is required. For a real "Sign In With Google" button on a
    page you serve yourself, add that page's origin (e.g. `http://localhost:3000`
    or `http://localhost:8000`).

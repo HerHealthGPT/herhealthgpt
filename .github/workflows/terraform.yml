@@ -1,0 +1,108 @@
+name: terraform
+
+# Infrastructure checks on pull requests. `terraform apply` is deliberately NOT
+# here: it is run by a person, manually (docs/runbooks/aws-deploy.md).
+#
+#   validate  fmt -check and validate for both stacks. No AWS credentials.
+#   plan      `terraform plan` of the prod stack with a READ-ONLY role, posted
+#             to the PR. Skipped for PRs from forks (no OIDC token, no role).
+#
+# Repository VARIABLES for the plan job (none is a secret):
+#   AWS_PLAN_ROLE_ARN        terraform output plan_role_arn
+#   TF_VAR_ALERT_EMAIL       becomes var.alert_email
+#   TF_VAR_COMPOSE_SHA256    becomes var.compose_sha256
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ">= 1.10.0"
+
+      - name: Format
+        run: terraform fmt -check -recursive -diff infra/terraform
+
+      - name: Validate (no backend, no credentials)
+        run: |
+          for stack in bootstrap prod; do
+            echo "::group::$stack"
+            terraform -chdir="infra/terraform/$stack" init -backend=false -input=false
+            terraform -chdir="infra/terraform/$stack" validate
+            echo "::endgroup::"
+          done
+
+  plan:
+    needs: validate
+    # Skips (does not fail) for fork PRs, and while the AWS role and the two
+    # Terraform input variables have not been set yet (docs/runbooks/aws-deploy.md,
+    # section 5). A skipped job is a neutral check, not a red one.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository
+      && vars.AWS_PLAN_ROLE_ARN != ''
+      && vars.TF_VAR_ALERT_EMAIL != ''
+      && vars.TF_VAR_COMPOSE_SHA256 != ''
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    env:
+      TF_VAR_alert_email: ${{ vars.TF_VAR_ALERT_EMAIL }}
+      TF_VAR_compose_sha256: ${{ vars.TF_VAR_COMPOSE_SHA256 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ">= 1.10.0"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Init
+        run: terraform -chdir=infra/terraform/prod init -input=false
+
+      - name: Plan
+        id: plan
+        continue-on-error: true
+        run: terraform -chdir=infra/terraform/prod plan -input=false -no-color -lock-timeout=60s
+
+      - name: Post the plan to the pull request
+        uses: actions/github-script@v7
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+          OUTCOME: ${{ steps.plan.outcome }}
+        with:
+          script: |
+            const marker = "<!-- terraform-plan -->";
+            const limit = 60000; // GitHub rejects comments over 65,536 characters
+            let plan = process.env.PLAN || "(no output)";
+            if (plan.length > limit) plan = "...(truncated)...\n" + plan.slice(-limit);
+            const body = `${marker}\n### Terraform plan: \`${process.env.OUTCOME}\`\n\n<details><summary>Show plan</summary>\n\n\`\`\`\n${plan}\n\`\`\`\n</details>\n\nPlanned with a read-only role. Applying is manual.`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      - name: Fail the job if the plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1

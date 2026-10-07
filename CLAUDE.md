@@ -91,8 +91,11 @@ services/data/        ingestion, evaluation harness, benchmark cases
 packages/contracts/   Pydantic schemas, error codes, safety policy
 packages/types-ts/    TypeScript generated from the OpenAPI spec
 knowledge/            the seven knowledge files (see below)
-infra/                compose.yml, envs/*.env, Caddy, Prometheus
-.github/workflows/    path-filtered CI
+infra/                compose.yml (local dev), compose.prod.yml (production),
+                      envs/*.env, caddy/, deploy/ (host scripts), terraform/
+                      (AWS). Caddy is kept — now on the EC2 host; CloudWatch
+                      replaces Prometheus for production.
+.github/workflows/    CI (path-filtered) and the production deploy
 ```
 
 **Frontend is a normal responsive web app.** No service worker, no manifest, no
@@ -112,10 +115,26 @@ chunking is load-bearing for `make verify-quotes`, not a tuning knob. A reranker
 is deferred until retrieval evaluation shows the right passage retrieved but
 ranked outside top *k*. See [`docs/adr/0010`](docs/adr/0010-multilingual-embeddings-beat-arabic-specific-ones.md).
 
-**Deploy:** merge to main → path-filtered CI builds only what changed → image
-tagged with the git SHA → PR bumps that tag in `infra/envs/staging.env` → merge
-triggers a self-hosted runner on the GPU server. Rollback is `git revert`.
-Nothing is ever edited directly on the server.
+**Deploy:** merge to main → the `deploy` workflow builds the three images
+(frontend, backend, retrieval) tagged with the git SHA, pushes them to ECR,
+uploads `infra/compose.prod.yml` and the Caddyfile to S3, and runs
+`/opt/herhealth/deploy.sh <sha>` on the single EC2 host through SSM Run Command.
+The host migrates the database, switches the release, health-checks through
+Caddy, and rolls back to the previous tag by itself if the check fails.
+Rollback by hand is `git revert` (same pipeline). `terraform apply` is run
+manually, never by CI. Nothing is ever edited directly on the server — the SSM
+shell is for reading logs and diagnosing.
+
+Production runs the **Base model via OpenRouter only**; the model selector is
+off and the fine-tuned adapter stays campus/dev-only (see "The fine-tuned model"
+below). The retrieval index deployed to production must be built with quote-only
+(NHS) passages excluded (the build flag is proposed and pending review);
+`scripts/publish-index.sh` refuses to upload any index containing them, so NHS
+text is never in S3 or an image. Full procedure,
+trade-offs (single server, single-AZ database, no staging, no WAF) and the
+pre-demo checklist: [`docs/runbooks/aws-deploy.md`](docs/runbooks/aws-deploy.md).
+The earlier plan of a self-hosted runner on the GPU server is not the
+production path; the campus GPU box remains the dev vLLM host.
 
 ---
 
