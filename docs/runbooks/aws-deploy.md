@@ -39,6 +39,7 @@ GitHub Actions workflow deploys by telling the host, through SSM, to run
 | **7-day backups** | Point-in-time recovery for a week. | Cost. |
 | **No staging environment** | Every deploy goes to the live site. The automatic rollback is the only safety net, and it restores images and config files, **not** the database schema (see [Rollback](#8-rollback)). | One environment is all the budget covers. |
 | **No WAF** | Caddy and the app are directly on the internet. | Cost. Rate limits in the app (resend limits, wrong-code lockout) are the only abuse control. |
+| **Control of `main` is control of the server** | The deploy role uploads `deploy.sh`, `compose.prod.yml` and the Caddyfile to `deploy/<sha>/`, and the host runs them **as root**. The custom SSM document restricts the **command line** (one validated `Sha` parameter), **not the content** that runs. So anyone who can push to `main`, or merge into it, can run anything as root on the host, read the database credentials in `/run/herhealth`, and read every user's data. | Deploying on a push needs a path from the repository to the server, and this is its price. The mitigations are procedural, not technical: required reviews and status checks on `main`, no direct pushes, no admin bypass, and few people with write access. |
 | **NHS text excluded from the deployed index** | Production retrieval cannot return NHS passages or the 53 evidence statements backed by NHS rows — see [the NHS decision](#the-nhs-decision). **The build flag that produces such an index is proposed and not yet in the code.** | Licence: NHS content is `citable_only`. |
 | **Base model only** | No fine-tuned adapter in production — see [Model](#model-base-only-in-production). | The adapter is not cleared to make triage decisions. |
 
@@ -79,9 +80,21 @@ You also need the [Session Manager
 plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
 locally to open a shell on the host (§13).
 
-If `aws iam list-open-id-connect-providers` already lists
-`token.actions.githubusercontent.com`, set `create_github_oidc_provider = false`
-in `terraform.tfvars` — an account can hold only one provider per URL.
+**Before the first apply, check for an existing GitHub OIDC provider.** An AWS
+account can hold only one OIDC provider per URL, and creating a second one fails
+the apply partway through. Run this first (read-only):
+
+```bash
+aws iam list-open-id-connect-providers
+```
+
+- If it lists an ARN ending in `oidc-provider/token.actions.githubusercontent.com`,
+  set `create_github_oidc_provider = false` in `terraform.tfvars`, so Terraform
+  reads the existing provider instead of creating one.
+- If the list is empty, leave the default (`true`).
+
+The variable stays a variable because the answer depends on the account, not on
+this repository.
 
 ## 2. State bootstrap (once)
 
@@ -110,6 +123,10 @@ Copy `infra/terraform/prod/terraform.tfvars.example` to `terraform.tfvars`
 alert_email    = "you@example.org"   # alarms, budget alerts, Let's Encrypt notices
 compose_sha256 = "<64 hex>"          # see below
 ```
+
+Decide two optional switches before the first apply: `create_github_oidc_provider`
+(see §1: run `aws iam list-open-id-connect-providers` first) and `create_plan_role`
+(default `false`; see §5, "The plan role").
 
 `compose_sha256` is the checksum of the Docker Compose plugin binary the host
 downloads at first boot (`compose_version` in `variables.tf`; Amazon Linux 2023
@@ -210,13 +227,13 @@ In the repository's **Settings → Secrets and variables → Actions → Variabl
 | Variable | Value |
 |---|---|
 | `AWS_DEPLOY_ROLE_ARN` | `terraform output deploy_role_arn` |
-| `AWS_PLAN_ROLE_ARN` | `terraform output plan_role_arn` |
+| `AWS_PLAN_ROLE_ARN` | `terraform output plan_role_arn` — **only if** `create_plan_role = true` (§5, "The plan role") |
 | `EC2_INSTANCE_ID` | `terraform output instance_id` |
 | `ARTIFACTS_BUCKET` | `terraform output artifacts_bucket` |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | the Google OAuth client id |
 | `RETRIEVAL_INDEX_VERSION` | printed by `publish-index.sh` (§6) |
 | `BGE_M3_REVISION` | the 40-hex Hugging Face commit (§6) |
-| `TF_VAR_ALERT_EMAIL`, `TF_VAR_COMPOSE_SHA256` | the same two `terraform.tfvars` values, for PR plans |
+| `TF_VAR_ALERT_EMAIL`, `TF_VAR_COMPOSE_SHA256` | the same two `terraform.tfvars` values, for PR plans — **only if** the plan job is enabled |
 
 The **deploy role** is trusted only for pushes to `main` of
 `HerHealthGPT/herhealthgpt` (the `sub` claim is case-sensitive — the casing comes
@@ -224,14 +241,58 @@ from `git remote -v`). It can push to the three ECR repositories, write the
 `deploy/` prefix, read the `index/` prefix, and run **one custom SSM document,
 `herhealth-deploy`**, on **this one instance** (`ssm.tf`). The document runs a
 fixed command, `/opt/herhealth/deploy.sh {{ Sha }}`, and its single parameter is
-validated by SSM against `^[0-9a-f]{7,64}$` before the command is built, so the
-role cannot run arbitrary commands (it has no access to `AWS-RunShellScript`).
-What remains is that the sha selects `deploy/<sha>/`, whose files run as root —
-see the table below. Protect `main` with required reviews and the `backend` /
-`data` test checks, because `deploy` itself does not run tests.
+validated by SSM against `^[0-9a-f]{7,64}$` before the command is built.
+
+That restricts the **command line**: the role cannot hand SSM an arbitrary command
+string (it has no access to `AWS-RunShellScript`), so no shell metacharacters can
+reach it. It does **not** restrict **what runs**. `deploy.sh` replaces itself from,
+and then executes, as root, the files **this same role uploads** to
+`deploy/<sha>/`. **Control of `main` is control of the server**: the first row of
+the trade-offs table, and the table below, say the same thing. Protect `main` with
+required reviews and the `backend` / `data` test checks, no direct pushes and no
+admin bypass, because `deploy` itself does not run tests.
+
+### The plan role (optional, off by default)
 
 The separate **plan role** (pull requests, read-only plus the state lock file)
-exists because pull-request OIDC tokens carry a different `sub` than `main`.
+exists because pull-request OIDC tokens carry a different `sub` than `main`. It
+is created only if `create_plan_role = true` in `terraform.tfvars`; the default
+is **`false`**. With it off there is no role, no `AWS_PLAN_ROLE_ARN`, and the
+`plan` job in `terraform.yml` is **skipped** (shown as neutral, not red). `fmt`
+and `validate` still run on every pull request, so the only thing lost is the plan
+comment on the PR; run `terraform plan` locally instead.
+
+**What enabling it costs.** The role attaches AWS's `ReadOnlyAccess` policy, which
+is not limited to this stack: it reads the configuration **and the contents** of
+the whole account, including **S3 objects in every bucket** (the artifacts and
+state buckets among them) and **CloudWatch Logs events** (`/herhealth/prod/*`).
+Anyone who can open a pull request in this repository can change a workflow to run
+as this role and read them. That matters if the logs can contain user text, and
+they can; see [What the logs can contain](#what-the-logs-can-contain). To enable:
+set `create_plan_role = true`, `terraform apply`, then set `AWS_PLAN_ROLE_ARN` and
+the two `TF_VAR_*` repository variables.
+
+### What the logs can contain
+
+Checked by reading every logging call in `services/backend` and `services/model`
+(and the retrieval library they use). **No logging call takes a message body,
+request body or conversation history**, and uvicorn's access log records method,
+path and status, not bodies. But user text and personal data can still reach the
+container logs, and therefore CloudWatch:
+
+| Where | What can appear |
+|---|---|
+| `email_sender.py` console sender | The recipient's email **and the verification code**. Used when `HERHEALTH_EMAIL_SENDER` is `console`, which is the code's **default if the variable is unset**; production sets `ses` in `compose.prod.yml`. |
+| `email_verification.py`, `password_reset.py` | The recipient's **email address**, with a traceback, when sending a code fails. |
+| `routes.py` (`dropped answer` warning) | The feature the user was asked about and the **answers recorded this turn** (closed-vocabulary answers to health questions), when the model's decision ignored them. |
+| `routes.py` / `clients.py` retry warnings | The text of a validation or value error, which can quote the **reasoning model's output** (and so words from the conversation). |
+| `logger.exception(...)` on database errors | The SQLAlchemy engine does **not** set `hide_parameters`, so a database error's message can include the **bound SQL parameters**: message text, email addresses, password hashes. |
+| Retrieval service, web fallback | Not CloudWatch: when the index has nothing usable for a turn, it appends the **retrieval query** (composed from the conversation) to `build/web_fallback_review_queue.jsonl` **inside the container**, where it is lost at the next deploy. Errors writing it are swallowed. |
+
+Recommended follow-ups, **not made here** because this change does not touch
+application code: `create_async_engine(..., hide_parameters=True)` in `db.py`;
+stop logging `observed` answers and exception text at WARNING; and decide whether
+the fallback's review queue should exist in production at all.
 
 ### Who can write what the host executes
 
@@ -242,7 +303,7 @@ that prefix is effectively root on the server. Verified in the Terraform:
 | Principal | `deploy/*` | Where in the code |
 |---|---|---|
 | GitHub **deploy role** (pushes to `main` only) | **write** (`s3:PutObject`) | `iam_oidc.tf`, statement `UploadDeployFiles`; trust policy pinned to `ref:refs/heads/main` |
-| GitHub **plan role** (pull requests) | **no write** to this bucket: `ReadOnlyAccess` (get/list only) plus `Put/DeleteObject` on the *state bucket's* lock file only | `iam_oidc.tf`, `plan_readonly` and `plan_lock` |
+| GitHub **plan role** (pull requests; only if `create_plan_role = true`) | **no write** to this bucket: `ReadOnlyAccess` (get/list only) plus `Put/DeleteObject` on the *state bucket's* lock file only | `iam_oidc.tf`, `plan_readonly` and `plan_lock` |
 | **Instance role** | read-only (`s3:GetObject`); it can write only `caddy-backup/*` | `iam_instance.tf`, statements `ReadDeployFiles` and `CaddyBackupObjects` |
 | `admin` IAM user | everything | outside Terraform |
 
@@ -628,6 +689,9 @@ the first apply, in this order:
 | Workflow: "built with bge-m3 revision X, but BGE_M3_REVISION is Y" | Index and image pinned to different weights | Set `BGE_M3_REVISION` to the index's revision, or rebuild and republish the index |
 | Workflow: quote-only passage found in the index | Wrong index published | Rebuild with `--exclude-quote-only`, republish, update `RETRIEVAL_INDEX_VERSION` |
 | Workflow: cannot assume role | Not on `main`, or repo casing | The role trusts only `repo:HerHealthGPT/herhealthgpt:ref:refs/heads/main` |
+| Workflow: cannot assume role, after someone added `environment:` to the deploy job | A job that uses a GitHub Environment gets a **different** OIDC `sub` (`repo:HerHealthGPT/herhealthgpt:environment:<name>`), so the trust condition on `ref:refs/heads/main` no longer matches | `deploy.yml` deliberately has no `environment:`. If one is ever added, change the `sub` condition in `deploy_trust` (`iam_oidc.tf`) in the **same commit**. Do not widen it to a wildcard to make it work |
+| `terraform apply`: `EntityAlreadyExists` for the GitHub OIDC provider | The account already has one for `token.actions.githubusercontent.com` | §1: run `aws iam list-open-id-connect-providers`, set `create_github_oidc_provider = false`, apply again |
+| Terraform workflow: the `plan` job shows as skipped | The plan role is off by default, or its repository variables are unset | Expected. §5, "The plan role" |
 | SSM: `InvalidInstanceId` / not connected | Host not registered yet, or instance role/internet missing | Wait 2–3 min after boot; `aws ssm describe-instance-information`. If it never appears: EC2 console → Actions → Monitor and troubleshoot → Get system log (shows cloud-init and the bootstrap output) |
 | deploy.sh: "secret '…' is empty", or AWS says it "can't find the specified secret value" | §4 not done (a secret with no value yet) | `put-secret-value` the named secret |
 | deploy.sh: "GB free after pruning" | Disk full | §9 |

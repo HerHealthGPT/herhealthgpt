@@ -1,13 +1,17 @@
 # GitHub Actions -> AWS with no stored keys: the workflow presents a short-lived
-# OIDC token and assumes one of two roles.
+# OIDC token and assumes a role.
 #
 #   deploy role  trusted ONLY for pushes to main of this repo. Can push images,
-#                upload deploy files, read the index prefix, and tell the SSM
-#                agent on THIS ONE instance to run a shell script. Nothing else.
-#   plan role    trusted for pull_request runs of this repo. Read-only, plus the
-#                state lock file `terraform plan` needs to write. PR tokens carry
-#                a different `sub` than main, which is why this is a separate
-#                role and not a widening of the deploy role.
+#                upload deploy files, read the index prefix, and ask the host to
+#                run the deploy document. The files it uploads are what that
+#                document executes, as root, so this role is in effect root on the
+#                host: CONTROL OF MAIN IS CONTROL OF THE SERVER. That is a
+#                deliberate trade-off, not a gap (ssm.tf, runbook).
+#   plan role    OPTIONAL (var.create_plan_role, default false). Trusted for
+#                pull_request runs of this repo. Read-only, plus the state lock
+#                file `terraform plan` needs to write. PR tokens carry a different
+#                `sub` than main, which is why this is a separate role and not a
+#                widening of the deploy role.
 #
 # `terraform apply` is NOT done by either role. It is run by a person, manually.
 #
@@ -113,10 +117,12 @@ data "aws_iam_policy_document" "deploy" {
     }
   }
 
-  # Run the custom deploy document (ssm.tf) on exactly this instance, and
-  # nothing else: not AWS-RunShellScript, which would run any command string.
-  # The document takes one parameter, a git sha, validated by SSM against a
-  # regex before the command is built.
+  # Run the custom deploy document (ssm.tf) on exactly this instance. Not
+  # AWS-RunShellScript, so the caller cannot choose the COMMAND LINE: the
+  # document takes one parameter, a git sha, validated by SSM against a regex.
+  # That limits the command line, not what runs. deploy.sh executes the files
+  # this same role uploads to deploy/<sha>/ (UploadDeployFiles above), as root.
+  # Control of main is control of the host.
   statement {
     sid     = "RunDeployDocument"
     actions = ["ssm:SendCommand"]
@@ -141,6 +147,14 @@ resource "aws_iam_role_policy" "deploy" {
 }
 
 # --- plan role (pull requests, read-only) --------------------------------------
+#
+# OPTIONAL, off by default (var.create_plan_role). ReadOnlyAccess is not
+# "read this stack": it is read access to the whole ACCOUNT, including S3 OBJECTS
+# in every bucket and CloudWatch Logs events. If the application's logs can
+# contain user text, anyone who can open a pull request in this repository can
+# change a workflow to read them as this role. Enable it only if PR plans are
+# worth that exposure. When false there is no role, no output, and the plan job
+# in terraform.yml is skipped; fmt and validate still run.
 
 data "aws_iam_policy_document" "plan_trust" {
   statement {
@@ -166,13 +180,17 @@ data "aws_iam_policy_document" "plan_trust" {
 }
 
 resource "aws_iam_role" "plan" {
+  count = var.create_plan_role ? 1 : 0
+
   name                 = "${local.name}-github-plan"
   assume_role_policy   = data.aws_iam_policy_document.plan_trust.json
   max_session_duration = 3600
 }
 
 resource "aws_iam_role_policy_attachment" "plan_readonly" {
-  role       = aws_iam_role.plan.name
+  count = var.create_plan_role ? 1 : 0
+
+  role       = aws_iam_role.plan[0].name
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
@@ -189,7 +207,9 @@ data "aws_iam_policy_document" "plan_lock" {
 }
 
 resource "aws_iam_role_policy" "plan_lock" {
+  count = var.create_plan_role ? 1 : 0
+
   name   = "state-lock"
-  role   = aws_iam_role.plan.id
+  role   = aws_iam_role.plan[0].id
   policy = data.aws_iam_policy_document.plan_lock.json
 }

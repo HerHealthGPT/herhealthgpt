@@ -35,7 +35,13 @@ variable "github_repo" {
 variable "create_github_oidc_provider" {
   type        = bool
   default     = true
-  description = "An account can hold only one OIDC provider per URL. Set false if `aws iam list-open-id-connect-providers` already lists token.actions.githubusercontent.com."
+  description = "An account can hold only one OIDC provider per URL, and creating a second fails the apply. RUN `aws iam list-open-id-connect-providers` FIRST (docs/runbooks/aws-deploy.md, section 1): if it already lists token.actions.githubusercontent.com, set this to false so the existing provider is read instead of created."
+}
+
+variable "create_plan_role" {
+  type        = bool
+  default     = false
+  description = "Create the read-only GitHub role used by the PR `terraform plan` job. Off by default: AWS's ReadOnlyAccess policy is account-wide and can read S3 objects and CloudWatch Logs events, which matters if logs can contain user text (docs/runbooks/aws-deploy.md, section 5). With false there is no plan role, no AWS_PLAN_ROLE_ARN, and the plan job in terraform.yml stays skipped; fmt and validate still run on every PR."
 }
 
 variable "alert_email" {

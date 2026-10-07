@@ -5,9 +5,13 @@ name: terraform
 #
 #   validate  fmt -check and validate for both stacks. No AWS credentials.
 #   plan      `terraform plan` of the prod stack with a READ-ONLY role, posted
-#             to the PR. Skipped for PRs from forks (no OIDC token, no role).
+#             to the PR. OPTIONAL: the role only exists if create_plan_role = true
+#             in the prod stack (default false), and until AWS_PLAN_ROLE_ARN is
+#             set this job is SKIPPED, not failed. Also skipped for PRs from forks
+#             (no OIDC token, no role). Read docs/runbooks/aws-deploy.md, section 5,
+#             before enabling it: ReadOnlyAccess reads the whole account.
 #
-# Repository VARIABLES for the plan job (none is a secret):
+# Repository VARIABLES for the plan job (none is a secret; only if enabled):
 #   AWS_PLAN_ROLE_ARN        terraform output plan_role_arn
 #   TF_VAR_ALERT_EMAIL       becomes var.alert_email
 #   TF_VAR_COMPOSE_SHA256    becomes var.compose_sha256

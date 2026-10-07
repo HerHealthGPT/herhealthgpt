@@ -21,8 +21,8 @@ output "deploy_role_arn" {
 }
 
 output "plan_role_arn" {
-  description = "GitHub variable AWS_PLAN_ROLE_ARN"
-  value       = aws_iam_role.plan.arn
+  description = "GitHub variable AWS_PLAN_ROLE_ARN. null unless create_plan_role = true."
+  value       = one(aws_iam_role.plan[*].arn)
 }
 
 output "ecr_registry" {

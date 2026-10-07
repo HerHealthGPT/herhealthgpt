@@ -13,6 +13,11 @@ alert_email = "you@example.org"
 # `terraform validate`/plan until replaced.
 compose_sha256 = "REPLACE-WITH-64-LOWERCASE-HEX-FROM-THE-RELEASE-PAGE"
 
-# Only if `aws iam list-open-id-connect-providers` already lists
-# token.actions.githubusercontent.com:
+# FIRST run `aws iam list-open-id-connect-providers`. Only if it already lists
+# token.actions.githubusercontent.com (an account holds one per URL):
 # create_github_oidc_provider = false
+
+# Optional read-only role for the PR `terraform plan` job. Off by default:
+# ReadOnlyAccess reads the whole account (S3 objects, CloudWatch Logs). See
+# docs/runbooks/aws-deploy.md, section 5, before turning it on.
+# create_plan_role = true
