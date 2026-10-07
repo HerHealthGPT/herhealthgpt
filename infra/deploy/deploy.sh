@@ -194,8 +194,7 @@ if [ -f local.env ]; then
 fi
 
 healthy_through_caddy() {
-  local i
-  for i in $(seq 1 36); do # ~3 minutes: first-ever certificate issuance is slow
+  for _ in $(seq 1 36); do # ~3 minutes: first-ever certificate issuance is slow
     if curl -fsS "${CURL_TLS[@]}" --max-time 5 --resolve "api.${DOMAIN}:443:127.0.0.1" "https://api.${DOMAIN}/health" >/dev/null 2>&1 \
       && curl -fsS "${CURL_TLS[@]}" --max-time 10 -o /dev/null --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/" >/dev/null 2>&1; then
       return 0
