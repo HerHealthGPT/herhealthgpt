@@ -8,7 +8,9 @@
 #   cp infra/envs/backend.env.example infra/envs/backend.env
 #   make migrate serve            # applies migrations, then serves the API
 #
-# Nothing here is a production topology; that arrives with the deploy ticket.
+# Nothing here is a production topology. Production (one EC2 host, Caddy,
+# frontend, backend, retrieval) is infra/compose.prod.yml; see
+# docs/runbooks/aws-deploy.md.
 
 services:
   postgres:

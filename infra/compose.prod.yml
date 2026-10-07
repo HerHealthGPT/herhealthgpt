@@ -1,0 +1,131 @@
+# Production topology: ONE host, four containers. Run by
+# /opt/herhealth/deploy.sh -- never by hand except to diagnose (runbook:
+# docs/runbooks/aws-deploy.md). infra/compose.yml is the local-development file.
+#
+#   internet -> :80/:443 -> caddy -> frontend:3000
+#                                 -> backend:8000  --> RDS (private subnet)
+#                                                  --> retrieval:8001
+#
+# Only caddy publishes ports. retrieval and the others are reachable on the
+# internal compose network and nowhere else.
+#
+# Logging: every service uses the awslogs driver into a log group that
+# Terraform creates (with retention). awslogs-create-group is deliberately NOT
+# set: the instance role has no logs:CreateLogGroup.
+#
+# Variables come from /opt/herhealth/release.env (written by deploy.sh):
+#   ECR_REGISTRY TAG DOMAIN AWS_REGION ACME_EMAIL [ACME_CA]
+# Secrets come from /run/herhealth/backend.env (tmpfs, written by
+# refresh-secrets.sh) and reach only the backend container.
+
+name: herhealth
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+      # Let's Encrypt production by default. Override ACME_CA in
+      # /opt/herhealth/local.env with the staging directory when rehearsing a
+      # recreate, to stay clear of the duplicate-certificate rate limit.
+      ACME_CA: ${ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    volumes:
+      # The DIRECTORY, not the file. deploy.sh replaces the Caddyfile with `mv`,
+      # which gives it a new inode; a single-file bind mount keeps pointing at
+      # the old inode, so `caddy reload` would silently re-read the old file.
+      # A directory mount sees whatever file currently has that name.
+      - ./caddy:/etc/caddy:ro
+      # Certificates and the ACME account. Losing this means re-issuing, and
+      # Let's Encrypt allows only 5 duplicate certificates per week:
+      # caddy-data.sh backs it up to S3 before a destroy.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /herhealth/prod/caddy
+        tag: "{{.Name}}"
+
+  frontend:
+    image: ${ECR_REGISTRY}/herhealth-frontend:${TAG}
+    restart: unless-stopped
+    expose:
+      - "3000"
+    mem_limit: 1g
+    # Healthcheck is defined in the image (services/frontend/Dockerfile).
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /herhealth/prod/frontend
+        tag: "{{.Name}}"
+
+  backend:
+    image: ${ECR_REGISTRY}/herhealth-backend:${TAG}
+    restart: unless-stopped
+    expose:
+      - "8000"
+    mem_limit: 1g
+    # Secrets only: database URL, session secret, OpenRouter key, Google client
+    # id. Read when the container is created, which is why a rotated RDS
+    # password needs the backend recreated (refresh-secrets.sh does that).
+    env_file:
+      - /run/herhealth/backend.env
+    environment:
+      # Base model only. The fine-tuned adapter is NOT cleared to own triage
+      # decisions (CLAUDE.md, "The fine-tuned model"), so the selector is off
+      # and no VLLM_* variable exists in this file or in the secrets.
+      HERHEALTH_TRIAGE_MODE: openrouter
+      HERHEALTH_MODEL_SELECTOR: "off"
+      HERHEALTH_MODEL_SERVICE_URL: http://retrieval:8001
+      HERHEALTH_EMAIL_SENDER: ses
+      HERHEALTH_COOKIE_SECURE: "true"
+      HERHEALTH_CORS_ORIGINS: https://${DOMAIN}
+      # HERHEALTH_KNOWLEDGE_DIR=/app/knowledge is set in the image; the
+      # knowledge files are part of it.
+    # Healthcheck is defined in the image: GET /health. That endpoint pings the
+    # database, so it is a readiness check on RDS too -- but it never calls
+    # OpenRouter or any other external service.
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /herhealth/prod/backend
+        tag: "{{.Name}}"
+
+  retrieval:
+    image: ${ECR_REGISTRY}/herhealth-retrieval:${TAG}
+    restart: unless-stopped
+    expose:
+      - "8001"
+    # bge-m3 is about 2 GB resident. The cap protects the host (and Caddy and
+    # the database client) from this container; the host also has 2 GB of swap.
+    mem_limit: 4g
+    environment:
+      # The weights are baked into the image at a pinned revision. Never reach
+      # out to the Hugging Face hub at runtime: a moving revision would no
+      # longer match the index's vectors.
+      HF_HUB_OFFLINE: "1"
+    # Healthcheck is defined in the image; start_period is 180 s because the
+    # model takes tens of seconds to load.
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: /herhealth/prod/retrieval
+        tag: "{{.Name}}"
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -3,15 +3,22 @@
 # The retrieval service: bge-m3 embeddings over the reviewed passage index.
 # Build from the REPOSITORY ROOT:
 #
-#   make index                                     # build/index must exist first
-#   docker build -f services/model/Dockerfile -t herhealth-retrieval .
+#   docker build -f services/model/Dockerfile -t herhealth-retrieval \
+#     --build-arg BGE_M3_REVISION=<hf commit sha> \
+#     --build-arg INDEX_VERSION=<published index version> .
 #
 # CPU only. This is the memory-hungry service — bge-m3 sits resident at roughly
 # 2 GB — so size the host for this container, not for the other two.
 #
 # PREREQUISITE: build/index/ is generated, gitignored, and NOT in a fresh clone.
-# Run `make index` before building, or the COPY below fails with a clear error
-# rather than producing an image that starts and then answers nothing.
+# (There is no `make index` target in the Makefile; the build is
+# `python -m herhealth_data.cli index` — see docs/runbooks/aws-deploy.md,
+# "The retrieval index".) The COPY below fails with a clear error if it is
+# missing, rather than producing an image that starts and then answers nothing.
+#
+# For any image that leaves a developer machine, build/index must come from a
+# published, filtered index (scripts/publish-index.sh): quote-only (NHS) text
+# must never be in it. CI pulls exactly that from S3 into build/index.
 
 FROM python:3.12-slim AS builder
 
@@ -75,10 +82,38 @@ USER herhealth
 # first time someone asks a question. Set BAKE_MODEL=0 to build a small image
 # and mount a warm HF cache at /home/herhealth/.cache/huggingface instead —
 # the only sane option on a metered or air-gapped builder.
+#
+# BGE_M3_REVISION pins the weights to one Hugging Face commit. The index's
+# vectors are only meaningful against the weights that produced them, so the
+# revision here MUST equal the one the index was built with (recorded in the
+# index's build-info.json by scripts/publish-index.sh; CI refuses to build on a
+# mismatch). It is required when baking: an unpinned "latest" is exactly how the
+# two drift apart.
+#
+# snapshot_download(revision=<sha>) fills the cache but, for a commit hash, does
+# not write refs/main, so SentenceTransformer('BAAI/bge-m3') would not find it
+# offline. Writing refs/main by hand makes loading by NAME resolve to the pinned
+# snapshot, which is what keeps the app's model name (and the index's
+# model_name check) unchanged.
+#
+# ignore_patterns skips the repository's ONNX export and images. A bare
+# snapshot_download fetches the WHOLE repo (SentenceTransformer(...) would not),
+# which would roughly double the weights layer for files nothing here loads. The
+# offline load in the next command is the check: if a file the model needs were
+# ever excluded, the build fails here instead of the container failing later.
 ARG BAKE_MODEL=1
+ARG BGE_M3_REVISION
 RUN if [ "$BAKE_MODEL" = "1" ]; then \
-      python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"; \
+      test -n "$BGE_M3_REVISION" || { echo "BGE_M3_REVISION build-arg is required when BAKE_MODEL=1" >&2; exit 1; }; \
+      python -c "import os, pathlib; from huggingface_hub import snapshot_download; rev = os.environ['BGE_M3_REVISION']; snap = pathlib.Path(snapshot_download('BAAI/bge-m3', revision=rev, ignore_patterns=['onnx/*', 'imgs/*', '*.jpg', '*.png'])); refs = snap.parents[1] / 'refs'; refs.mkdir(exist_ok=True); (refs / 'main').write_text(rev)" \
+      && HF_HUB_OFFLINE=1 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"; \
     fi
+
+# Provenance, readable with `docker inspect`. INDEX_VERSION is the published
+# index (s3://<bucket>/index/<version>/) this image was built from.
+ARG INDEX_VERSION=unknown
+LABEL org.herhealthgpt.bge-m3-revision="${BGE_M3_REVISION}" \
+      org.herhealthgpt.index-version="${INDEX_VERSION}"
 
 EXPOSE 8001
 

@@ -1,0 +1,46 @@
+# Caddy on the EC2 host: automatic HTTPS (Let's Encrypt) for three names, all
+# pointing at the same Elastic IP (Route 53 A records, infra/terraform/prod/dns.tf).
+#
+# {$VAR} placeholders come from the container environment (compose.prod.yml).
+#
+#   herhealthgpt.org      -> frontend:3000
+#   api.herhealthgpt.org  -> backend:8000   (the browser calls this directly;
+#                                            NEXT_PUBLIC_API_URL is baked into the
+#                                            frontend image at build time)
+#   www.herhealthgpt.org  -> permanent redirect to the apex
+
+{
+	email {$ACME_EMAIL}
+	# Production by default; the staging directory is selected with ACME_CA in
+	# /opt/herhealth/local.env while rehearsing a recreate.
+	acme_ca {$ACME_CA}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy frontend:3000
+}
+
+api.{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+
+	reverse_proxy backend:8000
+}
+
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
