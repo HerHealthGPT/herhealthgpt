@@ -436,12 +436,13 @@ def _red_flag_citation(decision: TriageDecision, base: KnowledgeBase) -> dict[st
     if rule is None:
         return None
     source = base.sources_by_id.get(rule.source_id)
+    url = rule.source_url or (source.url if source is not None else None)
     return {
         "id": rule.id,
         "text": rule.source_quote,
         "citation": f"{rule.source_id} § {rule.label}",
         "source_id": rule.source_id,
-        "url": str(rule.source_url or source.url) if (rule.source_url or source) else None,
+        "url": str(url) if url else None,
         "passage_type": "red_flag",
     }
 
