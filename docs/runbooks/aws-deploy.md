@@ -40,7 +40,7 @@ GitHub Actions workflow deploys by telling the host, through SSM, to run
 | **No staging environment** | Every deploy goes to the live site. The automatic rollback is the only safety net, and it restores images and config files, **not** the database schema (see [Rollback](#8-rollback)). | One environment is all the budget covers. |
 | **No WAF** | Caddy and the app are directly on the internet. | Cost. Rate limits in the app (resend limits, wrong-code lockout) are the only abuse control. |
 | **Control of `main` is control of the server** | The deploy role uploads `deploy.sh`, `compose.prod.yml` and the Caddyfile to `deploy/<sha>/`, and the host runs them **as root**. The custom SSM document restricts the **command line** (one validated `Sha` parameter), **not the content** that runs. So anyone who can push to `main`, or merge into it, can run anything as root on the host, read the database credentials in `/run/herhealth`, and read every user's data. | Deploying on a push needs a path from the repository to the server, and this is its price. The mitigations are procedural, not technical: required reviews and status checks on `main`, no direct pushes, no admin bypass, and few people with write access. |
-| **NHS text excluded from the deployed index** | Production retrieval cannot return NHS passages or the 53 evidence statements backed by NHS rows — see [the NHS decision](#the-nhs-decision). **The build flag that produces such an index is proposed and not yet in the code.** | Licence: NHS content is `citable_only`. |
+| **NHS text excluded from the deployed index** | Production retrieval cannot return NHS passages or the 53 evidence statements backed by NHS rows — see [the NHS decision](#the-nhs-decision). The index is built with `--exclude-quote-only`. | Licence: NHS content is `citable_only`. |
 | **Base model only** | No fine-tuned adapter in production — see [Model](#model-base-only-in-production). | The adapter is not cleared to make triage decisions. |
 
 ## 0. What already exists (verified read-only, 2026-10-06)
@@ -333,12 +333,9 @@ any container image.** So the deployed index is to be built with a flag
 embedding, and `scripts/publish-index.sh` refuses to upload an index that has
 any.
 
-> **Status: the flag is proposed, not implemented.** `services/data`'s `index`
-> command has no `--exclude-quote-only` option yet; the diff is waiting for a
-> teammate's review. Until it lands, the commands below that use it fail with
-> "unrecognized arguments", and `publish-index.sh` (which is implemented and
-> tested) will correctly refuse any index built without it. Nothing can leak in the
-> meantime; production just cannot be deployed.
+> **Status: implemented** on the `index` command (2026-10-09), with tests in
+> `services/data/tests/test_cli.py`. Without the flag the index still holds NHS
+> text, and `publish-index.sh` refuses it.
 
 What it changes, and what it does not:
 
@@ -371,8 +368,8 @@ uv run --extra retrieval python -m herhealth_data.cli index \
 Inputs: `build/clean/*.json` (from `make clean`) and `knowledge/`. Model:
 `BAAI/bge-m3` (sentence-transformers), L2-normalised, no prefixes, batch 128,
 float32, 1024 dimensions, brute-force cosine search (no FAISS, no reranker — ADR
-0010). `--exclude-quote-only` is the build flag proposed for production (see
-the status note above).
+0010). `--exclude-quote-only` is required for production (see the status note
+above).
 
 The index must be built with **the same bge-m3 revision the image bakes**. The
 CLI cannot take a revision, so pin the weights through the Hugging Face cache

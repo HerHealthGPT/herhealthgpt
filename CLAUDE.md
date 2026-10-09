@@ -128,7 +128,7 @@ shell is for reading logs and diagnosing.
 Production runs the **Base model via OpenRouter only**; the model selector is
 off and the fine-tuned adapter stays campus/dev-only (see "The fine-tuned model"
 below). The retrieval index deployed to production must be built with quote-only
-(NHS) passages excluded (the build flag is proposed and pending review);
+(NHS) passages excluded (`index --exclude-quote-only`);
 `scripts/publish-index.sh` refuses to upload any index containing them, so NHS
 text is never in S3 or an image. Full procedure,
 trade-offs (single server, single-AZ database, no staging, no WAF) and the

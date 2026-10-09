@@ -6,6 +6,7 @@ module with the right defaults, not what the commands do.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -102,3 +103,58 @@ def test_fetch_dry_run_makes_no_request(
     output = capsys.readouterr().out
     assert "Dry run" in output
     assert not list(tmp_path.rglob("*.html"))
+
+
+# --------------------------------------------------------------------------
+# index --exclude-quote-only, offline (hashing stand-in, no model download)
+# --------------------------------------------------------------------------
+
+
+def _write_clean_doc(clean_dir: Path, source_id: str, slug: str, sentence: str) -> None:
+    document = {
+        "source_id": source_id,
+        "slug": slug,
+        "sections": [{"heading": "Symptoms", "section_type": "symptoms", "paragraphs": [sentence]}],
+    }
+    (clean_dir / source_id).mkdir(parents=True, exist_ok=True)
+    (clean_dir / source_id / f"{slug}.json").write_text(json.dumps(document), encoding="utf-8")
+
+
+def _build_index(tmp_path: Path, *extra: str) -> list[dict[str, object]]:
+    clean_dir = tmp_path / "clean"
+    # Placeholder text, not clinical content: only the source id matters here.
+    _write_clean_doc(clean_dir, "womenshealth", "page", "A placeholder sentence, public domain.")
+    _write_clean_doc(clean_dir, "nhs", "page", "A placeholder sentence from a quote-only page.")
+    index_dir = tmp_path / "index"
+    code = main(
+        [
+            "index",
+            *("--clean-dir", str(clean_dir), "--index-dir", str(index_dir)),
+            *("--model", "hashing", *extra),
+        ]
+    )
+    assert code == 0
+    lines = (index_dir / "passages.jsonl").read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines]
+
+
+def test_index_without_the_flag_keeps_quote_only_text_in_the_files(tmp_path: Path) -> None:
+    """The authoring index: NHS is present, flagged, and filtered only at query time."""
+    passages = _build_index(tmp_path)
+    assert any(p["source_id"] == "nhs" for p in passages)
+    assert any(p["may_be_ingested"] is False for p in passages)
+
+
+def test_exclude_quote_only_leaves_no_nhs_text_in_the_index_files(tmp_path: Path) -> None:
+    """What scripts/publish-index.sh checks before anything reaches S3 or an image:
+    every passage ingestable, none from nhs. Covers both source passages and the
+    evidence statements built from knowledge/ (NHS backs many of those rows)."""
+    passages = _build_index(tmp_path, "--exclude-quote-only")
+    assert passages
+    assert all(p["may_be_ingested"] is True for p in passages)
+    assert not any(p["source_id"] == "nhs" for p in passages)
+    assert any(p["passage_type"] == "evidence_statement" for p in passages)
+
+
+def test_exclude_quote_only_defaults_off() -> None:
+    assert build_parser().parse_args(["index"]).exclude_quote_only is False
