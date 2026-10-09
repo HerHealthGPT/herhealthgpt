@@ -13,6 +13,8 @@ import pytest
 
 from herhealth_data import paths
 from herhealth_data.cli import build_parser, main
+from herhealth_data.commands import blocking_fetch_failures
+from herhealth_data.ingest.store import FetchOutcome, FetchRecord
 
 # --------------------------------------------------------------------------
 # Wiring
@@ -94,9 +96,7 @@ def test_fetch_with_a_missing_target_list_cannot_run(
     assert "no target list" in capsys.readouterr().out
 
 
-def test_fetch_dry_run_makes_no_request(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_fetch_dry_run_makes_no_request(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Uses the real target list but stays a dry run, so nothing is requested."""
     code = main(["fetch", "--raw-dir", str(tmp_path), "--date", "2099-01-01"])
     assert code == 0
@@ -158,3 +158,37 @@ def test_exclude_quote_only_leaves_no_nhs_text_in_the_index_files(tmp_path: Path
 
 def test_exclude_quote_only_defaults_off() -> None:
     assert build_parser().parse_args(["index"]).exclude_quote_only is False
+
+
+# --------------------------------------------------------------------------
+# fetch --tolerate-quote-only-failures
+# --------------------------------------------------------------------------
+
+
+def _failed(source_id: str) -> FetchRecord:
+    return FetchRecord(
+        source_id=source_id,
+        slug="page",
+        url="https://example.org/",
+        licence="x",
+        outcome=FetchOutcome.FAILED,
+    )
+
+
+def test_a_quote_only_failure_does_not_block_the_deployed_index() -> None:
+    assert blocking_fetch_failures([_failed("nhs")], {"nhs": False}) == []
+
+
+def test_an_ingestable_failure_still_blocks() -> None:
+    failure = _failed("womenshealth")
+    assert blocking_fetch_failures(
+        [failure, _failed("nhs")], {"womenshealth": True, "nhs": False}
+    ) == [failure]
+
+
+def test_an_unknown_source_failure_blocks() -> None:
+    assert len(blocking_fetch_failures([_failed("newsource")], {})) == 1
+
+
+def test_tolerating_quote_only_failures_defaults_off() -> None:
+    assert build_parser().parse_args(["fetch"]).tolerate_quote_only_failures is False

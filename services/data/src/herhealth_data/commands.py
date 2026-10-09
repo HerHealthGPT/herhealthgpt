@@ -80,7 +80,31 @@ def run_fetch(args: argparse.Namespace) -> int:
 
     write_lock(records, args.lock, args.date)
     print(f"lockfile written: {args.lock}")
-    return 1 if any(r.outcome is FetchOutcome.FAILED for r in records) else 0
+
+    failed = [r for r in records if r.outcome is FetchOutcome.FAILED]
+    if failed and args.tolerate_quote_only_failures:
+        base, problems = load_knowledge_base(args.knowledge)
+        if base is None:
+            for problem in problems:
+                print(problem)
+            return 2
+        ingestable = {s.id: s.may_be_ingested for s in base.sources}
+        failed = blocking_fetch_failures(failed, ingestable)
+        if not failed:
+            print("only quote-only sources failed; they never enter the deployed index")
+    return 1 if failed else 0
+
+
+def blocking_fetch_failures(
+    failed: list[FetchRecord], ingestable: dict[str, bool]
+) -> list[FetchRecord]:
+    """The failures that matter for an index built with --exclude-quote-only.
+
+    A quote-only source's text is dropped from that index anyway, so its page
+    failing to download changes nothing there. A source missing from
+    ``ingestable`` counts as ingestable: an unknown source's failure blocks.
+    """
+    return [r for r in failed if ingestable.get(r.source_id, True)]
 
 
 def _report_fetch(records: list[FetchRecord]) -> None:

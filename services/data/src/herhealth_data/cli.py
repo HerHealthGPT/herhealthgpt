@@ -57,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="actually make network requests; without it this is a dry run",
     )
+    fetch_parser.add_argument(
+        "--tolerate-quote-only-failures",
+        action="store_true",
+        help="exit 0 when only quote-only (NHS) pages failed; for the deployed index build",
+    )
+    fetch_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
     fetch_parser.set_defaults(func=commands.run_fetch)
 
     validate_parser = subparsers.add_parser(
