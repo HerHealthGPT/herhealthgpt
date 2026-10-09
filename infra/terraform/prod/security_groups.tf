@@ -17,9 +17,10 @@ resource "aws_security_group" "web" {
   tags = { Name = "${local.name}-web" }
 }
 
+# No apostrophe in the description: EC2 rejects it (InvalidParameterValue).
 resource "aws_vpc_security_group_ingress_rule" "web_http" {
   security_group_id = aws_security_group.web.id
-  description       = "HTTP: Let's Encrypt HTTP-01 challenge and redirect to HTTPS"
+  description       = "HTTP: Lets Encrypt HTTP-01 challenge and redirect to HTTPS"
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
