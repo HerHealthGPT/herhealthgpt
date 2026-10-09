@@ -66,10 +66,12 @@ jobs:
       - name: Install from lockfile
         run: uv sync --locked --extra ingest --extra retrieval
 
-      # Fails if any document fails to fetch: an index silently missing a
-      # source is worse than no new index.
+      # Fails if any document of an INGESTABLE source fails to fetch: an index
+      # silently missing a source is worse than no new index. Quote-only (NHS)
+      # failures are reported but tolerated, because --exclude-quote-only drops
+      # that text from this index anyway.
       - name: Fetch the source pages
-        run: uv run python -m herhealth_data.cli fetch --yes
+        run: uv run python -m herhealth_data.cli fetch --yes --tolerate-quote-only-failures
 
       - name: Clean them
         run: uv run python -m herhealth_data.cli clean
