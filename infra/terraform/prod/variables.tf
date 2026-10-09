@@ -32,6 +32,12 @@ variable "github_repo" {
   description = "owner/name, exact casing: the OIDC `sub` claim is matched case-sensitively. Confirmed against `git remote -v`."
 }
 
+variable "github_owner_and_repo_with_ids" {
+  type        = string
+  default     = "HerHealthGPT@307429918/herhealthgpt@1307895992"
+  description = "owner@id/name@id, as GitHub's OIDC `sub` claim spells this repository. Read from a refused AssumeRoleWithWebIdentity in CloudTrail (userIdentity.userName), 2026-10-09."
+}
+
 variable "create_github_oidc_provider" {
   type        = bool
   default     = true

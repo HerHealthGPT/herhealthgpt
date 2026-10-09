@@ -22,6 +22,15 @@
 
 locals {
   github_oidc_url = "token.actions.githubusercontent.com"
+
+  # GitHub's `sub` now names the owner and repository with their immutable ids
+  # ("repo:Owner@123/name@456:..."), seen in CloudTrail on 2026-10-09. Both forms
+  # are accepted: the ids pin THIS repository even if a same-named one is ever
+  # created after a rename or deletion; the plain form covers tokens without ids.
+  github_subjects = [
+    "repo:${var.github_repo}",
+    "repo:${var.github_owner_and_repo_with_ids}",
+  ]
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -60,7 +69,7 @@ data "aws_iam_policy_document" "deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.github_oidc_url}:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = [for s in local.github_subjects : "${s}:ref:refs/heads/main"]
     }
   }
 }
@@ -176,7 +185,7 @@ data "aws_iam_policy_document" "plan_trust" {
     condition {
       test     = "StringEquals"
       variable = "${local.github_oidc_url}:sub"
-      values   = ["repo:${var.github_repo}:pull_request"]
+      values   = [for s in local.github_subjects : "${s}:pull_request"]
     }
   }
 }
