@@ -7,6 +7,8 @@
 #                document executes, as root, so this role is in effect root on the
 #                host: CONTROL OF MAIN IS CONTROL OF THE SERVER. That is a
 #                deliberate trade-off, not a gap (ssm.tf, runbook).
+#   index role   trusted ONLY for main, like the deploy role. Can write and list
+#                the index/ prefix and nothing else; used by build-index.yml.
 #   plan role    OPTIONAL (var.create_plan_role, default false). Trusted for
 #                pull_request runs of this repo. Read-only, plus the state lock
 #                file `terraform plan` needs to write. PR tokens carry a different
@@ -212,4 +214,46 @@ resource "aws_iam_role_policy" "plan_lock" {
   name   = "state-lock"
   role   = aws_iam_role.plan[0].id
   policy = data.aws_iam_policy_document.plan_lock.json
+}
+
+# --- index role (main only, index/ only) ---------------------------------------
+#
+# Used by .github/workflows/build-index.yml to publish the retrieval index. It
+# can list and write the index/ prefix and nothing else: no deploy files, no
+# ECR, no SSM, no delete. Same trust as the deploy role, so this does not widen
+# WHO can act (control of main already is); it keeps the deploy role read-only
+# on index/ and keeps each workflow's credentials to what that workflow does.
+# The bucket is versioned, so an overwritten object can be recovered, and
+# publish-index.sh refuses to upload a version that already exists.
+
+resource "aws_iam_role" "index" {
+  name                 = "${local.name}-github-index"
+  assume_role_policy   = data.aws_iam_policy_document.deploy_trust.json
+  max_session_duration = 3600
+}
+
+data "aws_iam_policy_document" "index" {
+  statement {
+    sid       = "WriteIndex"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.artifacts.arn}/index/*"]
+  }
+
+  statement {
+    sid       = "ListIndex"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.artifacts.arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["index/*"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "index" {
+  name   = "index"
+  role   = aws_iam_role.index.id
+  policy = data.aws_iam_policy_document.index.json
 }

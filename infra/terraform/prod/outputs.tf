@@ -20,6 +20,11 @@ output "deploy_role_arn" {
   value       = aws_iam_role.deploy.arn
 }
 
+output "index_role_arn" {
+  description = "GitHub variable AWS_INDEX_ROLE_ARN (build-index workflow)"
+  value       = aws_iam_role.index.arn
+}
+
 output "plan_role_arn" {
   description = "GitHub variable AWS_PLAN_ROLE_ARN. null unless create_plan_role = true."
   value       = one(aws_iam_role.plan[*].arn)
