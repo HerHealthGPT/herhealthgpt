@@ -103,6 +103,11 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument(
         "--model", default=None, help="defaults to bge-m3; 'hashing' for the offline stand-in"
     )
+    index_parser.add_argument(
+        "--exclude-quote-only",
+        action="store_true",
+        help="drop quote-only (NHS) passages before embedding; required for the deployed index",
+    )
     index_parser.set_defaults(func=commands.run_index)
 
     search_parser = subparsers.add_parser("search", help="query the passage index by hand")

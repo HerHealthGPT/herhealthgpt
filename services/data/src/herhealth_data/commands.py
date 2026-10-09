@@ -215,6 +215,18 @@ def run_index(args: argparse.Namespace) -> int:
         print(f"  {source_id:<14} {count:>5}{mark}")
     print(f"\n{quote_only} passage(s) are quote-only and must never enter the served corpus.")
 
+    # The deployed index is built with this flag: the runtime filter already
+    # hides quote-only passages from search, but without it their TEXT is still
+    # in the index files, and those files go to S3 and into the retrieval image.
+    # Dropping them before embedding keeps NHS text out of both
+    # (docs/runbooks/aws-deploy.md, "The NHS decision").
+    if args.exclude_quote_only:
+        passages = [p for p in passages if p.may_be_ingested]
+        print(f"--exclude-quote-only: dropped {quote_only}, {len(passages)} remain.")
+        if not passages:
+            print("error: nothing left to index once quote-only passages are dropped")
+            return 1
+
     embedder = _load_embedder(args.model)
     print(f"\nembedding with {embedder.name} ({embedder.dimensions}d)...")
     index = build_index(passages, embedder)

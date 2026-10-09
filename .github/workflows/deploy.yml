@@ -26,7 +26,8 @@ name: deploy
 #   ARTIFACTS_BUCKET                terraform output artifacts_bucket
 #   RETRIEVAL_INDEX_VERSION         printed by scripts/publish-index.sh
 #   BGE_M3_REVISION                 40-hex HF commit; must equal the index's build-info.json
-#   NEXT_PUBLIC_GOOGLE_CLIENT_ID    the Google OAuth client id (public by design)
+#   NEXT_PUBLIC_GOOGLE_CLIENT_ID    OPTIONAL: the Google OAuth client id (public by
+#                                   design); unset means no Google sign-in
 
 on:
   push:
@@ -80,10 +81,11 @@ jobs:
       - name: Check required repository variables
         env:
           ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          GOOGLE: ${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
+        # NEXT_PUBLIC_GOOGLE_CLIENT_ID is deliberately not required: unset, the
+        # frontend hides Google sign-in and the backend reports it unconfigured.
         run: |
           missing=0
-          for v in ROLE ARTIFACTS_BUCKET INSTANCE_ID INDEX_VERSION BGE_M3_REVISION GOOGLE; do
+          for v in ROLE ARTIFACTS_BUCKET INSTANCE_ID INDEX_VERSION BGE_M3_REVISION; do
             if [ -z "${!v}" ]; then echo "::error::repository variable for $v is not set (see the header of .github/workflows/deploy.yml)"; missing=1; fi
           done
           [ "$missing" = 0 ]
