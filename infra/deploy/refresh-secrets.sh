@@ -65,6 +65,18 @@ get_secret() {
   printf '%s' "$value"
 }
 
+# Google sign-in is optional: the backend treats an empty client id as "not
+# configured" and the frontend hides the button. So an unfilled secret yields an
+# empty value here instead of stopping the deploy.
+get_optional_secret() {
+  local value
+  if ! value="$(aws secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text 2>/dev/null)" \
+    || [ "$value" = "None" ]; then
+    value=""
+  fi
+  printf '%s' "$value"
+}
+
 # URL-encode with the stdlib: RDS passwords contain characters (/ @ : ? #) that
 # would otherwise end the userinfo part of the URL early.
 urlencode() {
@@ -79,7 +91,7 @@ database_url="postgresql+psycopg://${db_user}:${db_pass}@${DB_HOST}:${DB_PORT}/$
 
 openrouter_key="$(get_secret "$SECRET_OPENROUTER")"
 session_secret="$(get_secret "$SECRET_SESSION")"
-google_client_id="$(get_secret "$SECRET_GOOGLE")"
+google_client_id="$(get_optional_secret "$SECRET_GOOGLE")"
 
 install -d -m 700 "$RUN_DIR"
 old_hash=""

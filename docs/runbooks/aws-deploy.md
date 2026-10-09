@@ -196,6 +196,10 @@ aws secretsmanager put-secret-value --secret-id herhealth/prod/google-client-id 
   --secret-string '<client id>.apps.googleusercontent.com'
 ```
 
+The Google client id is **optional**: leave it unfilled and the site runs
+without Google sign-in (the button is hidden; the backend reports it
+unconfigured). The other two are required.
+
 There is no Lobot token and no `HERHEALTH_VLLM_*` secret. The database password
 is the RDS-managed secret; you never handle it.
 
