@@ -4,8 +4,9 @@
 #   scripts/publish-index.sh --index-dir build/index-deploy \
 #       --bge-m3-revision <40-hex Hugging Face commit> [--bucket NAME] [--dry-run]
 #
-# Run by a PERSON with write access (the admin IAM user), never by CI: CI only
-# reads index/ (infra/terraform/prod/iam_oidc.tf).
+# Run by .github/workflows/build-index.yml as the index role, which can write
+# only index/ (infra/terraform/prod/iam_oidc.tf), or by a person as the admin
+# IAM user. The deploy workflow only reads index/.
 #
 # It REFUSES to upload when:
 #   - manifest.json model_name is not exactly BAAI/bge-m3 (the hashing stand-in,

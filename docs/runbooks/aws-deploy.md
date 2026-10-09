@@ -358,7 +358,21 @@ What it changes, and what it does not:
   (4,454 passages, NHS included in the files). They are not the numbers for this
   deployed index. Quote any retrieval figure with the index it came from.
 
-### Building the index (needs a network step — ask first)
+### Building the index on GitHub (the usual way)
+
+**Actions → build-index → Run workflow** on `main`. A runner fetches and cleans
+the sources, pins bge-m3 (`scripts/pin-bge-m3.py`, optional revision input),
+builds with `--exclude-quote-only`, and runs `publish-index.sh` — the dry-run
+checks, then the upload. The job summary prints `RETRIEVAL_INDEX_VERSION` and
+`BGE_M3_REVISION` to set as repository variables. It needs the variables
+`AWS_INDEX_ROLE_ARN` (`terraform output index_role_arn`) and `ARTIFACTS_BUCKET`.
+
+The index role can write only `index/`, and trusts only `main` — so, like the
+deploy role, **control of `main` is control of what the site retrieves**. That is
+the accepted cost of not building by hand (decided 2026-10-09). If the fetch of
+any document fails, the workflow fails rather than publishing a thinner index.
+
+### Building the index by hand (needs a network step — ask first)
 
 There is **no `make index` target** in the Makefile (the Dockerfile, ADR 0011 and
 other docs mention one; it was never added). The command that exists:
