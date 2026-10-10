@@ -37,6 +37,7 @@ controller (ADR 0011), and this module must outlive it.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -67,8 +68,10 @@ __all__ = [
     "join_evidence",
     "live_conditions",
     "rank_askable",
+    "render_topic_brief",
     "render_turn_context",
     "separation",
+    "topic_conditions",
 ]
 
 DEFAULT_PROBE_LANGUAGE = "en"
@@ -654,6 +657,185 @@ def build_turn_context(
             limit=askable_limit,
         ),
         prose=tuple(prose),
+    )
+
+
+#: Label fragments too generic to identify a topic by. ``normal_variation``'s
+#: label is "Normal variation", and matching the bare word "normal" would pull
+#: a brief into half the consultations in the corpus.
+_UNUSABLE_TOPIC_TERMS = frozenset({"normal", "variation", "normal variation"})
+
+#: An acronym in a condition's label, e.g. "(PCOS)" or "(PID)". These are what
+#: a user actually types — "what is PCOS?" never contains the authored label
+#: "Polyendocrine metabolic ovarian syndrome" — so they are the highest-value
+#: terms to match on, and the only ones short enough to need word boundaries.
+_LABEL_ACRONYM = re.compile(r"\(([A-Z][A-Za-z0-9]{1,9})\)")
+
+
+def _topic_terms(condition: Condition) -> set[str]:
+    """Every string that should be taken to name this condition."""
+    terms = {condition.id.replace("_", " ")}
+    label = condition.label
+    # The label up to its first parenthesis: "Pelvic inflammatory disease (PID)"
+    # yields "pelvic inflammatory disease", which is what prose uses.
+    terms.add(label.split("(")[0].strip())
+    terms.update(_LABEL_ACRONYM.findall(label))
+    search_term = getattr(condition, "search_term", "") or ""
+    if search_term:
+        terms.add(search_term)
+    return {t.strip() for t in terms if len(t.strip()) >= 3}
+
+
+def topic_conditions(
+    base: KnowledgeBase,
+    message: str,
+    context: Sequence[RetrievedPassage] = (),
+    *,
+    limit: int = 2,
+) -> tuple[str, ...]:
+    """Which authored conditions a message is *asking about*.
+
+    Deliberately not the same question as :func:`join_evidence`'s. That joins
+    on what she has **answered**, which is the right key for triage and the
+    wrong one for a question: an informational message reports no symptom, so
+    ``given`` is empty, the join returns nothing, and the model is left with
+    whatever cosine similarity returned. Measured on the first real
+    informational turn (2026-10-10, *"what is PCOS?"*): four retrieved
+    passages, all four of them restatements of the definition, and a 433-
+    character answer naming not one symptom — while ``evidence.csv`` held ten
+    authored, quoted PCOS symptom rows that were never shown. This is the key
+    that reaches them.
+
+    Two channels, both cheap and neither a model call: the acronyms and labels
+    in ``conditions.yaml`` matched against her words, and the ``condition_id``
+    that evidence-statement passages already carry. Matching on text is
+    reliable here only because the vocabulary is closed and tiny — 19
+    conditions — which is the same property that makes the rest of this module
+    work.
+    """
+    lowered = message.lower()
+    scored: list[tuple[int, str]] = []
+    for condition in base.conditions:
+        best = 0
+        for term in _topic_terms(condition):
+            if term.lower() in _UNUSABLE_TOPIC_TERMS:
+                continue
+            if len(term) <= 5:
+                # An acronym: require word boundaries, or "POI" matches
+                # "point" and "PID" matches "rapid".
+                if re.search(rf"\b{re.escape(term.lower())}\b", lowered):
+                    best = max(best, len(term) + 10)  # an acronym is a strong signal
+            elif term.lower() in lowered:
+                best = max(best, len(term))
+        if best:
+            scored.append((best, condition.id))
+
+    # Longest/strongest match first, so "polycystic ovary syndrome" outranks a
+    # condition that merely shares a word with it.
+    named = [condition_id for _, condition_id in sorted(scored, reverse=True)]
+
+    # Second channel: an evidence statement carries the condition it was
+    # authored for, so retrieval can identify a topic the text match missed.
+    for passage in context:
+        if passage.condition_id and passage.condition_id not in named:
+            named.append(passage.condition_id)
+
+    return tuple(named[:limit])
+
+
+def _warning_signs_touching(
+    base: KnowledgeBase, feature_ids: set[str]
+) -> tuple[RedFlagRule, ...]:
+    """Red-flag rules that trigger on any of these features.
+
+    Scoped by feature overlap rather than by injecting all of
+    ``red_flags.yaml``: an informational answer about PCOS carrying the full
+    emergency roster reads alarmingly and buries the part that applies. When
+    the overlap is empty the honest output is "our sources record none for
+    this topic", which the prompt then has to say rather than invent urgency
+    for — the verification protocol's rule, applied to generated prose.
+    """
+    return tuple(
+        rule
+        for rule in base.red_flags
+        if any(clause.feature_id in feature_ids for clause in rule.all_of)
+    )
+
+
+def render_topic_brief(base: KnowledgeBase, condition_ids: Sequence[str]) -> str:
+    """The authored material behind a topic, for an informational answer.
+
+    Returns ``""`` when nothing is identified, so the caller can append
+    unconditionally.
+
+    Every line is a real ``evidence.csv`` row with its verbatim
+    ``source_quote`` and ``source_id`` — the same rows ``build/cards/
+    by-condition.md`` renders for human review, reaching the model at runtime
+    instead. Nothing here is generated, inferred or summarised, which is what
+    lets an informational answer be as complete as an NHS page while still
+    restating only what a cited source says.
+    """
+    sections: list[str] = []
+    for condition_id in condition_ids:
+        condition = base.conditions_by_id.get(condition_id)
+        if condition is None:
+            continue
+        rows = [row for row in base.evidence if row.condition_id == condition_id]
+        if not rows:
+            continue
+
+        lines = [f"### {condition.label}  [{condition.id}]"]
+        towards = [r for r in rows if r.strength is not EvidenceStrength.ARGUES_AGAINST]
+        against = [r for r in rows if r.strength is EvidenceStrength.ARGUES_AGAINST]
+
+        def _row_line(row: EvidenceRow) -> str:
+            feature = base.features_by_id.get(row.feature_id)
+            name = getattr(feature, "label", None) or row.feature_id
+            return (
+                f'- {name} = {row.value} ({row.strength.value}, {row.source_id}): '
+                f'"{row.source_quote}"'
+            )
+
+        if towards:
+            lines.append(
+                f"What our sources associate with it ({len(towards)} authored row(s) "
+                "— cover ALL of these in an informational answer):"
+            )
+            lines.extend(_row_line(row) for row in towards)
+        if against:
+            lines.append("What our sources record as arguing against it:")
+            lines.extend(_row_line(row) for row in against)
+
+        signs = _warning_signs_touching(base, {row.feature_id for row in rows})
+        if signs:
+            lines.append(
+                "Urgent warning signs our sources record for these same symptoms. "
+                "Describe them in plain words as when to seek care — never as a "
+                "rule, a label or an action code:"
+            )
+            lines.extend(
+                f'- needs {rule.action.value}: {rule.label} ({rule.source_id}): '
+                f'"{rule.source_quote}"'
+                for rule in signs
+            )
+        else:
+            lines.append(
+                "Our sources record NO urgent warning sign specific to this topic. "
+                "Say that seeing a clinician is the route rather than inventing an "
+                "urgency we have no source for."
+            )
+        sections.append("\n".join(lines))
+
+    if not sections:
+        return ""
+
+    return (
+        "THE TOPIC SHE IS ASKING ABOUT — authored material for an INFORMATIONAL "
+        "answer only.\nThis is what our sources say about the subject, NOT "
+        "evidence about her own case. She has reported no symptom, so none of it "
+        "may be used to conclude, to assign an urgency, or to name a condition as "
+        "hers. Use it to answer the question she actually asked, completely.\n\n"
+        + "\n\n".join(sections)
     )
 
 
