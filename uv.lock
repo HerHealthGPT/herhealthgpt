@@ -633,6 +633,7 @@ api = [
     { name = "httpx" },
     { name = "itsdangerous" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "requests" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn" },
 ]
@@ -650,6 +651,7 @@ requires-dist = [
     { name = "itsdangerous", marker = "extra == 'api'", specifier = ">=2.2" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'api'", specifier = ">=3.2" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "requests", marker = "extra == 'api'", specifier = ">=2.31" },
     { name = "sqlalchemy", extras = ["asyncio"], marker = "extra == 'api'", specifier = ">=2.0" },
     { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.30" },
 ]

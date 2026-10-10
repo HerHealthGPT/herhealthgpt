@@ -46,6 +46,11 @@ COPY services/backend services/backend
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra api
 
+# Import the app here so a dependency missing from the api extra fails the
+# image build, not the migration step on the server (which is how the missing
+# `requests` for google-auth was first found). Importing it has no side effects.
+RUN /app/.venv/bin/python -c "import herhealth_backend.app"
+
 
 FROM python:3.12-slim AS runtime
 
