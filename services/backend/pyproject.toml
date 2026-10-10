@@ -53,6 +53,11 @@ api = [
     # Google sign-in is unconfigured, since UnconfiguredGoogleTokenVerifier
     # lives beside GoogleOAuthTokenVerifier in the same module.
     "google-auth>=2.30",
+    # google-auth's HTTP transport (google.auth.transport.requests, imported by
+    # google_identity.py) needs requests, which google-auth does not install by
+    # itself. Without it the app fails at import, which broke the first deploy's
+    # migration step.
+    "requests>=2.31",
 ]
 
 [tool.uv.sources]
