@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt test test-api db-up db-down migrate serve clean-build
+.PHONY: help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt hygiene test test-api test-frontend db-up db-down migrate serve clean-build
 
 # A demonstration case for `make triage`. Override to run another:
 #   make triage CASE=services/backend/cases/says_nothing.yaml
@@ -37,8 +37,10 @@ help:
 	@echo "triage     run one scripted consultation and print the trace (CASE=...)"
 	@echo "triage-all run every demonstration case in services/backend/cases/"
 	@echo "lint       ruff check + mypy strict on packages/contracts"
+	@echo "hygiene    reject committed secrets, minified payloads, foreign top-level dirs"
 	@echo "test       pytest (fast, offline: contracts, data, triage core)"
 	@echo "test-api   backend app tests — starts PostgreSQL in Docker (needs the api extra)"
+	@echo "test-frontend  npm ci + next build (compiles and type-checks the frontend)"
 	@echo "db-up      start the local dev PostgreSQL (infra/compose.yml)"
 	@echo "migrate    apply migrations to the database in infra/envs/backend.env"
 	@echo "serve      run the backend API against that database (uvicorn --reload)"
@@ -163,6 +165,19 @@ migrate:
 # psycopg-compatible event loop.
 serve:
 	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api python -m herhealth_backend.app
+
+# The repo-hygiene guard — see docs/security/0001-*.md. Stdlib only, so it
+# runs without the virtualenv and without a network. CI runs the same command
+# on every branch (.github/workflows/hygiene.yml); `.githooks/pre-commit` runs
+# it against the staged tree, once you opt in with
+# `git config core.hooksPath .githooks`.
+hygiene:
+	python scripts/check_repo_hygiene.py
+
+# The frontend has no unit tests (no test runner is configured), so "testing"
+# it means compiling and type-checking it. `next build` does both.
+test-frontend:
+	cd services/frontend && npm ci && npm run build
 
 clean-build:
 	rm -rf build/

@@ -1,0 +1,32 @@
+name: hygiene
+
+# The one workflow in this repo with NO path filter, and that is the whole
+# point of it.
+#
+# Every other workflow here is path-filtered — backend.yml on
+# services/backend/**, data.yml on knowledge/** and so on. That is correct for
+# test suites and it is also exactly how the 2026-09-17 contamination went
+# unnoticed for three weeks: a root-level `public/` holding another project's
+# code, and `infra/envs/backend.env.bak` holding three live credentials,
+# matched none of those filters, so no job ever looked at either file. See
+# docs/security/0001-injected-postcss-payload-and-leaked-env-backup.md.
+#
+# `push:` with no `branches:` is also deliberate. The payload survived on nine
+# stale branches that had never merged the fix, so a check that only guards
+# main would have passed every one of them.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No setup-python, no uv, no lockfile: the checker is stdlib-only and
+      # ubuntu-latest ships python3. A guard against a supply-chain mistake
+      # should not itself pull in a supply chain.
+      - name: Check repo hygiene
+        run: python3 scripts/check_repo_hygiene.py

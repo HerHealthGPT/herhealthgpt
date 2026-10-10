@@ -34,6 +34,19 @@ git clone <repo> && cd herhealthgpt
 uv sync
 ```
 
+Then enable the commit hooks, once per clone — git does not clone them:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+That runs `scripts/check_repo_hygiene.py` over your staged files before each
+commit. It is a convenience, not the control: `--no-verify` skips it and a
+fresh clone has it off until you run the line above. The real gate is the
+`hygiene` workflow, which runs on every push to every branch. Both exist
+because of [a real incident](docs/security/0001-injected-postcss-payload-and-leaked-env-backup.md)
+— read it before you add a top-level directory or a `.bak` file.
+
 That is the whole setup. `uv sync` reads `.python-version`, downloads CPython
 3.12 if the machine does not have it, creates `.venv/`, and installs the exact
 versions recorded in `uv.lock` — including both local packages
@@ -187,12 +200,20 @@ Read [`.claude/skills/source-ingestion/SKILL.md`](.claude/skills/source-ingestio
 
 ## Secrets
 
-`raw/`, `build/` and `*.env` are gitignored; `*.env.example` is tracked.
+`raw/`, `build/`, `*.env` and `*.bak` are gitignored; `*.env.example` is tracked.
 
 Copy `infra/envs/data.env.example` to `infra/envs/data.env` and fill in your own
 keys. No key, token or secret is ever committed, pasted into an issue, or written
 into a knowledge file. If a credential does reach the repo or a chat log, rotate
 it — do not just delete the line.
+
+**`*.bak` is in that list for a reason.** The glob used to be `*.env` alone,
+which does not match `backend.env.bak`, and that one gap put a live
+`OPENROUTER_API_KEY`, session secret and vLLM token on `main` for three weeks.
+`make hygiene` now rejects any committed file with `env` as a dot-separated
+part of its name unless it ends in `.example`, so the rule is enforced by a
+check rather than by a glob you have to get right. Deleting the line is not
+enough and never was: git keeps it, so rotate.
 
 ---
 

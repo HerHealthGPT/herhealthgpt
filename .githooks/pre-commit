@@ -1,0 +1,38 @@
+#!/bin/sh
+# Blocks the four things described in
+# docs/security/0001-injected-postcss-payload-and-leaked-env-backup.md before
+# they can be committed: an env file with live credentials, a minified payload
+# in a config file, a foreign top-level directory, and text wearing a binary
+# file's extension.
+#
+# Enable it once per clone — hooks are not themselves cloned:
+#
+#     git config core.hooksPath .githooks
+#
+# A hook is a convenience, not the control: anyone can skip it with
+# `--no-verify` and a fresh clone has it off until the line above is run. The
+# real gate is .github/workflows/hygiene.yml, which runs on every push to
+# every branch and cannot be skipped. This just moves the failure from "after
+# I pushed" to "before I committed".
+#
+# The checker is stdlib-only, so any python3 will do and there is no
+# environment to sync. Deliberately not routed through `uv run`: a commit hook
+# that resolves a lockfile is a commit hook people turn off.
+
+set -e
+
+PYTHON=""
+for candidate in python3 python py; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        PYTHON="$candidate"
+        break
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo "pre-commit: no python3 on PATH, skipping the repo hygiene check." >&2
+    echo "            CI still enforces it — see .github/workflows/hygiene.yml" >&2
+    exit 0
+fi
+
+exec "$PYTHON" scripts/check_repo_hygiene.py --staged
