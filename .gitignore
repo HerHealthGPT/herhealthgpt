@@ -9,6 +9,11 @@ services/backend/var/
 .env
 *.env
 !*.env.example
+# Editor/CLI backups. `*.env` above does NOT match `backend.env.bak`, which is
+# how a real OPENROUTER_API_KEY, SESSION_SECRET, VLLM token and database URL
+# reached main in 9f58945 (2026-09-17) and stayed there. Keep both lines.
+*.bak
+*.env.bak
 
 # Python
 __pycache__/
