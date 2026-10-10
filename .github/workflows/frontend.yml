@@ -1,0 +1,61 @@
+name: frontend
+
+# The frontend had no PR-time checks at all before this. `services/frontend/**`
+# appeared only in deploy.yml, which builds the image *after* a merge to main,
+# so a change could not be rejected on the way in — only discovered on the way
+# out. See docs/security/0001-injected-postcss-payload-and-leaked-env-backup.md.
+#
+# `npm run build` is the real gate and it type-checks as part of its own run
+# ("Running TypeScript"), so there is no separate tsc step to keep in sync.
+#
+# Note what this workflow does NOT claim to do: there is no unit-test step,
+# because the frontend has no test runner configured — no jest, no vitest, no
+# `test` script in package.json. Adding one is worth doing; pretending a build
+# is a test suite is not.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "services/frontend/**"
+      - ".github/workflows/frontend.yml"
+
+defaults:
+  run:
+    working-directory: services/frontend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: services/frontend/package-lock.json
+
+      # `npm ci` rather than `npm install`: it installs exactly
+      # package-lock.json and fails if the lockfile has drifted, which is the
+      # npm equivalent of `uv sync --locked` in the Python workflows. It also
+      # refuses to silently resolve a new dependency version, which matters
+      # more than usual here.
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Build (compiles and type-checks)
+        run: npm run build
+
+      # Reporting-only for now, deliberately. As of 2026-10-11 `npm run lint`
+      # reports 4 pre-existing errors — react-hooks/set-state-in-effect in
+      # site-header, health-details-form, profile-settings-form and
+      # getting-started-card — none related to this workflow. Gating on it
+      # today would land a red build that says nothing about the change being
+      # reviewed. Fix those four, then delete this line so lint blocks.
+      - name: Lint
+        continue-on-error: true
+        run: npm run lint

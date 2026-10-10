@@ -152,7 +152,8 @@ _JSON_SHAPE_INSTRUCTION = (
     # choosing a follow-up from an unranked list. Recording what she said has
     # to happen before anything else is worth doing, so it is asked for first.
     '{"observed": {"a real feature_id": "one of that feature\'s listed values"}, '
-    '"type": "<exactly one of: ask | conclude | decline>", "rationale": "REQUIRED always. '
+    '"type": "<exactly one of: ask | conclude | inform | decline>", '
+    '"rationale": "REQUIRED always. '
     "THIS IS THE TEXT SHE READS, on every decision type — write it to her, in "
     'plain words, second person", '
     '"next_feature_id": "REQUIRED string when type is ask — must be a real '
@@ -160,6 +161,9 @@ _JSON_SHAPE_INSTRUCTION = (
     'conclude", '
     '"question_text": "REQUIRED non-empty string when type is ask — the '
     'clarifying question for the user; null only when type is conclude", '
+    '"answer_text": "REQUIRED non-empty string when type is inform, and legal '
+    "ONLY then — the informational answer she reads, drawn from the retrieved "
+    'passages and as long as the subject needs; null on every other type", '
     '"action_code": "one of SELF_CARE|ROUTINE_APPOINTMENT|URGENT_SAME_DAY|EMERGENCY, '
     'required only if type is conclude, else null", '
     '"matching_conditions": ["array of condition ids, at most 5, only if type is conclude; '
@@ -179,6 +183,18 @@ _JSON_SHAPE_INSTRUCTION = (
     # shape spec already said "required only if type is conclude"; a
     # conditional requirement buried mid-spec was evidently too weak, so it is
     # restated here as a flat rule.
+    "\n\nAN INFORM ANSWERS, AND ONLY ANSWERS. type \"inform\" is for an "
+    "in-scope question that describes no case of her own — what something is, "
+    "what causes it, what is normal. It takes `answer_text` (the answer), "
+    "`citations` (every passage you drew on, never empty), `rationale` (one "
+    "line on why this was a question to answer rather than a symptom to "
+    "assess) and `observed` if her message happened to mention a real feature "
+    "value. `action_code`, `matching_conditions`, `red_flag_id`, "
+    "`next_feature_id` and `question_text` must ALL be null or [] — an "
+    "informational answer assigns no urgency, names no condition as hers, and "
+    "an inform carrying any of them is invalid and will be rejected. If a "
+    "warning sign applies to what she said, or she is describing her own "
+    "symptoms, do not inform: ask or conclude.\n"
     "\n\nTWO KEYS ARE NEVER OPTIONAL. If type is \"conclude\" you MUST include "
     "`action_code` — a conclude without one is rejected outright, however good "
     "the rest of it is. If type is \"ask\" you MUST include both "
@@ -492,6 +508,11 @@ def _reject_leaked_internals(decision: TriageDecision) -> None:
     for field, text in (
         ("rationale", decision.rationale),
         ("question_text", decision.question_text),
+        # An informational answer is rendered verbatim too, in an ordinary
+        # assistant bubble (chat-message.tsx), and it is the longest
+        # user-facing text this system produces — so the most room for the
+        # plumbing to surface in.
+        ("answer_text", decision.answer_text),
     ):
         if not text:
             continue

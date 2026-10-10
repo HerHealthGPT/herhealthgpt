@@ -125,6 +125,23 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
     };
   }
 
+  // An informational answer (ADR 0016) is an ordinary assistant bubble, not
+  // a card: it is a reply in the conversation and she carries on talking
+  // after it, exactly as after a clarifying question. `content` is the stored
+  // copy of the same text (routes.py writes answer_text there), so a row
+  // written before answer_text existed still reads.
+  if (decision.type === "inform") {
+    return {
+      id: message.id,
+      kind: "message",
+      role: "assistant",
+      text: decision.answer_text ?? message.content,
+      citedPassages: decision.cited_passages,
+      rationale: decision.rationale,
+      reasoningModel: decision.reasoning_model,
+    };
+  }
+
   if (decision.question_text) {
     return {
       id: message.id,
@@ -320,6 +337,15 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       } else if (response.decision.type === "decline") {
         appendEntry({
           kind: "decline",
+          rationale: response.decision.rationale,
+          reasoningModel: response.decision.reasoning_model,
+        });
+      } else if (response.decision.type === "inform") {
+        appendEntry({
+          kind: "message",
+          role: "assistant",
+          text: response.decision.answer_text ?? response.decision.rationale,
+          citedPassages: response.decision.cited_passages,
           rationale: response.decision.rationale,
           reasoningModel: response.decision.reasoning_model,
         });

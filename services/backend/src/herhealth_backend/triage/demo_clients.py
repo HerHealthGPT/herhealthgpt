@@ -86,6 +86,58 @@ def _is_out_of_scope(text: str) -> bool:
     return any(phrase in text for phrase in _OUT_OF_SCOPE_PHRASES)
 
 
+#: What an in-scope question with no case behind it looks like (ADR 0016).
+#: As crude and as deliberately crude as _OUT_OF_SCOPE_PHRASES above: the
+#: real judgement is the model's, made from the system prompt, and a keyword
+#: list here must not be read as evidence that it works.
+#:
+#: Each phrase asks about the subject, not about her. The guard below also
+#: requires that she said nothing in the first person about herself, because
+#: "what is PCOS, I have really irregular periods" is a consultation that
+#: opened with a question — and triage wins that tie, as the prompt says.
+_INFORMATIONAL_OPENERS = (
+    "what is ",
+    "what are ",
+    "what causes",
+    "what does ",
+    "whats ",
+    "what's ",
+    "how common",
+    "how long does",
+    "tell me about",
+    "can you explain",
+    "explain ",
+    "definition of",
+)
+
+#: First-person symptom talk. Any of these and the message is triaged, not
+#: answered, however much it also reads like a question.
+_FIRST_PERSON_SYMPTOM_MARKERS = (
+    "i have",
+    "i've",
+    "ive ",
+    "i am",
+    "i'm",
+    "im ",
+    "my period",
+    "my pain",
+    "my bleeding",
+    "my symptoms",
+    "mine",
+    "should i",
+    "do i need",
+    "am i",
+    "me?",
+)
+
+
+def _is_informational(text: str) -> bool:
+    """A question about the subject, with no case of her own in it."""
+    if any(marker in text for marker in _FIRST_PERSON_SYMPTOM_MARKERS):
+        return False
+    return any(opener in text for opener in _INFORMATIONAL_OPENERS)
+
+
 def _detect_scenario(text: str) -> _DemoScenario:
     persistent_bleeding_phrases = (
         "does not stop",
@@ -180,10 +232,44 @@ class MvpDemoReasoningClient:
         if _is_out_of_scope(latest_message):
             return self._decline()
 
+        if _is_informational(latest_message):
+            return self._inform(passage_id)
+
         scenario = _detect_scenario(_user_text(history))
         if scenario is _DemoScenario.PERSISTENT_BLEEDING:
             return self._decide_bleeding(user_turns=user_turns, passage_id=passage_id)
         return self._decide_irregular_periods(user_turns=user_turns, passage_id=passage_id)
+
+    def _inform(self, passage_id: str) -> TriageDecision:
+        """An in-scope question about the subject, answered — see ADR 0016.
+
+        No action code and no named condition, so this demo answer cannot be
+        mistaken for a verdict on anyone's case.
+        """
+        return TriageDecision(
+            type=DecisionType.INFORM,
+            answer_text=(
+                "Polycystic ovary syndrome is a common condition affecting how the "
+                "ovaries work. Our sources describe three main features: periods "
+                "that are irregular or absent, higher-than-usual levels of "
+                "androgens, which can show up as extra hair growth or acne, and "
+                "ovaries that look enlarged on a scan. It is often linked to how "
+                "the body handles insulin, which is why weight, blood sugar and "
+                "fertility come up alongside it. There is no cure described, but "
+                "the symptoms are treatable, and which treatment fits depends on "
+                "which symptoms matter most to you.\n\n"
+                "That is general information about the condition, not an "
+                "assessment of anything you are experiencing. If some of this "
+                "sounds like you, tell me what you have noticed and I will ask a "
+                "few questions."
+            ),
+            citations=(passage_id,),
+            rationale=(
+                "She asked what the condition is, without describing anything she "
+                "is experiencing, so this is a question to answer rather than a "
+                "symptom to assess."
+            ),
+        )
 
     def _decline(self) -> TriageDecision:
         """No action code, no citation — see ADR 0014."""

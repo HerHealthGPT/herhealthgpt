@@ -49,6 +49,7 @@ class DecisionType(StrEnum):
 
     ASK = "ask"
     CONCLUDE = "conclude"
+    INFORM = "inform"
     DECLINE = "decline"
 
 
@@ -88,6 +89,51 @@ class TriageDecision(BaseModel):
     rules in ``red_flags.yaml``. A question those cannot speak to is declined
     rather than answered thinly, which keeps a refusal provable instead of a
     matter of taste. See ADR 0014.
+
+    **Why ``INFORM`` exists, and why it is the most tightly bounded shape
+    here.** ASK, CONCLUDE and DECLINE between them covered every message
+    *about her* — a symptom to narrow, a symptom to rule on, or a topic this
+    system does not cover. They did not cover a question about the subject
+    matter itself. Asked "what actually is PCOS?", the only legal moves were
+    to put a clarifying question to a woman who had reported no symptom, to
+    assign an urgency level to a question that described no case, or to
+    refuse a question squarely inside the knowledge base's own subject
+    matter. INFORM is the fourth shape: answer the question from what the
+    retrieved passages say, cite them, and assign no urgency.
+
+    It is deliberately the *narrowest* shape in this enum, because an
+    informational reply is the one shape that could be used to walk around
+    triage altogether — and under-triage is this project's dominant failure
+    mode (CLAUDE.md). Three properties hold by schema rather than by prompt:
+
+    * **No ``action_code``.** An INFORM cannot say SELF_CARE, so it can never
+      function as reassurance. It is information, not a verdict, and the
+      absence of an urgency level is what makes that structural.
+    * **No ``red_flag_id``, and ``citations`` required non-empty.** Note the
+      direction: this is *stricter* than ASK and CONCLUDE, which may ground
+      themselves on a red flag instead of a citation. A warning sign is a
+      reason to escalate, never a reason to explain — so a decision that has
+      noticed one cannot be an INFORM at all, and an INFORM with nothing
+      retrieved to stand on is unrepresentable. That closes the hole ADR 0014
+      found, from the other side: there, a refusal was forced to manufacture
+      a citation; here, an answer cannot be given without one.
+    * **No ``matching_conditions``.** That field means "conditions whose
+      pattern *her answers* matched", and an INFORM has matched nothing
+      against her — she described no case. An informational answer may
+      discuss a condition in prose, grounded in the passages it cites, but it
+      may never attach one to her. "Never diagnoses" therefore holds on this
+      path by construction rather than by wording.
+
+    ``observed`` *is* allowed, unlike on a DECLINE, and the asymmetry is the
+    point: an off-scope message tells us nothing about her health, whereas an
+    in-scope question may carry real information in passing ("I get awful
+    cramps — what is endometriosis?"). Recording that is what lets the next
+    turn pick up where this one left off rather than starting cold.
+
+    What the schema cannot enforce, and the prompt therefore must: that a
+    message describing her own current symptoms is triaged rather than
+    explained. See ADR 0016's risk register, which names that rather than
+    implying it is covered.
 
     **Why two separate grounding fields, not one.** Walking a real example
     through the flow (a case matching both ``severe_pelvic_pain`` and, one
@@ -142,6 +188,19 @@ class TriageDecision(BaseModel):
 
     #: Required, and only legal, when type is CONCLUDE.
     action_code: ActionCode | None = None
+
+    #: Required, and only legal, when type is INFORM: the answer she reads,
+    #: assembled from the passages named in ``citations``.
+    #:
+    #: A field of its own rather than a long ``rationale``, for the same
+    #: reason ``question_text`` is one: ``rationale`` is one or two sentences
+    #: saying *why* this turn went the way it did, and it is held to that by
+    #: the prompt and by ``clients._reject_leaked_internals``. An
+    #: informational body is a different kind of text, at a different length,
+    #: so conflating the two would leave neither field reliably meaning
+    #: either thing. A reader of this schema can see which field is the
+    #: answer.
+    answer_text: NonEmptyText | None = None
 
     #: Real conditions.yaml ids whose pattern the answers matched, for a
     #: CONCLUDE only. Legal alongside red_flag_id only when action_code is
@@ -252,6 +311,21 @@ class TriageDecision(BaseModel):
                 for condition in raw_conditions
                 if isinstance(condition, str) and _IDENTIFIER_SHAPE.fullmatch(condition.strip())
             ]
+        # An INFORM that put its answer in `rationale` and left
+        # `answer_text` empty is recoverable, so recover it rather than losing
+        # the turn. Same trade as `matching_conditions` above and as
+        # `clients._drop_conditions_named_beside_a_red_flag`: a model that has
+        # found the right shape and filled the wrong field of it is one
+        # correction away, and a corrective retry costs a whole extra
+        # generation (89-104s measured on this route). The text is then
+        # duplicated across both fields, which the UI tolerates — it renders
+        # `answer_text` and shows `rationale` only behind the reasoning
+        # disclosure — and which is strictly better than a 502.
+        if patched.get("type") == DecisionType.INFORM.value and not patched.get("answer_text"):
+            promoted = patched.get("rationale")
+            if isinstance(promoted, str) and promoted.strip():
+                patched["answer_text"] = promoted
+
         raw_citations = patched.get("citations")
         if isinstance(raw_citations, list):
             patched["citations"] = [
@@ -292,6 +366,57 @@ class TriageDecision(BaseModel):
                     "there is nothing for a citation to support"
                 )
             return self
+
+        if self.type is DecisionType.INFORM:
+            # The backstop behind the promotion in `_coerce_null_collections`,
+            # not a path a model reaches: `rationale` is itself required, so
+            # an INFORM arriving without `answer_text` has its rationale
+            # promoted before this runs. Kept because every consumer renders
+            # and asserts on `answer_text`, so the invariant has to be stated
+            # where it is enforced, and it would come back into play the
+            # moment that promotion is narrowed.
+            if self.answer_text is None:
+                raise ValueError(
+                    "an INFORM decision requires answer_text — the answer she reads"
+                )
+            # Stricter than the general grounding rule below, deliberately: a
+            # red flag is grounds to escalate, never grounds to explain, so
+            # there is no red_flag_id route to satisfying this. An INFORM
+            # reports what our sources say about a topic, so it has to name
+            # the passages it read that in.
+            if not self.citations:
+                raise ValueError(
+                    "an INFORM decision must cite at least one retrieved passage — "
+                    "it reports what our sources say about a topic, so an uncited "
+                    "one is indistinguishable from an invented one, and unlike an "
+                    "ASK or a CONCLUDE it has no red_flag_id route to grounding"
+                )
+            forbidden = {
+                "next_feature_id": self.next_feature_id,
+                "question_text": self.question_text,
+                # No urgency level, so an informational answer can never
+                # double as reassurance.
+                "action_code": self.action_code,
+                # A noticed warning sign must escalate, not explain.
+                "red_flag_id": self.red_flag_id,
+                # Nothing was matched against her — she described no case.
+                "matching_conditions": self.matching_conditions or None,
+            }
+            carried = sorted(name for name, value in forbidden.items() if value is not None)
+            if carried:
+                raise ValueError(
+                    f"an INFORM decision must not carry {', '.join(carried)} — it "
+                    "answers a question about a topic, assigns no urgency, and "
+                    "asserts nothing about her own case"
+                )
+            return self
+
+        if self.answer_text is not None:
+            raise ValueError(
+                "answer_text is only legal on an INFORM decision, not a "
+                f"{self.type.value.upper()} — an ask carries question_text and a "
+                "conclude carries rationale"
+            )
 
         if not self.citations and self.red_flag_id is None:
             raise ValueError(

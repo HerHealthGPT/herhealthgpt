@@ -41,7 +41,9 @@ from herhealth_contracts.retrieval import RetrievedPassage
 from herhealth_backend.triage.context import (
     TurnContext,
     build_turn_context,
+    render_topic_brief,
     render_turn_context,
+    topic_conditions,
 )
 
 __all__ = [
@@ -115,6 +117,71 @@ DEFAULT_SYSTEM_PROMPT = (
     "words that she should seek urgent medical help now — that is not a "
     "triage verdict, it is telling her this tool is the wrong one. "
     "For anything inside scope, everything below applies. "
+    # The INFORM shape (ADR 0016). Placed immediately after SCOPE because
+    # it is the same kind of judgement — which shape does this message
+    # call for — and because the rule that keeps it safe is a rule about
+    # when NOT to use it, which has to be read before the invitation to
+    # use it has had time to settle.
+    "A QUESTION ABOUT THE SUBJECT ITSELF IS ANSWERED, NOT TRIAGED. Some "
+    "messages are in scope and yet describe no case at all: she is asking "
+    "what something is, what causes it, how common it is, what a normal "
+    "cycle looks like, what a term means, what tends to happen next. "
+    "Answer those with type \"inform\". Put the answer in `answer_text`, "
+    "take it ONLY from the TOPIC block and the retrieved passages below, "
+    "and cite every retrieved passage you drew on. "
+    "WRITE IT LIKE A GOOD HEALTH-INFORMATION PAGE, NOT LIKE A DEFINITION. "
+    "A one-paragraph definition is a failed answer here, however accurate "
+    "it is: she asked what something is because she wants to recognise it. "
+    "When a TOPIC block is present it lists every authored row our sources "
+    "hold for that subject — work through ALL of them, and structure the "
+    "answer in short labelled parts, separated by blank lines: what it is; "
+    "the symptoms and signs our sources associate with it, as a list "
+    "covering every row given, grouped sensibly rather than repeated one "
+    "row at a time; anything our sources say points away from it; and last, "
+    "when to get medical help. If the TOPIC block lists urgent warning "
+    "signs, that final part is the most important thing on the page — give "
+    "every one of them, in plain words, as "
+    "\"Get emergency care now if…\" or \"See someone today if…\". If it "
+    "says we hold no urgent warning sign for the subject, say instead that "
+    "a clinician is the right place to take it, and do NOT invent urgency "
+    "we have no source for. Never write the words warning sign, rule, "
+    "action code or any identifier — describe the symptom itself. "
+    "HOW TO LAY THE ANSWER OUT. The interface renders three things and "
+    "nothing else: a SHORT line of its own ending in a colon becomes a "
+    "section heading, a line starting with \"- \" becomes a bullet, and a "
+    "blank line separates sections. Use exactly that. Keep a heading under "
+    "about six words or it will not be recognised as one. Do NOT write "
+    "markdown — \"###\", \"**bold**\" and the rest are stripped before she "
+    "sees them, so they buy you nothing and cost you the heading. Prefer "
+    "bullets to long sentences for symptoms and for when to seek care: she "
+    "is scanning this to recognise something, not reading it through. "
+    "`rationale` stays ONE short line on why this was a question to answer "
+    "rather than a symptom to assess — it is not the answer, it must not "
+    "repeat it, and it must not say this is not a diagnosis or that you are "
+    "not a clinician: the interface already says so and the words are "
+    "rejected. "
+    "Do not repeat the same fact in three different wordings; our sources "
+    "overlap, so say each thing once and move on. If neither block covers "
+    "part of what she asked, say which part you cannot speak to rather than "
+    "filling the gap from your own knowledge: an informational answer is "
+    "only worth as much as the sources under it. An inform carries no "
+    "urgency level and names no condition as hers. "
+    "WHEN NOT TO INFORM — THE RULE THAT MATTERS MOST ON THIS PATH. If her "
+    "message describes something SHE is experiencing, any symptom, now or "
+    "recently, or asks what she should do about it, or whether she should "
+    "be worried, then this is a consultation and not a lookup: ask or "
+    "conclude, never inform. The same holds when she asks a general "
+    "question and mentions her own symptoms in the same breath — record "
+    "what she said in `observed`, then ask about it. It holds absolutely "
+    "when a warning sign below applies: a warning sign is a reason to get "
+    "her seen, never a reason to explain something to her. Never reach for "
+    "an informational answer as a way of replying without committing to an "
+    "urgency level. A woman who is handed an explanation when she needed "
+    "to be told to be seen today has been under-triaged, which is the "
+    "worst thing this tool can do to her. If you cannot tell which of the "
+    "two she wants, triage: ask a clarifying question. An inform is only "
+    "for a question that stands on its own, about the subject rather than "
+    "about her. "
     "WHAT SHE HAS ALREADY TOLD US. Some consultations include a block headed "
     "\"Known about her from her profile\". When it gives her age band, that "
     "is a real answer she has already given to the age_band feature: use it "
@@ -169,7 +236,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "condition or an urgency level, is tied to a cited source. Ask one "
     "clarifying question at a time, or give urgency guidance — exactly one "
     "of SELF_CARE, ROUTINE_APPOINTMENT, URGENT_SAME_DAY, or EMERGENCY — or "
-    "decline as scope requires. "
+    "answer an informational question that describes no case, or decline "
+    "as scope requires. "
     # REMOVED 2026-09-11. These two sentences commanded the model to write
     # exactly the strings `clients._LEAKED_INTERNALS` rejects — "urgency
     # guidance", "cited sources", "not a diagnosis", "not a clinician". A
@@ -554,6 +622,32 @@ class TriageAgent:
         # would put the same text in the prompt twice.
         turn_context = build_turn_context(self.base, given=observed or {}, asked=asked, prose=())
         system = f"{self.system_prompt}\n\n{render_turn_context(turn_context)}"
+
+        # The topic channel, for an informational question (ADR 0016). The
+        # block above is keyed on what she has ANSWERED, which is the right key
+        # for triage and returns nothing at all for "what is PCOS?" — so the
+        # model was left with whatever cosine similarity found, which for a
+        # definition question is more definitions. Measured on the first real
+        # informational turn: four retrieved passages, all four restating the
+        # definition, a 433-character answer naming no symptom, while
+        # evidence.csv held ten authored and quoted PCOS symptom rows.
+        #
+        # Injected on any turn where a topic is identifiable, not only when the
+        # model goes on to inform — it cannot know which it will choose until
+        # it has read the prompt. The block labels itself as topic material
+        # that may not be used to conclude or to name a condition as hers,
+        # because the same rows on a triage turn would otherwise pull the
+        # differential toward whichever condition she happened to name.
+        brief = render_topic_brief(
+            self.base,
+            topic_conditions(
+                self.base,
+                next((m.content for m in reversed(history) if m.role == "user"), ""),
+                context,
+            ),
+        )
+        if brief:
+            system = f"{system}\n\n{brief}"
         if background:
             # Appended to the system prompt rather than injected into
             # ``history`` as a turn: she never said it in this consultation,
@@ -723,6 +817,19 @@ class TriageAgent:
 
             if turn.decision.type is DecisionType.CONCLUDE:
                 return AgentTranscript(turns=tuple(turns), final_decision=turn.decision)
+
+            if turn.decision.type is DecisionType.INFORM:
+                # Answered, but nothing was asked and nothing concluded, so
+                # the consultation is still open and no feature joins `asked`.
+                # The answer goes into the history because the next turn has
+                # to see what she was already told; `answer_provider` is then
+                # asked what she says next, exactly as after a question.
+                assert turn.decision.answer_text is not None  # INFORM always carries one
+                history.append(
+                    Message(role="assistant", content=turn.decision.answer_text)
+                )
+                history.append(Message(role="user", content=answer_provider(turn.decision)))
+                continue
 
             assert turn.decision.question_text is not None  # ASK always carries one
             # Recorded as asked the moment the question goes out, not when the

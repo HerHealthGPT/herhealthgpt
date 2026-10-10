@@ -158,3 +158,109 @@ def test_a_red_flag_alone_still_grounds_a_decision() -> None:
         rationale="testing",
     )
     assert decision.citations == ()
+
+
+def test_an_inform_answers_from_its_citations() -> None:
+    """The shape ADR 0016 added: an in-scope question about the subject,
+    answered from retrieved passages, with no urgency attached."""
+    decision = TriageDecision(
+        type=DecisionType.INFORM,
+        answer_text="PCOS affects how the ovaries work, our sources say.",
+        citations=(A_PASSAGE_ID,),
+        observed={"cycle_regularity": "irregular"},
+        rationale="She asked what the condition is, having reported no symptom.",
+    )
+    assert decision.action_code is None
+    assert decision.matching_conditions == ()
+    # Allowed here and forbidden on a DECLINE, deliberately: an in-scope
+    # question may mention a real feature value in passing, and recording it
+    # is what lets the next turn carry on from it.
+    assert decision.observed == {"cycle_regularity": "irregular"}
+
+
+def test_an_inform_must_cite_something() -> None:
+    """Stricter than ASK and CONCLUDE, not looser: there is no red_flag_id
+    route to grounding an informational answer, because a warning sign is a
+    reason to escalate rather than a reason to explain."""
+    with pytest.raises(ValidationError, match="must cite at least one"):
+        TriageDecision(
+            type=DecisionType.INFORM,
+            answer_text="PCOS affects how the ovaries work.",
+            rationale="testing",
+        )
+
+
+def test_an_inform_always_ends_up_with_an_answer() -> None:
+    """``answer_text`` is what every consumer renders and asserts on, so an
+    INFORM without one must be unconstructible. In practice the promotion
+    below gets there first — ``rationale`` is itself required, so there is no
+    payload that reaches the ``requires answer_text`` guard. That guard is
+    the backstop behind the promotion, not a path a model can hit, and this
+    test pins the invariant rather than the branch."""
+    decision = TriageDecision(
+        type=DecisionType.INFORM,
+        citations=(A_PASSAGE_ID,),
+        rationale="PCOS affects how the ovaries work.",
+    )
+    assert decision.answer_text == "PCOS affects how the ovaries work."
+
+
+def test_an_inform_promotes_a_rationale_into_a_missing_answer() -> None:
+    """A model that found the right shape and filled the wrong field of it is
+    one correction away, and a corrective retry costs a whole generation —
+    see the coercion's own note in decision.py."""
+    decision = TriageDecision.model_validate(
+        {
+            "type": "inform",
+            "citations": [A_PASSAGE_ID],
+            "rationale": "Endometriosis is tissue similar to the womb lining.",
+        }
+    )
+    assert decision.answer_text == "Endometriosis is tissue similar to the womb lining."
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        # No urgency level, so an informational answer can never double as
+        # reassurance.
+        ("action_code", ActionCode.SELF_CARE),
+        # A noticed warning sign must escalate, not explain.
+        ("red_flag_id", "severe_pelvic_pain"),
+        # Nothing was matched against her — she described no case. This is
+        # what keeps "never diagnoses" structural on this path.
+        ("matching_conditions", ("pcos",)),
+        ("question_text", "Are you pregnant?"),
+        ("next_feature_id", "pregnancy_status"),
+    ],
+)
+def test_an_inform_may_carry_nothing_but_its_answer(field: str, value: object) -> None:
+    with pytest.raises(ValidationError, match="must not carry"):
+        TriageDecision(
+            type=DecisionType.INFORM,
+            answer_text="PCOS affects how the ovaries work.",
+            citations=(A_PASSAGE_ID,),
+            rationale="testing",
+            **{field: value},  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("decision_type", [DecisionType.ASK, DecisionType.CONCLUDE])
+def test_answer_text_is_only_legal_on_an_inform(decision_type: DecisionType) -> None:
+    """An ask carries question_text and a conclude carries rationale; a long
+    answer on either would be text no part of the UI renders."""
+    shape: dict[str, object] = {
+        DecisionType.ASK: {
+            "next_feature_id": "pregnancy_status",
+            "question_text": "Are you pregnant?",
+        },
+        DecisionType.CONCLUDE: {"action_code": ActionCode.ROUTINE_APPOINTMENT},
+    }[decision_type]
+    with pytest.raises(ValidationError, match="only legal on an INFORM"):
+        TriageDecision(
+            type=decision_type,
+            answer_text="PCOS affects how the ovaries work.",
+            citations=(A_PASSAGE_ID,),
+            rationale="testing",
+            **shape,  # type: ignore[arg-type]
+        )

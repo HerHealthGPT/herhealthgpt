@@ -1,0 +1,51 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "backend",
+    "data",
+    "deploy/aws-ec2",
+    "deploy/build-index-in-ci",
+    "deploy/first-production",
+    "fix/backend-requests",
+    "fix/build-index-tolerate-nhs",
+    "fix/deploy-image-size",
+    "fix/lint-import-order",
+    "fix/oidc-sub-with-ids",
+    "fix/retrieval-cpu-torch",
+    "frontend",
+    "main",
+    "security/remove-postcss-payload"
+  ],
+  "parent": {
+    "backend": "main",
+    "data": "main",
+    "deploy/aws-ec2": "main",
+    "deploy/build-index-in-ci": "main",
+    "deploy/first-production": "main",
+    "fix/backend-requests": "main",
+    "fix/build-index-tolerate-nhs": "main",
+    "fix/deploy-image-size": "main",
+    "fix/lint-import-order": "main",
+    "fix/oidc-sub-with-ids": "main",
+    "fix/retrieval-cpu-torch": "main",
+    "frontend": "main",
+    "main": null,
+    "security/remove-postcss-payload": "main"
+  },
+  "order": [
+    "main",
+    "backend",
+    "data",
+    "deploy/aws-ec2",
+    "deploy/build-index-in-ci",
+    "deploy/first-production",
+    "fix/backend-requests",
+    "fix/build-index-tolerate-nhs",
+    "fix/deploy-image-size",
+    "fix/lint-import-order",
+    "fix/oidc-sub-with-ids",
+    "fix/retrieval-cpu-torch",
+    "frontend",
+    "security/remove-postcss-payload"
+  ]
+}

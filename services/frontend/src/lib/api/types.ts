@@ -98,7 +98,14 @@ export type CitedPassage = {
  *  On a `decline` (an off-scope message — see ADR 0014) every field below
  *  except `rationale` is null or empty, by schema rather than by convention:
  *  action_code, matching_conditions, citations and red_flag_id are all
- *  forbidden there, so render the rationale and nothing else. */
+ *  forbidden there, so render the rationale and nothing else.
+ *
+ *  On an `inform` (an in-scope question about the subject rather than about
+ *  her — see ADR 0016) the answer she reads is `answer_text`, NOT
+ *  `rationale`, and `citations` is guaranteed non-empty. action_code,
+ *  matching_conditions and red_flag_id are forbidden there, so there is no
+ *  urgency to render and no condition is being attached to her: render the
+ *  answer and its sources. */
 /** One selectable reasoning model, from GET /triage/models.
  *
  *  `reviewed: false` means this model's decisions are not cleared for use as
@@ -123,8 +130,12 @@ export type DecisionReasoningModel = {
 };
 
 export type TriageDecision = {
-  type: "ask" | "conclude" | "decline";
+  type: "ask" | "conclude" | "inform" | "decline";
   question_text: string | null;
+  /** The informational answer, on an `inform` and only there. Null on every
+   *  other type, and the one field a `decline` and an `inform` do not
+   *  share — a decline has nothing to say, an inform has the whole answer. */
+  answer_text: string | null;
   action_code: ActionCode | null;
   matching_conditions: string[];
   citations: string[];
