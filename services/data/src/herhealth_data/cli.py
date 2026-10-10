@@ -57,6 +57,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="actually make network requests; without it this is a dry run",
     )
+    fetch_parser.add_argument(
+        "--tolerate-quote-only-failures",
+        action="store_true",
+        help="exit 0 when only quote-only (NHS) pages failed; for the deployed index build",
+    )
+    fetch_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
     fetch_parser.set_defaults(func=commands.run_fetch)
 
     validate_parser = subparsers.add_parser(
@@ -103,6 +109,11 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument(
         "--model", default=None, help="defaults to bge-m3; 'hashing' for the offline stand-in"
     )
+    index_parser.add_argument(
+        "--exclude-quote-only",
+        action="store_true",
+        help="drop quote-only (NHS) passages before embedding; required for the deployed index",
+    )
     index_parser.set_defaults(func=commands.run_index)
 
     search_parser = subparsers.add_parser("search", help="query the passage index by hand")
@@ -143,6 +154,14 @@ def build_parser() -> argparse.ArgumentParser:
     tables_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
     tables_parser.add_argument("--out", type=Path, default=paths.TABLES_DIR)
     tables_parser.set_defaults(func=commands.run_tables)
+
+    cards_parser = subparsers.add_parser(
+        "cards",
+        help="render the evidence grid as readable per-condition and per-answer cards",
+    )
+    cards_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
+    cards_parser.add_argument("--out", type=Path, default=paths.CARDS_DIR)
+    cards_parser.set_defaults(func=commands.run_cards)
 
     clean_parser = subparsers.add_parser("clean", help="turn fetched HTML into sectioned text")
     clean_parser.add_argument("--raw-dir", type=Path, default=paths.RAW_DIR)

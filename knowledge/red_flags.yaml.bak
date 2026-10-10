@@ -1,0 +1,459 @@
+# red_flags.yaml — deterministic escalation rules.
+#
+# ============================================================================
+# THESE RUN BEFORE ANY MODEL CALL AND CANNOT BE OVERRIDDEN BY ONE.
+#
+# Plain conditionals. A match short-circuits straight to escalation without
+# asking anything further and without consulting the differential.
+#
+# Every rule is derived from EXPLICIT escalation language in a source — the
+# "Ask for an urgent GP appointment or get help from NHS 111 if:" and "Call 999
+# or go to A&E if:" boxes on nhs.uk. None is inferred. A rule that cannot be
+# traced to a specific sentence is not written.
+#
+# The schema permits only URGENT_SAME_DAY and EMERGENCY here: a red flag that
+# de-escalates is unconstructible.
+# ============================================================================
+#
+# All source_quote values are verbatim from NHS pages, read manually on
+# 2026-08-03. NHS is `citable_only` in sources.yaml: quoting with attribution
+# is what we rely on, and NHS text must never enter passages.parquet.
+#
+# STRUCTURE. Every NHS bullet is conditioned on "You have pelvic pain and:", so
+# every rule below is a conjunction with pelvic pain as its first clause.
+# `all_of` is conjunction-only by design — an "or" is two rules, which keeps
+# each rule traceable to its own quote.
+#
+# COVERAGE GAPS, recorded rather than guessed. The NHS 999 bullet reads
+# "severe, getting worse, or hurts when you move or touch the area". We have a
+# feature for severity but none for progression or for tenderness on movement,
+# so only severity is encoded. Also dropped for want of a feature:
+# "painkillers have not helped" (period pain page) and "pain under your ribs on
+# the right side" (PID page).
+#
+# CHECKED AND REJECTED, 2026-08-19: a red flag on anaemia_symptoms with heavy
+# bleeding, without a pain clause. Read every NHS bleeding/pain page in full
+# (heavy_periods, fibroids, pelvic_pain, period_pain, bleeding_between_periods)
+# plus grepped the whole cleaned corpus across all 5 sources for tiredness,
+# breathlessness or dizziness tied to bleeding. Found only:
+#   - NHS heavy_periods: "feel tired or short of breath a lot" is part of the
+#     page's own DEFINITION of what counts as heavy bleeding, not a trigger in
+#     its "See a GP if:" box on the same page — that box deliberately omits it.
+#   - NHS fibroids: "iron deficiency anaemia, caused by heavy bleeding" sits
+#     under "Complications of fibroids" — a consequence if untreated, not a
+#     "see a GP if" bullet.
+#   - CDC heavy_menstrual_bleeding: "Are tired, lack energy, or are short of
+#     breath... If you have this type of bleeding, you should see a healthcare
+#     provider" — routine register ("should see"), not the urgent/emergency
+#     register every rule below is built from, and stated about the whole
+#     bulleted symptom list rather than isolatable as its own clause.
+#   - NHS pelvic_pain's "feel faint, dizzy or lightheaded" bullet is already
+#     pelvic_pain_with_faintness below — it requires pelvic pain first.
+# No source anywhere escalates on anaemia symptoms alone. Not written, per the
+# rule that a red flag is derived only from explicit escalation language, never
+# inferred.
+#
+# CHECKED AND REJECTED, 2026-08-19: a red flag on bleeding_heaviness=
+# soaking_hourly alone, without a pain clause. Swept every when_to_get_help
+# section in the entire cleaned corpus (all 5 sources, all 49 documents) —
+# every escalation box that mentions heavy bleeding requires pelvic pain as a
+# co-occurring clause:
+#   - nhs/pelvic_pain "Call 999...": "you have pelvic pain and... you have
+#     heavy bleeding from your vagina" — already pelvic_pain_with_heavy_bleeding
+#     below.
+#   - nhs/pelvic_inflammatory_disease "Call 999...": "have pelvic pain and
+#     heavy bleeding from your vagina" — same structure, PID-specific.
+# nhs/heavy_periods and cdc/heavy_menstrual_bleeding, the two pages dedicated
+# to heavy bleeding itself, have NO when_to_get_help-tier box at all — only a
+# routine "See a GP if:" list (heavy_periods) or none (CDC).
+#
+# One near-miss, examined and NOT used: womenshealth/ovarian_cyst.json has an
+# "Are ovarian cysts ever an emergency?" box listing three alternative
+# triggers, the third being "Faintness, dizziness, or weakness" with no pain
+# clause attached. But it opens "If your doctor told you that you have an
+# ovarian cyst and you have any of the following symptoms..." — gated on a
+# prior diagnosis, which nothing in the red_flags.yaml schema can express
+# (Clause has only feature_id/op/value; there is no way to condition on which
+# condition is currently live in the differential, and the engine confirms
+# this is architectural, not a missing field — red flags evaluate on raw
+# answers only, before any condition scoring runs, by design). Folding this
+# into pelvic_pain_with_faintness below would drop the diagnosis precondition
+# and over-claim what the source says; writing it as an unconditional
+# feeling_faint=yes rule would do the same. Left unwritten.
+
+red_flags:
+  # =========================================================================
+  # EMERGENCY
+  # =========================================================================
+
+  - id: sudden_severe_pelvic_pain
+    label: Sudden onset of severe pelvic pain
+    all_of:
+      - feature_id: pain_onset
+        op: equals
+        value: sudden
+      - feature_id: pelvic_pain_severity
+        op: equals
+        value: severe
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      have a sharp, sudden and intense pain in your lower tummy
+    note: >-
+      From the PID page's "Call 999 or go straight to A&E if:" box. Sudden onset
+      plus severity is the acute-abdomen picture; severity alone is URGENT (see
+      severe_pelvic_pain below) because two of three NHS pages route that to
+      111. This split was decided explicitly and the conflict is recorded in
+      build/conflicts.jsonl.
+
+  - id: pelvic_pain_with_faintness
+    label: Pelvic pain with faintness or collapse
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: feeling_faint
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you feel faint, dizzy or lightheaded, or pass out
+
+  - id: pelvic_pain_with_shoulder_tip_pain
+    label: Pelvic pain with shoulder tip pain
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: shoulder_tip_pain
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you have pain in the tip of your shoulder
+    note: >-
+      Referred pain from blood in the abdomen. The question is trivial to ask
+      and changes the action completely, so burden is set to 1 and
+      next_question should reach it early.
+
+  - id: pelvic_pain_with_right_sided_referred_pain
+    label: Pelvic pain with right rib and right shoulder pain
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: right_upper_quadrant_pain
+        op: equals
+        value: "yes"
+      - feature_id: shoulder_tip_pain
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      have pain under your ribs on the right side and in your right shoulder
+    note: >-
+      From the PID page's "Call 999 or go straight to A&E if:" box. A
+      CONJUNCTION, and encoded as one: the source names both sites together, so
+      requiring both is what the sentence says.
+
+      Deliberately separate from pelvic_pain_with_shoulder_tip_pain, which comes
+      from the pelvic pain page where shoulder tip pain alone is the whole
+      trigger. Two sources state two different things; merging them would make
+      one rule fire on less, and the other on more, than its source says. The
+      broader rule still catches this case — this one exists so the PID bullet
+      is represented rather than assumed covered.
+
+  - id: pelvic_pain_with_heavy_bleeding
+    label: Pelvic pain with heavy vaginal bleeding
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: bleeding_heaviness
+        op: in
+        value: [heavy, soaking_hourly]
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you have heavy bleeding from your vagina
+    note: >-
+      The source says "heavy" without defining a threshold here, so both the
+      heavy and soaking_hourly levels match. Choosing the wider reading trades
+      false alarms against missed escalations in the direction the protocol
+      requires.
+
+  - id: pelvic_pain_with_breathing_difficulty
+    label: Pelvic pain with difficulty breathing
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: difficulty_breathing
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you have difficulty breathing
+
+  - id: pelvic_pain_with_sudden_confusion
+    label: Pelvic pain with sudden confusion
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: sudden_confusion
+        op: equals
+        value: "yes"
+    action: EMERGENCY
+    source_id: nhs
+    source_quote: >-
+      you suddenly feel confused
+
+  # =========================================================================
+  # URGENT_SAME_DAY
+  # =========================================================================
+
+  - id: bleeding_after_menopause
+    label: Vaginal bleeding after menopause
+    all_of:
+      - feature_id: bleeding_after_menopause
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      Postmenopausal bleeding is not usually serious but can be a sign of
+      cancer. Cancer may be easier to treat if it's found early.
+    note: >-
+      THE FIRST RULE WITH NO PELVIC-PAIN CLAUSE. Every rule above and below this
+      one is conditioned on pelvic pain; this one is not, because the source
+      isn't. From nhs.uk/conditions/menopause-and-perimenopause/symptoms/,
+      under its own "See a GP if:" box — the same box shape every other rule in
+      this file is built from, just keyed on a different page section. The box
+      also opens "You have postmenopausal bleeding, even if: there's only a
+      small amount of blood, spotting, or pink or brown discharge / you do not
+      have any other symptoms / you're not sure if it's blood" — that framing
+      motivates the rule but is three separate bullet strings rather than one
+      sentence, so the cited quote is the single contiguous sentence that
+      follows it instead.
+
+      Deliberately URGENT_SAME_DAY, not EMERGENCY: no source anywhere routes
+      postmenopausal bleeding to 999 or A&E. This sentence is exactly the
+      mechanism CLAUDE.md describes: cancer is deliberately not modelled as a
+      condition, so this red flag is what routes a postmenopausal woman with
+      bleeding to a GP without the system ever naming or suggesting cancer to
+      her.
+
+      Single-source (NHS). MedlinePlus's menopause page names no escalation
+      sentence of its own for postmenopausal bleeding — only an ACOG patient-
+      handout title in a "Specifics" link list, which is not quotable text —
+      and no NICHD or womenshealth page covering menopause exists in
+      ingest_targets.yaml. Not a two-source rule the way evidence.csv rows are;
+      red_flags.yaml carries no such requirement (only conditions.yaml does),
+      but flagged here for the same reason ADR 0006 flags adenomyosis: if NHS
+      is wrong about something in this rule, nothing else catches it.
+
+      Fetched 2026-08-18 to source this rule: medlineplus/menopause,
+      nhs/menopause, nhs/menopause_symptoms, nhs/stopped_or_missed_periods.
+
+  - id: severe_pelvic_pain
+    label: Severe pelvic pain
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: equals
+        value: severe
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      your pelvic pain or period pain is severe or worse than usual, and
+      painkillers have not helped
+    note: >-
+      CONFLICT, resolved deliberately and recorded in build/conflicts.jsonl.
+      Three NHS pages disagree on severe pelvic pain: the pelvic pain page
+      routes it to 999, while the period pain and ovarian cyst pages route it to
+      111. Two of three say 111, and the 999 bullet is not severity alone — it
+      reads "severe, getting worse, or hurts when you move or touch the area",
+      which is an acute abdomen rather than severity per se. Severity alone is
+      therefore URGENT_SAME_DAY, and severity with sudden onset escalates via
+      sudden_severe_pelvic_pain. Revisit if a pain_getting_worse or
+      pain_on_movement feature is added; the 999 reading becomes encodable then.
+      Note also that this rule omits "painkillers have not helped" — no feature
+      exists for it, so the rule fires more readily than the source states.
+
+  - id: possible_ectopic_pregnancy
+    label: Missed period with bleeding and abdominal pain
+    all_of:
+      - feature_id: periods_stopped_duration
+        op: equals
+        value: under_3_months
+      - feature_id: bleeding_between_periods
+        op: equals
+        value: "yes"
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have recently missed a period, have unusual vaginal bleeding, and have
+      pain anywhere in your tummy (abdomen), including your lower tummy (pelvic
+      pain)
+    note: >-
+      The source names the concern directly: "This could be a sign of an ectopic
+      pregnancy and needs to be checked as soon as possible." Three clauses, all
+      required. "Recently missed a period" is mapped to under_3_months, the
+      narrowest available value.
+
+  - id: bleeding_in_pregnancy
+    label: Vaginal bleeding while pregnant
+    all_of:
+      - feature_id: pregnancy_status
+        op: equals
+        value: pregnant
+      - feature_id: bleeding_between_periods
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: womenshealth
+    source_quote: Are bleeding or leaking fluid from the vagina
+    note: >-
+      THE SECOND RULE WITH NO PELVIC-PAIN CLAUSE (see bleeding_after_menopause
+      above). From womenshealth.gov's "Pregnancy complications" page, under its
+      own "When to call the doctor" box — the source's own escalation register,
+      opening "Call your doctor or midwife as soon as you can if you:" — which
+      is why this is URGENT_SAME_DAY rather than a weaker or stronger action; no
+      source anywhere routes pregnancy bleeding straight to 999/A&E without a
+      pain or collapse clause (those are already possible_ectopic_pregnancy and
+      pelvic_pain_in_pregnancy above).
+
+      Uses bleeding_between_periods as the general "any vaginal bleeding"
+      feature, following the precedent already set by
+      possible_ectopic_pregnancy above — this schema has no bleeding feature
+      that is not scoped to a specific pattern (heaviness, inter-period,
+      post-menopause), and a pregnant woman reporting any bleeding is exactly
+      what that feature is asked to capture in this context.
+
+      pregnant only, NOT possibly_pregnant — unlike pelvic_pain_in_pregnancy,
+      which extends to possibly_pregnant because NHS's source sentence there
+      explicitly says "or may be pregnant". This source's opening line is "When
+      you are pregnant, don't wait to call..." — no "might be" qualifier — so
+      widening the clause to possibly_pregnant would be asserting more than
+      this source states, which ADR 0001 forbids.
+
+      Fetched and cleaned 2026-08-19: womenshealth/pregnancy_bleeding
+      (womenshealth.gov/pregnancy/youre-pregnant-now-what/pregnancy-complications).
+      An NHS page on this exact topic is linked from nhs/bleeding_between_periods
+      but no resolvable URL could be found for it (the cleaner strips actual
+      hyperlinks) — a guessed URL at the standard nhs.uk path 404'd. Single-
+      source on womenshealth for this specific rule; not flagged as a gap in
+      the same way as adenomyosis, since womenshealth alone carries `available`
+      status and this is a red flag rather than a whole condition.
+
+  - id: pelvic_pain_in_pregnancy
+    label: Pelvic pain when pregnant or possibly pregnant
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: pregnancy_status
+        op: in
+        value: [pregnant, possibly_pregnant]
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you are pregnant or may be pregnant
+    note: >-
+      "May be pregnant" is included explicitly by the source, so
+      possibly_pregnant fires this rule exactly as pregnant does.
+
+  - id: pelvic_pain_with_fever
+    label: Pelvic pain with fever
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: fever
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have a very high temperature (or you feel hot, cold or shivery)
+
+  - id: pelvic_pain_with_abnormal_discharge
+    label: Pelvic pain with unusual vaginal discharge
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: abnormal_discharge
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have unusual discharge, fluid or bleeding from your vagina
+
+  - id: pelvic_pain_with_urinary_retention
+    label: Pelvic pain with difficulty passing urine or stool
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: urinary_symptoms
+        op: equals
+        value: difficulty_passing_urine
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you find it difficult to pee or poo
+    note: >-
+      The source covers urine and stool together. Our feature covers urine only,
+      so bowel difficulty alone does not fire this rule — a known gap.
+
+  - id: pelvic_pain_with_nausea_or_vomiting
+    label: Pelvic pain with nausea or vomiting
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: feeling_sick_or_vomiting
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: >-
+      you have pain in your tummy (abdomen) and you also feel sick (nausea) or
+      are being sick (vomiting)
+    note: >-
+      Corroborated by the pelvic pain page, which lists "you have vomiting and
+      diarrhoea, or you feel sick" under the same urgency.
+
+  # Added 2026-09-11 from the NHS pelvic-pain page's "Get help from NHS 111 if:
+  # You have pelvic pain and:" box — the same box that already supplies
+  # pelvic_pain_with_fever, _abnormal_discharge, _urinary_retention,
+  # _nausea_or_vomiting and pelvic_pain_in_pregnancy. This line of that box was
+  # never turned into a rule, so `blood_in_urine_or_stool` carried evidence
+  # rows but appeared in no escalation rule at all.
+  - id: pelvic_pain_with_blood_in_urine_or_stool
+    label: Pelvic pain with blood when passing urine or opening bowels
+    all_of:
+      - feature_id: pelvic_pain_severity
+        op: not_equals
+        value: none
+      - feature_id: blood_in_urine_or_stool
+        op: equals
+        value: "yes"
+    action: URGENT_SAME_DAY
+    source_id: nhs
+    source_quote: there's blood in your pee or poo
+    note: >-
+      Listed under "Get help from NHS 111 if: You have pelvic pain and:", so the
+      urgency is the source's own and the pain clause is the source's own
+      framing rather than ours. Like pelvic_pain_with_urinary_retention, the
+      source covers urine and stool together while our feature covers both in
+      one yes/no, so no coverage is lost here.

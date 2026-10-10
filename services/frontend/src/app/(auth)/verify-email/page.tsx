@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 
@@ -15,12 +15,13 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { usePostAuthRedirect } from "@/hooks/use-post-auth-redirect";
 import { resendVerification, verifyEmail } from "@/lib/api/accounts";
 import { routes } from "@/lib/routes";
 
 function VerifyEmailForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectAfterAuth = usePostAuthRedirect();
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [code, setCode] = useState("");
   const [error, setError] = useState<unknown>(null);
@@ -33,11 +34,9 @@ function VerifyEmailForm() {
     setIsSubmitting(true);
 
     try {
-      await verifyEmail(email, code);
-      toast.success("Email verified. Sign in to continue.");
-      router.push(
-        `${routes.signIn}?email=${encodeURIComponent(email)}&verified=1`,
-      );
+      const user = await verifyEmail(email, code);
+      toast.success("Email verified. Welcome!");
+      await redirectAfterAuth(user);
     } catch (submitError) {
       setError(submitError);
     } finally {
@@ -75,7 +74,7 @@ function VerifyEmailForm() {
         </>
       }
     >
-      <form onSubmit={(event) => void handleSubmit(event)} className="space-y-6">
+      <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
         <AuthErrorAlert error={error} />
 
         <FieldGroup>
@@ -106,8 +105,8 @@ function VerifyEmailForm() {
               required
             />
             <FieldDescription>
-              Check your email. If you&apos;re running this locally, the code
-              may show up in the server console.
+              Check your inbox and spam folder. Codes expire after a short time —
+              tap resend below if yours ran out.
             </FieldDescription>
           </Field>
         </FieldGroup>

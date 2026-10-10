@@ -20,6 +20,8 @@ this schema.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
 from enum import StrEnum
 from typing import Self
 
@@ -30,12 +32,24 @@ from herhealth_contracts.retrieval import PassageId
 
 __all__ = ["DecisionType", "TriageDecision"]
 
+#: OpenRouter models often copy the prompt's ``passage_id=…`` label into
+#: ``citations`` instead of the bare 16-hex id. Strip that prefix before
+#: schema validation so one bad format does not cost a full model retry
+#: (observed live: 1–3 retries × ~10–60s each).
+_PASSAGE_ID_PREFIX = re.compile(r"^(?:passage_id\s*=\s*)?", re.IGNORECASE)
+
+#: The shape ``Identifier`` requires. Used to drop malformed condition names
+#: before validation rather than failing the decision on them — see
+#: ``_coerce_null_collections``.
+_IDENTIFIER_SHAPE = re.compile(r"[a-z][a-z0-9_]*")
+
 
 class DecisionType(StrEnum):
     """What the reasoning model chose to do this turn. Nothing else is legal."""
 
     ASK = "ask"
     CONCLUDE = "conclude"
+    DECLINE = "decline"
 
 
 class TriageDecision(BaseModel):
@@ -44,9 +58,36 @@ class TriageDecision(BaseModel):
     ``rationale`` is required on every decision, including an ``ask`` — a
     question still has to say why, from what has been seen so far, which is
     what makes the transcript auditable without a deterministic trace to fall
-    back on. Every decision must also point at *something* it was grounded
-    on — ``citations``, ``red_flag_id``, or both — for the same reason: a
-    decision citing nothing is not distinguishable from one the model made up.
+    back on. An ``ask`` or a ``conclude`` must also point at *something* it
+    was grounded on — ``citations``, ``red_flag_id``, or both — for the same
+    reason: a decision citing nothing is not distinguishable from one the
+    model made up. ``DECLINE`` is the one exemption, and the next paragraph
+    is why.
+
+    **Why ``DECLINE`` exists, and why it grounds nothing.** With only ASK and
+    CONCLUDE, this schema had no way to represent "that is not something this
+    system does", so every input got an urgency verdict whether or not it was
+    a women's-reproductive-health question at all. Observed live 2026-09-03:
+    asked *"who won world cup 2026"*, the model returned CONCLUDE /
+    ``SELF_CARE`` and — because the grounding rule above left it no other
+    legal move — attached a real Office on Women's Health quote about a
+    complete blood count as the evidence for it. Nothing misbehaved; the
+    model picked the only shape available. The failure was that a refusal was
+    unrepresentable.
+
+    A DECLINE therefore carries **no** ``action_code``, ``next_feature_id``,
+    ``question_text``, ``matching_conditions``, ``red_flag_id`` or
+    ``citations`` — only its ``rationale``, which is what she reads. It is
+    exempt from the grounding rule because it asserts nothing about her
+    health for a citation to support, and requiring one is precisely what
+    manufactured the spurious citation above. Forbidden rather than merely
+    optional, so "declined *and* assigned an urgency" cannot be built at all.
+
+    Scope is defined as what the knowledge base can actually ground — the
+    conditions in ``conditions.yaml``, the features in ``features.yaml``, the
+    rules in ``red_flags.yaml``. A question those cannot speak to is declined
+    rather than answered thinly, which keeps a refusal provable instead of a
+    matter of taste. See ADR 0014.
 
     **Why two separate grounding fields, not one.** Walking a real example
     through the flow (a case matching both ``severe_pelvic_pain`` and, one
@@ -63,14 +104,23 @@ class TriageDecision(BaseModel):
     optional.** The product decision is to name which authored conditions a
     CONCLUDE decision's pattern matches — "matches patterns associated with
     X, Y", never "you have X" — so a user gets more than an urgency level.
-    But ``CLAUDE.md`` already carries one hard-won rule about naming
-    conditions: cancer is deliberately unmodelled and *"served by red flags
-    instead — postmenopausal bleeding routes to a GP without ever naming
-    why."* Generalising that: **a decision driven by a red flag must never
-    name a condition**, authored or not — the whole reason red flags exist
-    is to escalate on a symptom pattern without asserting what it is. So
-    ``matching_conditions`` is only legal when ``red_flag_id`` is ``None``.
-    This is enforced below, not left to the prompt alone.
+    ``CLAUDE.md`` also carries one hard-won rule about naming conditions:
+    cancer is deliberately unmodelled and *"served by red flags instead —
+    postmenopausal bleeding routes to a GP without ever naming why."*
+    ADR 0011 generalised that to every red flag — a decision driven by one
+    must not name a condition, because red flags exist to escalate on a
+    symptom pattern without asserting what it is.
+
+    **This was later narrowed, deliberately, for ``EMERGENCY`` specifically**
+    (product decision, not a safety finding reversed): the team decided an
+    emergency conclusion should be allowed to name matching conditions
+    alongside the ``red_flag_id`` that drove it, on the reasoning that at
+    EMERGENCY severity the value of naming what she might be dealing with
+    outweighs the "never assert a specific condition while escalating" rule
+    the cancer/red-flag discipline otherwise holds everywhere else.
+    ``URGENT_SAME_DAY`` (and every other action) keeps the original rule
+    unchanged: a red-flag-driven decision at that severity still may not
+    name a condition. This is enforced below, not left to the prompt alone.
 
     **Why ``matching_conditions`` is capped at 5.** Generating the bootstrap
     dataset against the real knowledge base showed what an uncapped list
@@ -94,12 +144,14 @@ class TriageDecision(BaseModel):
     action_code: ActionCode | None = None
 
     #: Real conditions.yaml ids whose pattern the answers matched, for a
-    #: CONCLUDE only, and only when red_flag_id is None — see the class
-    #: docstring. Always rendered to the user as "matches patterns
-    #: associated with", never as "you have". May be empty even on a
-    #: qualifying CONCLUDE: naming conditions is offered, not mandatory.
-    #: Capped at 5 — see the class docstring for why an uncapped list is
-    #: actively unhelpful in this knowledge base, not just verbose.
+    #: CONCLUDE only. Legal alongside red_flag_id only when action_code is
+    #: EMERGENCY (the deliberate exception — see the class docstring);
+    #: otherwise a red-flag-driven decision may not carry this. Always
+    #: rendered to the user as "matches patterns associated with", never as
+    #: "you have". May be empty even on a qualifying CONCLUDE: naming
+    #: conditions is offered, not mandatory. Capped at 5 — see the class
+    #: docstring for why an uncapped list is actively unhelpful in this
+    #: knowledge base, not just verbose.
     matching_conditions: tuple[Identifier, ...] = Field(default=(), max_length=5)
 
     #: Passage ids (see herhealth_contracts.retrieval.RetrievedPassage) the
@@ -114,11 +166,133 @@ class TriageDecision(BaseModel):
     #: should_stop guaranteed).
     red_flag_id: Identifier | None = None
 
+    #: What she said, mapped onto the closed feature vocabulary — the case
+    #: vector. Keys are ``features.yaml`` ids, values are that feature's
+    #: ``allowed_values`` (or ``unknown``). Filled on the turn the model
+    #: *reads* her answer, not the turn it asks the question, so no extra
+    #: model call is needed to extract it.
+    #:
+    #: This is the field that makes the knowledge base's structure reachable
+    #: at runtime. Without it, ``red_flags.yaml``'s clauses cannot be
+    #: evaluated against anything, and ``evidence.csv``'s 140 keyed rows can
+    #: only be reached by similarity search — which measurably returns none of
+    #: them on a typical query. With it, both become lookups. See
+    #: ``herhealth_backend.triage.context``.
+    #:
+    #: **It records, it does not decide.** Nothing in this package or in
+    #: ``context`` turns an observation into an action code; ADR 0011 leaves
+    #: that with the model. Cross-checking the keys and values against the
+    #: real knowledge base happens in
+    #: ``herhealth_backend.triage.vocabulary``, for the same reason citations
+    #: are checked there — this package has no knowledge base to check against.
+    #:
+    #: Empty on a DECLINE, like citations and for the same reason: an
+    #: off-scope message tells us nothing about her health, so recording a
+    #: symptom from one would put a fact in the case vector that she never
+    #: reported about a topic this system does not cover.
+    #:
+    #: One consequence worth knowing before it surprises someone: a mapping
+    #: field makes this ``frozen=True`` model **unhashable**, and the same
+    #: goes for the frozen dataclasses that hold one (``AgentTurn``). Nothing
+    #: currently puts a decision in a set or uses one as a dict key — they
+    #: only ever go into lists — so this costs nothing today, but a future
+    #: caller that tries will get ``unhashable type: 'dict'`` rather than a
+    #: schema error, which is not an obvious message to debug from.
+    observed: Mapping[Identifier, str] = Field(default_factory=dict)
+
     #: Why, in the model's own words. Logged verbatim alongside the decision.
     rationale: NonEmptyText
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_null_collections(cls, data: object) -> object:
+        """OpenRouter often emits ``null`` for empty array fields; Pydantic
+        tuple fields reject that. Coerce before shape validation runs.
+
+        Also normalises citation ids that were copied with a ``passage_id=``
+        prefix from the retrieval prompt — the id itself is still the same
+        16-hex hash; only the label is wrong.
+        """
+        if not isinstance(data, dict):
+            return data
+        patched = dict(data)
+        for key in ("matching_conditions", "citations"):
+            if patched.get(key) is None:
+                patched[key] = []
+        if patched.get("observed") is None:
+            patched["observed"] = {}
+
+        # Drop condition names that are not even shaped like an id, rather
+        # than failing the whole decision on them.
+        #
+        # Observed live 2026-09-11 against the fine-tuned adapter: asked about
+        # sudden severe pelvic pain it answered EMERGENCY — the right urgency —
+        # and attached ``["appendicitis", "tubal pregnancy", "ovarian cyst
+        # torsion", "ovarian-cyst rupture", "bowel obstruction"]``. Three of
+        # those contain spaces or hyphens, so ``Identifier`` rejected them and
+        # nine validation errors sank the entire turn. The user got a 502 and
+        # no urgency at all.
+        #
+        # Naming conditions is explicitly optional on a CONCLUDE (see
+        # ``matching_conditions`` below), while the action code is the
+        # safety-critical part. Throwing away an unusable *name* and keeping a
+        # correct EMERGENCY is strictly better than discarding both, and it is
+        # the same direction as every other tie-break in this project: prefer
+        # the outcome that still gets her to care.
+        #
+        # This only removes the malformed ones. An id that is well-shaped but
+        # not a real condition still reaches
+        # ``herhealth_backend.triage.provenance.drop_unknown_conditions``,
+        # which has the knowledge base to check it against; this package does
+        # not.
+        raw_conditions = patched.get("matching_conditions")
+        if isinstance(raw_conditions, list):
+            patched["matching_conditions"] = [
+                condition
+                for condition in raw_conditions
+                if isinstance(condition, str) and _IDENTIFIER_SHAPE.fullmatch(condition.strip())
+            ]
+        raw_citations = patched.get("citations")
+        if isinstance(raw_citations, list):
+            patched["citations"] = [
+                _PASSAGE_ID_PREFIX.sub("", citation.strip())
+                if isinstance(citation, str)
+                else citation
+                for citation in raw_citations
+            ]
+        return patched
+
     @model_validator(mode="after")
     def _shape_matches_type(self) -> Self:
+        if self.type is DecisionType.DECLINE:
+            # Every other field is forbidden, so a decline cannot smuggle an
+            # urgency level or a citation in alongside the refusal — see the
+            # class docstring for the live case that made this necessary.
+            # Named individually in the error because clients.py feeds it
+            # back to the model verbatim on retry.
+            forbidden = {
+                "next_feature_id": self.next_feature_id,
+                "question_text": self.question_text,
+                "action_code": self.action_code,
+                "red_flag_id": self.red_flag_id,
+                "matching_conditions": self.matching_conditions or None,
+                "citations": self.citations or None,
+                # An off-scope message tells us nothing about her health.
+                # Recording a feature value from one would put a symptom in
+                # the case vector that she never reported, about a topic this
+                # system does not cover — and every later turn's red-flag
+                # evaluation and evidence join would then read from it.
+                "observed": dict(self.observed) or None,
+            }
+            carried = sorted(name for name, value in forbidden.items() if value is not None)
+            if carried:
+                raise ValueError(
+                    f"a DECLINE decision must not carry {', '.join(carried)} — it "
+                    "assigns no urgency and asserts nothing about her health, so "
+                    "there is nothing for a citation to support"
+                )
+            return self
+
         if not self.citations and self.red_flag_id is None:
             raise ValueError(
                 "a decision must be grounded in at least one citation or a red_flag_id"
@@ -133,7 +307,7 @@ class TriageDecision(BaseModel):
                 raise ValueError("an ASK decision must not carry an action_code")
             if self.matching_conditions:
                 raise ValueError("an ASK decision must not carry matching_conditions")
-        else:
+        elif self.type is DecisionType.CONCLUDE:
             if self.action_code is None:
                 raise ValueError("a CONCLUDE decision requires action_code")
             if self.next_feature_id is not None or self.question_text is not None:
@@ -141,10 +315,30 @@ class TriageDecision(BaseModel):
                     "a CONCLUDE decision must not carry next_feature_id or question_text"
                 )
 
-        if self.red_flag_id is not None and self.matching_conditions:
+        # ADR 0013 originally carved out EMERGENCY alone. Widened 2026-09-17,
+        # on the product owner's decision, to both urgent tiers: a woman told
+        # to be seen today is making the same "what is this about?" judgement
+        # as one sent to an emergency department, and withholding the pattern
+        # names from her was not buying safety.
+        #
+        # What has NOT changed: this is still "may match patterns our sources
+        # associate with…", never "you have…", and the closed vocabulary still
+        # cannot produce a condition that is not in conditions.yaml — cancer
+        # among them. SELF_CARE and ROUTINE_APPOINTMENT red flags keep the
+        # original restriction.
+        #
+        # ADR 0013 is still `proposed` and its scope section now understates
+        # what the code does. Amend it before this is reviewed.
+        urgent_exception = self.action_code in (
+            ActionCode.EMERGENCY,
+            ActionCode.URGENT_SAME_DAY,
+        )
+        if self.red_flag_id is not None and self.matching_conditions and not urgent_exception:
             raise ValueError(
                 "a red-flag-driven decision must not name matching_conditions — "
                 "red flags escalate on a symptom pattern without asserting what "
-                "it is, the same discipline CLAUDE.md already applies to cancer"
+                "it is, the same discipline CLAUDE.md already applies to cancer "
+                "(EMERGENCY is the one deliberate exception to this — see the "
+                "class docstring)"
             )
         return self

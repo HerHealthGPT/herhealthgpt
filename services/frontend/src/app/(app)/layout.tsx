@@ -1,10 +1,5 @@
-import { SiteHeader } from "@/components/layout/site-header";
+import { AppShell } from "./app-shell";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <SiteHeader />
-      <main className="flex flex-1 flex-col">{children}</main>
-    </>
-  );
+  return <AppShell>{children}</AppShell>;
 }

@@ -163,6 +163,36 @@ if evidence says it should be.
 - A fallback-fetch review-queue log — new, append-only, read by whoever
   authors the next evidence batch.
 
+### Citations resolve to quoted text and a real link (added 2026-09-02)
+
+`TriageDecision.citations` is a list of 16-hex-character content hashes.
+That is the right shape for `validate_against_knowledge_base`, and useless
+to a person: a UI can only render it as a count ("grounded in 3 sources").
+Two additions close that:
+
+- **`RetrievedPassage.url`** — the page a passage was actually fetched
+  from. `Passage` never carried one (the clean stage does not write it
+  through), but `services/data/ingest.lock.jsonl` does, keyed on exactly
+  the `(source_id, slug)` a passage has. `services/model` loads that lock
+  once at start-up (`source_urls.py`) and resolves each hit against it.
+  Unresolved stays `None` and renders as plain text — never a guessed or
+  constructed URL, which would be a fabricated citation in the one place
+  this project least tolerates one.
+- **`cited_passages` on the turn payload** (`routes.py`'s
+  `_decision_payload`) — each cited id resolved to its verbatim text,
+  citation label, source and url. Resolved *eagerly*, at the turn, and
+  persisted into the stored decision: retrieval is a live similarity
+  search, so the same id is not guaranteed to come back from a future one.
+  A reopened consultation therefore shows the same sources it showed live.
+  The key rides alongside `TriageDecision`'s fields rather than inside
+  them — that model stays `extra="forbid"`, because what the reasoning
+  model may emit and what this API renders are different contracts and
+  only the first is the safety net.
+
+The UI quotes the source sentence verbatim rather than paraphrasing it, for
+the same reason `make verify-quotes` exists: the whole verification
+protocol rests on claims being traceable to a real sentence in a real page.
+
 **Kept, unchanged:** everything ADR 0011 already kept — the seven knowledge
 files, `TriageDecision`'s schema and its validators, `TriageAgent`'s loop,
 `bge-m3` as the embedding model (ADR 0010).

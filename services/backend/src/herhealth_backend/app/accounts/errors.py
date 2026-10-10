@@ -18,6 +18,7 @@ __all__ = [
     "IncorrectPasswordResetCode",
     "PasswordResetCodeExpired",
     "TooManyPasswordResetRequests",
+    "InvalidDisplayName",
 ]
 
 
@@ -141,4 +142,26 @@ class PasswordResetCodeExpired(Exception):
 class TooManyPasswordResetRequests(Exception):
     """Raised when an address has requested a password reset too often
     recently. See ``app/accounts/password_reset_throttle.py``.
+    """
+
+
+class InvalidDisplayName(Exception):
+    """Raised when a display name is empty after normalisation or too long."""
+
+
+class InvalidDateOfBirth(Exception):
+    """Raised when a date of birth is in the future or implies an age outside
+    ``profile.MIN_AGE_YEARS``..``profile.MAX_AGE_YEARS``.
+
+    Never corrected to the nearest plausible date: age derives the
+    ``age_band`` the reasoning model is told about, so a guess here is a
+    guess about what the system suspects.
+    """
+
+
+class InvalidHealthNote(Exception):
+    """Raised when a health note exceeds ``profile.MAX_HEALTH_NOTE_LENGTH``.
+
+    Blank input is not an error — it clears the note. See
+    ``profile.normalize_health_note``.
     """

@@ -1,0 +1,161 @@
+# Batch 24 — the discharge cluster gets a discriminator that works.
+#
+# APPROVED 2026-09-02. Drafted by Claude in session with the repo owner, who
+# read the five rows and approved them; batches 17-23 are Mariam's separate work.
+#
+# NOTE ON AUTHORSHIP: these rows were machine-drafted from the fetched pages,
+# not authored by a clinician or by a second human from scratch. The approval
+# above is a provenance check — that each quote is verbatim and each row
+# restates it — not a clinical review. CLAUDE.md's standing limitation applies.
+#
+# WHY THIS BATCH EXISTS
+#
+# Before it, three conditions shared one identical row:
+#
+#   bacterial_vaginosis  (1 row)   abnormal_discharge: yes -> strong_support
+#   thrush               (3 rows)  abnormal_discharge: yes -> strong_support
+#   sexually_transmitted (7 rows)  abnormal_discharge: yes -> strong_support
+#
+# So abnormal_discharge raised all three by the same amount, and every other
+# row in the cluster raised STI. Bacterial vaginosis had nothing else at all
+# and could never outrank the infective reads. NHS opens its BV page with
+# "Bacterial vaginosis (BV) is a common cause of unusual vaginal discharge."
+# and CLAUDE.md lists BV as "the commonest cause" of that feature; the grid
+# did not reflect either. ingest_targets.yaml already names this problem in
+# its own comment above these five documents.
+#
+# vulval_itching (added 2026-08-04) was the first attempt and only half worked.
+# It raises thrush, but the BV half is blocked by a source conflict:
+#
+#   NHS  "Bacterial vaginosis does not usually cause any soreness or itching."
+#   WH   "Itching around the outside of the vagina"   (listed under BV symptoms)
+#
+# Re-checked 2026-09-02 against freshly fetched copies — the contradiction
+# stands. No row is written either way, for either condition. A missing row is
+# neutral, which is safe.
+#
+# WHAT IS DIFFERENT ABOUT SMELL AND CONSISTENCY
+#
+# Here the two sources state the same thing rather than contradicting. Each
+# fragment below is contiguous text from the page, never stitched together
+# across an ellipsis:
+#
+#   BV smell      NHS "a strong fishy smell"
+#                 WH  "a strong fish-like odor"
+#   thrush smell  NHS "does not usually smell"
+#                 WH  "does not have a bad smell"
+#   BV look       NHS "greyish-white, thin and watery"
+#                 WH  "It may also be foamy or watery"
+#   thrush look   NHS "often like cottage cheese"
+#                 WH  "A thick, white vaginal discharge that looks like
+#                      cottage cheese"
+#
+# SOURCE CHOICE
+#
+# evidence.csv has never carried two rows for one (condition, feature, value)
+# cell — checked across all 135 rows — because the score sums the weights, so a
+# second row would double-count. One source per cell, therefore. Where the two
+# agree, womenshealth is taken: it is public domain and may enter
+# passages.parquet, while NHS is citable_only and cannot. NHS's higher
+# precedence (2) decides conflicts, and none of these four cells has one.
+#
+# Every source_quote below is a COMPLETE paragraph, copied exactly as the page
+# states it, including the sentences that are not the reason for the row. NHS
+# wording is quoted inside notes only as corroboration, never as the row's
+# source, and is likewise copied exactly.
+#
+# NO argues_against ROWS. "does not usually smell" is close to explicit, but
+# the categorical already separates the two conditions, so the row would add
+# weight without adding information. CLAUDE.md: if in doubt, omit.
+
+batch: 24
+covers: [bacterial_vaginosis, thrush]
+
+approved: true
+reviewed_on: 2026-09-02
+
+rows:
+  # --- discharge_smell -------------------------------------------------------
+  - condition_id: bacterial_vaginosis
+    feature_id: discharge_smell
+    value: fishy
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Unusual vaginal discharge. The discharge can be white (milky) or gray.
+      It may also be foamy or watery. Some women report a strong fish-like
+      odor, especially after sex.
+    note: >-
+      The row rests on the last sentence of this paragraph. Strong because the
+      odour is named for BV specifically rather than listed among general
+      findings, and NHS states it as its own separate symptom bullet: "an
+      unusual vaginal discharge that has a strong fishy smell, particularly
+      after sex". The source hedges with "Some women report", so this raises
+      BV rather than settling it.
+
+  - condition_id: thrush
+    feature_id: discharge_smell
+    value: none
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      A thick, white vaginal discharge that looks like cottage cheese and does
+      not have a bad smell
+    note: >-
+      Strong because the absence of smell is written into the description of
+      the discharge itself rather than listed separately. NHS states the same
+      within its own discharge bullet: "white vaginal discharge (often like
+      cottage cheese), which does not usually smell".
+
+  # --- discharge_appearance --------------------------------------------------
+  - condition_id: bacterial_vaginosis
+    feature_id: discharge_appearance
+    value: thin_watery
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      Unusual vaginal discharge. The discharge can be white (milky) or gray.
+      It may also be foamy or watery. Some women report a strong fish-like
+      odor, especially after sex.
+    note: >-
+      Same paragraph as the discharge_smell row above, quoted in full again
+      because it is the source for both; the two rows rest on different
+      sentences of it. This one rests on "It may also be foamy or watery",
+      encoded as thin_watery. NHS states the consistency directly: "a change
+      to the colour and consistency of your discharge, such as becoming
+      greyish-white, thin and watery". The colour the sources also give
+      (grey/gray) is not encoded — no feature carries colour, and this batch
+      adds no feature that only one condition would use.
+
+  - condition_id: thrush
+    feature_id: discharge_appearance
+    value: thick_white
+    strength: strong_support
+    source_id: womenshealth
+    source_quote: >-
+      A thick, white vaginal discharge that looks like cottage cheese and does
+      not have a bad smell
+    note: >-
+      Same paragraph as the thrush discharge_smell row, resting here on
+      "A thick, white vaginal discharge that looks like cottage cheese".
+      Strong because "thick", "white" and the cottage-cheese comparison are
+      all stated outright rather than inferred. NHS gives the same comparison:
+      "white vaginal discharge (often like cottage cheese), which does not
+      usually smell".
+
+  # --- the rest of the thrush picture, which was thinner than it should be ---
+  - condition_id: thrush
+    feature_id: pain_opening_bowels_or_urinating
+    value: "yes"
+    strength: weak_support
+    source_id: nhs
+    source_quote: >-
+      soreness and stinging during sex or when you pee
+    note: >-
+      NHS-only. womenshealth's nearest sentence is "Burning, redness, and
+      swelling of the vagina and the vulva", which names the vagina and vulva
+      rather than passing urine, so it is not quoted for this row. Weak
+      because the sentence is one of three items in NHS's "Symptoms of thrush
+      in women" list and is not singled out as characteristic. The source says
+      nothing about what else this finding may indicate, so neither does this
+      note.

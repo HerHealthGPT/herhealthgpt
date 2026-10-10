@@ -25,13 +25,14 @@ that module's docstring.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from sqlalchemy import (
     TIMESTAMP,
     Boolean,
     CheckConstraint,
+    Date,
     ForeignKey,
     Index,
     Text,
@@ -46,6 +47,7 @@ __all__ = [
     "CredentialKind",
     "User",
     "Credential",
+    "HealthNote",
     "Session",
     "SignInFailure",
     "EmailVerificationCode",
@@ -78,6 +80,19 @@ class User(Base):
     email_verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    #: How she wants to be greeted in the UI. Optional — never her login id.
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Demographic, not clinical, which is why it belongs on the user at all
+    #: (see HealthNote for the part that does not). Stored as a date rather
+    #: than an age band so it cannot go stale: age crosses 45 on a birthday,
+    #: and knowledge/features.yaml records that 45 is what separates
+    #: perimenopause from PCOS. The band is derived at read time — see
+    #: herhealth_backend.triage.age_bands.
+    #:
+    #: Nullable, though the product asks every new sign-up for it: accounts
+    #: that predate migration 0009 have no date, and a placeholder would be a
+    #: fact we invented. Absent means unknown and is handled as unknown.
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
     )
@@ -94,6 +109,59 @@ class User(Base):
     password_reset_code: Mapped[PasswordResetCode | None] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    health_note: Mapped[HealthNote | None] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class HealthNote(Base):
+    """Anything a user chooses to tell us about her health once, so she does
+    not have to repeat it at the start of every consultation. Optional.
+
+    Its own table rather than a column on ``User`` because
+    ``services/backend/CONTEXT.md`` defines a user as holding "an email
+    address and nothing clinical — everything she reports lives in a
+    conversation, not on her". This is the exception that glossary now
+    records (ADR 0015), and keeping it separate is what makes it true: the
+    note can be deleted on its own, the way that glossary already describes
+    optional cycle data, without closing her account.
+
+    One row per user, edited in place — the same shape as
+    ``EmailVerificationCode``, for a related reason: two rows would mean two
+    answers to "what has she told us", and nothing would say which is
+    current.
+
+    **Not a medical record, and the word is avoided deliberately.** It is
+    unverified free text she typed, it is never treated as a symptom she is
+    reporting today, and it can never fire a red flag — see
+    ``herhealth_backend.app.triage.routes`` for how it reaches the model.
+
+    ``content`` is stored in plaintext, like ``messages.content``. The
+    application-layer encryption ``CONTEXT.md`` records as settled is not
+    built yet; this column inherits that gap rather than introducing it, and
+    ADR 0015's risk register says so.
+    """
+
+    __tablename__ = "health_notes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+        onupdate=text("now()"),
+    )
+
+    user: Mapped[User] = relationship(back_populates="health_note")
 
 
 class Credential(Base):

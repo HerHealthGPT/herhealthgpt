@@ -1,21 +1,14 @@
 """Central mapping from Accounts domain exceptions to HTTP responses.
-
-Registered once against the app (see ``app/main.py``), rather than
-reimplemented as a try/except in every route. The alternative already needed
-five separate except clauses across two routes for #8 and #9 combined, and
-every new Accounts use case (email verification, password reset, Google
-linking) would otherwise need its own route author to remember to add one
-more — a mistake that surfaces as a bare 500 instead of the intended 4xx, and
-is easy to miss in review since nothing forces the two to change together.
-Registering the exception here instead means a route (or a dependency, like
-``current_user.get_current_user``) only has to raise the domain exception and
-stop — no status code or wording chosen at the call site.
 """
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Request, status
+import logging
+
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from herhealth_backend.app.accounts.errors import (
     EmailAlreadyRegistered,
@@ -26,6 +19,9 @@ from herhealth_backend.app.accounts.errors import (
     IncorrectVerificationCode,
     InvalidAccessToken,
     InvalidCredentials,
+    InvalidDateOfBirth,
+    InvalidDisplayName,
+    InvalidHealthNote,
     InvalidSession,
     NoPasswordCredential,
     PasswordResetCodeExpired,
@@ -35,11 +31,37 @@ from herhealth_backend.app.accounts.errors import (
     VerificationCodeExpired,
 )
 from herhealth_backend.app.accounts.password_policy import PasswordTooWeak
+from herhealth_backend.app.accounts.profile import MAX_HEALTH_NOTE_LENGTH, MIN_AGE_YEARS
 
 __all__ = ["register_error_handlers"]
 
+logger = logging.getLogger(__name__)
+
+_USER_FACING_UNAVAILABLE = "Service temporarily unavailable. Try again shortly."
+_USER_FACING_ERROR = "Something went wrong. Please try again."
+
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(SQLAlchemyError)
+    async def _database_unavailable(
+        request: Request, exc: SQLAlchemyError
+    ) -> JSONResponse:
+        logger.exception("database error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": _USER_FACING_UNAVAILABLE},
+        )
+
+    @app.exception_handler(Exception)
+    async def _unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+        if isinstance(exc, (HTTPException, RequestValidationError)):
+            raise exc
+        logger.exception("unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": _USER_FACING_ERROR},
+        )
+
     @app.exception_handler(PasswordTooWeak)
     async def _password_too_weak(request: Request, exc: PasswordTooWeak) -> JSONResponse:
         return JSONResponse(
@@ -188,4 +210,39 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             content={"detail": "Too many attempts. Try again later."},
+        )
+
+    @app.exception_handler(InvalidDisplayName)
+    async def _invalid_display_name(
+        request: Request, exc: InvalidDisplayName
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={"detail": "Name must be between 1 and 80 characters."},
+        )
+
+    @app.exception_handler(InvalidDateOfBirth)
+    async def _invalid_date_of_birth(
+        request: Request, exc: InvalidDateOfBirth
+    ) -> JSONResponse:
+        # Says which way it is wrong without echoing the date back, and
+        # without naming 120 — a user who typed 1902 by accident needs to
+        # know to check the year, not to learn our exact bounds.
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "detail": (
+                    "Please check your date of birth. You must be at least "
+                    f"{MIN_AGE_YEARS} to use HerHealthGPT."
+                )
+            },
+        )
+
+    @app.exception_handler(InvalidHealthNote)
+    async def _invalid_health_note(request: Request, exc: InvalidHealthNote) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "detail": f"Please keep this under {MAX_HEALTH_NOTE_LENGTH} characters."
+            },
         )

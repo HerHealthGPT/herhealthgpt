@@ -24,11 +24,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 from herhealth_backend.app.eventloop import use_selector_loop_on_windows
 
-HOST = "127.0.0.1"
-PORT = 8000
+# Loopback by default, so running this by hand on a dev box exposes nothing
+# to the network. A container must bind 0.0.0.0 or nothing outside it can
+# reach the port, so both are read from the environment and the Dockerfile
+# sets them — rather than the image overriding a hard-coded literal.
+HOST = os.environ.get("HERHEALTH_HOST", "127.0.0.1")
+PORT = int(os.environ.get("HERHEALTH_PORT", "8000"))
 
 
 def main() -> None:

@@ -1,0 +1,23 @@
+# Copy to terraform.tfvars (gitignored) and fill in. These two values have no
+# default on purpose. Everything else in variables.tf has a sensible default.
+
+# Receives CloudWatch alarm mail, the AWS Budget alert and Let's Encrypt expiry
+# notices. AWS emails a confirmation link to this address: click it.
+alert_email = "you@example.org"
+
+# sha256 of the docker-compose-linux-x86_64 binary for `compose_version` in
+# variables.tf. Look it up on that exact release's page
+# (https://github.com/docker/compose/releases) and confirm the tag exists. The
+# host downloads and runs this binary as root at first boot, so do not paste a
+# value you have not checked. Placeholder below is deliberately invalid and fails
+# `terraform validate`/plan until replaced.
+compose_sha256 = "REPLACE-WITH-64-LOWERCASE-HEX-FROM-THE-RELEASE-PAGE"
+
+# FIRST run `aws iam list-open-id-connect-providers`. Only if it already lists
+# token.actions.githubusercontent.com (an account holds one per URL):
+# create_github_oidc_provider = false
+
+# Optional read-only role for the PR `terraform plan` job. Off by default:
+# ReadOnlyAccess reads the whole account (S3 objects, CloudWatch Logs). See
+# docs/runbooks/aws-deploy.md, section 5, before turning it on.
+# create_plan_role = true

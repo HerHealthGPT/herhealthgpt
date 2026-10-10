@@ -1,0 +1,135 @@
+#!/bin/bash
+# First-boot bootstrap for the HerHealthGPT host (Amazon Linux 2023, x86_64).
+# Rendered by Terraform (ec2.tf) and run ONCE by cloud-init as root. Log:
+# /var/log/herhealth-bootstrap.log. Nothing here is secret; secrets are fetched
+# later by /opt/herhealth/refresh-secrets.sh using the instance role.
+#
+# NOTE for editors: this is a Terraform template (templatefile), so every
+# brace-dollar sequence is an interpolation. Plain $VAR needs no escaping; a
+# literal brace-dollar for a program that has its own syntax (the CloudWatch
+# agent block below) is written with a doubled dollar sign.
+set -euxo pipefail
+exec > >(tee -a /var/log/herhealth-bootstrap.log) 2>&1
+
+# --- packages ---------------------------------------------------------------
+# All four are packages in the Amazon Linux 2023 repositories (to be confirmed
+# on first boot: that is what the check below is for). dnf install already
+# fails on an unknown name; rpm -q makes the failure name the culprit.
+dnf install -y docker jq amazon-cloudwatch-agent dnf-automatic
+for pkg in docker jq amazon-cloudwatch-agent dnf-automatic; do
+  rpm -q "$pkg" >/dev/null || { echo "BOOTSTRAP FAILED: package $pkg is not installed" >&2; exit 1; }
+done
+
+# --- unattended security updates --------------------------------------------
+# Security errata only, applied automatically. Kernel updates still need a
+# reboot to take effect; the runbook schedules one rather than rebooting
+# unattended under live traffic.
+sed -i 's/^upgrade_type.*/upgrade_type = security/; s/^apply_updates.*/apply_updates = yes/' /etc/dnf/automatic.conf
+# sed does nothing, silently, if a key is absent or commented out. Check the
+# result instead of assuming it, and fail the bootstrap loudly if it is wrong
+# rather than leave a host that never patches itself.
+grep -qx 'upgrade_type = security' /etc/dnf/automatic.conf   || { echo "BOOTSTRAP FAILED: /etc/dnf/automatic.conf does not say 'upgrade_type = security' after editing" >&2; exit 1; }
+grep -qx 'apply_updates = yes' /etc/dnf/automatic.conf   || { echo "BOOTSTRAP FAILED: /etc/dnf/automatic.conf does not say 'apply_updates = yes' after editing" >&2; exit 1; }
+systemctl enable --now dnf-automatic.timer
+systemctl is-enabled --quiet dnf-automatic.timer   || { echo "BOOTSTRAP FAILED: dnf-automatic.timer is not enabled" >&2; exit 1; }
+
+# --- docker -----------------------------------------------------------------
+install -d /etc/docker
+cat >/etc/docker/daemon.json <<'EOF'
+{ "live-restore": true }
+EOF
+systemctl enable --now docker
+
+# AL2023 does not package the compose plugin. Pinned release, checksum
+# verified: this binary runs as root.
+install -d /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+echo "${compose_sha256}  /usr/local/lib/docker/cli-plugins/docker-compose" | sha256sum -c -
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+docker compose version
+
+# --- swap: a 2 GB safety net under the 4 GB retrieval limit -----------------
+if ! swapon --show | grep -q /swapfile; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+fi
+
+# --- /opt/herhealth ---------------------------------------------------------
+install -d -m 755 /opt/herhealth
+
+cat >/opt/herhealth/instance.env <<'EOF'
+# Non-secret facts about this host, written by Terraform at first boot.
+AWS_REGION=${region}
+AWS_DEFAULT_REGION=${region}
+ACCOUNT_ID=${account_id}
+DOMAIN=${domain}
+ACME_EMAIL=${acme_email}
+ARTIFACTS_BUCKET=${artifacts_bucket}
+ECR_REGISTRY=${ecr_registry}
+DB_HOST=${db_host}
+DB_PORT=${db_port}
+DB_NAME=${db_name}
+DB_SECRET_ARN=${db_secret_arn}
+SECRET_OPENROUTER=${secret_openrouter}
+SECRET_SESSION=${secret_session}
+SECRET_GOOGLE=${secret_google}
+EOF
+chmod 644 /opt/herhealth/instance.env
+
+echo '${deploy_stub_b64}' | base64 -d >/opt/herhealth/deploy.sh
+echo '${caddy_data_b64}'  | base64 -d >/opt/herhealth/caddy-data.sh
+chmod 755 /opt/herhealth/deploy.sh /opt/herhealth/caddy-data.sh
+
+# --- secrets refresh every 15 minutes (RDS password rotation) --------------------------
+cat >/etc/systemd/system/herhealth-refresh-secrets.service <<'EOF'
+[Unit]
+Description=Refresh HerHealthGPT secrets; recreate the backend if the database URL changed
+After=docker.service network-online.target
+# refresh-secrets.sh arrives with the first deploy; until then skip, do not fail.
+ConditionPathExists=/opt/herhealth/refresh-secrets.sh
+
+[Service]
+Type=oneshot
+ExecStart=/opt/herhealth/refresh-secrets.sh --restart-on-change
+EOF
+
+cat >/etc/systemd/system/herhealth-refresh-secrets.timer <<'EOF'
+[Unit]
+Description=HerHealthGPT secrets refresh every 15 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now herhealth-refresh-secrets.timer
+
+# --- CloudWatch agent: disk and memory (the two things that fill up silently)
+cat >/opt/aws/amazon-cloudwatch-agent/etc/herhealth.json <<'EOF'
+{
+  "agent": { "metrics_collection_interval": 300 },
+  "metrics": {
+    "namespace": "HerHealth/EC2",
+    "append_dimensions": { "InstanceId": "$${aws:InstanceId}" },
+    "metrics_collected": {
+      "disk": { "measurement": ["used_percent"], "resources": ["/"], "drop_device": true },
+      "mem":  { "measurement": ["mem_used_percent"] }
+    }
+  }
+}
+EOF
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/herhealth.json
+
+# Marker the runbook checks (docs/runbooks/aws-deploy.md, "First apply"): its
+# absence means cloud-init stopped partway; read /var/log/herhealth-bootstrap.log.
+touch /opt/herhealth/.bootstrap-ok
+echo "herhealth bootstrap complete"

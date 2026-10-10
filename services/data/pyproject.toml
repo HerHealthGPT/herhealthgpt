@@ -40,6 +40,10 @@ retrieval = [
     # thousand sentences that is exact, fast, and needs no index-building step —
     # FAISS earns its keep somewhere above ~100k vectors, not here.
     "numpy>=1.26",
+    # Declared directly only so that the CPU-index source below applies: uv
+    # applies tool.uv.sources to DIRECT dependencies, and torch otherwise arrives
+    # only through sentence-transformers. No upper bound; uv.lock pins the version.
+    "torch>=2.0",
     # Wraps BAAI/bge-m3. Chosen on published Arabic RAG results; see ADR 0010.
     # Imported lazily, so this is only needed when actually embedding.
     "sentence-transformers>=3.0",
@@ -52,6 +56,9 @@ herhealth-data = "herhealth_data.cli:main"
 
 [tool.uv.sources]
 herhealth-contracts = { workspace = true }
+# Linux only: Windows/macOS wheels on PyPI are already CPU builds. The index
+# itself is declared in the workspace root pyproject.toml.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/herhealth_data"]

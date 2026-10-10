@@ -1,4 +1,6 @@
-"""The guarded web-search fallback — docs/adr/0012-openrouter-reasoning-and-guarded-web-fallback.md, §3.
+"""The guarded web-search fallback — ADR 0012 §3.
+
+See docs/adr/0012-openrouter-reasoning-and-guarded-web-fallback.md.
 
 Fires only when the reviewed index has nothing usable for a query (that
 decision is the caller's — see ``app.py``). Every rule from the ADR's §3 is
@@ -177,7 +179,13 @@ class WebSearchFallback:
 
         sections = clean_html(body)
         return [
-            FallbackPassage(source_id=source_id, url=url, heading=section.heading, text=sentence, score=0.0)
+            FallbackPassage(
+                source_id=source_id,
+                url=url,
+                heading=section.heading,
+                text=sentence,
+                score=0.0,
+            )
             for section in sections
             for sentence in split_sentences(section.text)
             if len(sentence) >= _MIN_SENTENCE_CHARS

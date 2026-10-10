@@ -29,3 +29,24 @@ htmlcov/
 Thumbs.db
 .idea/
 .vscode/
+
+docs/submissions/
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat
+
+# Terraform. The lock file (.terraform.lock.hcl) IS committed; local state,
+# plan files and provider caches are not. The bootstrap stack's state is local
+# by design (infra/terraform/bootstrap/main.tf).
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+# Variable files carry real values (alert address, checksums). Examples are tracked.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example

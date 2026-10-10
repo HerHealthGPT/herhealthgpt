@@ -5,7 +5,7 @@
  * Base path is proxied to the backend via Next.js rewrites (/api → localhost:8000).
  */
 import { apiRequest } from "./client";
-import type { UserSummary } from "./types";
+import type { HealthNote, UserSummary } from "./types";
 
 /** POST /accounts/register → 201 */
 export function register(email: string, password: string) {
@@ -31,7 +31,7 @@ export function signInWithGoogle(idToken: string) {
   });
 }
 
-/** POST /accounts/verify-email → 200 */
+/** POST /accounts/verify-email → 200 + access_token / refresh_token cookies */
 export function verifyEmail(email: string, code: string) {
   return apiRequest<UserSummary>("/accounts/verify-email", {
     method: "POST",
@@ -72,6 +72,61 @@ export function getCurrentUser() {
   return apiRequest<UserSummary>("/accounts/me");
 }
 
+/** PATCH /accounts/me → 200 */
+export function updateProfile(displayName: string | null) {
+  return apiRequest<UserSummary>("/accounts/me", {
+    method: "PATCH",
+    body: { display_name: displayName },
+  });
+}
+
+/** PATCH /accounts/me → 200, or 400 if the date is implausible.
+ *
+ *  Sets BOTH mandatory profile fields in one request, and it has to be one
+ *  request: the backend's `display_name` key means "clear the name" when
+ *  absent (see UpdateProfileRequest), so a call sending only a date of birth
+ *  wipes the name as a side effect. The previous `updateDateOfBirth` did
+ *  exactly that — harmless while nothing set a name, a data-loss bug the
+ *  moment one is collected.
+ *
+ *  `dateOfBirth` is ISO `YYYY-MM-DD`. */
+export function completeProfile(displayName: string, dateOfBirth: string) {
+  return apiRequest<UserSummary>("/accounts/me", {
+    method: "PATCH",
+    body: { display_name: displayName, date_of_birth: dateOfBirth },
+  });
+}
+
+/** PATCH /accounts/me → 200, or 400 if the date is implausible.
+ *
+ *  Date of birth alone, for the settings form. Safe now that the backend
+ *  only touches fields a request actually names — before that change this
+ *  had to send `display_name: null` and wiped the name as a side effect. */
+export function updateDateOfBirth(dateOfBirth: string) {
+  return apiRequest<UserSummary>("/accounts/me", {
+    method: "PATCH",
+    body: { date_of_birth: dateOfBirth },
+  });
+}
+
+/** GET /accounts/health-note → 200 */
+export function getHealthNote() {
+  return apiRequest<HealthNote>("/accounts/health-note");
+}
+
+/** PUT /accounts/health-note → 200. Null or blank clears it. */
+export function saveHealthNote(content: string | null) {
+  return apiRequest<HealthNote>("/accounts/health-note", {
+    method: "PUT",
+    body: { content },
+  });
+}
+
+/** DELETE /accounts/health-note → 204. Deletes the note, not the account. */
+export function deleteHealthNote() {
+  return apiRequest<void>("/accounts/health-note", { method: "DELETE" });
+}
+
 /** POST /accounts/refresh → 204 */
 export function refreshSession() {
   return apiRequest<void>("/accounts/refresh", { method: "POST" });
@@ -87,4 +142,9 @@ export function signOutEverywhere() {
   return apiRequest<void>("/accounts/sign-out-everywhere", {
     method: "POST",
   });
+}
+
+/** DELETE /accounts/me → 204, permanently deletes the signed-in user */
+export function deleteAccount() {
+  return apiRequest<void>("/accounts/me", { method: "DELETE" });
 }

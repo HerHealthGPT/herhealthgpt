@@ -49,8 +49,8 @@ Consequences, all binding:
    (`packages/contracts/src/herhealth_contracts/decision.py`), a
    schema-constrained structure enforced by vLLM guided decoding — the one
    hard rule left, in place of a log-odds score. **The current QLoRA adapter
-   (trained on `gold_seeds_styled.csv`) may not be handed this decision as
-   it stands** — it was shown no example where the correct move is a
+   (trained on `ft_corpus_v1.jsonl`, 2,700 rows — see below) may not be
+   handed this decision as it stands** — it was shown no example where the correct move is a
    clarifying question, which is the documented cause of clarification
    collapsing to 0.000 in the original evaluation. It must be retrained on
    multi-turn conversational data before it decides anything; until that
@@ -91,8 +91,11 @@ services/data/        ingestion, evaluation harness, benchmark cases
 packages/contracts/   Pydantic schemas, error codes, safety policy
 packages/types-ts/    TypeScript generated from the OpenAPI spec
 knowledge/            the seven knowledge files (see below)
-infra/                compose.yml, envs/*.env, Caddy, Prometheus
-.github/workflows/    path-filtered CI
+infra/                compose.yml (local dev), compose.prod.yml (production),
+                      envs/*.env, caddy/, deploy/ (host scripts), terraform/
+                      (AWS). Caddy is kept — now on the EC2 host; CloudWatch
+                      replaces Prometheus for production.
+.github/workflows/    CI (path-filtered) and the production deploy
 ```
 
 **Frontend is a normal responsive web app.** No service worker, no manifest, no
@@ -112,10 +115,26 @@ chunking is load-bearing for `make verify-quotes`, not a tuning knob. A reranker
 is deferred until retrieval evaluation shows the right passage retrieved but
 ranked outside top *k*. See [`docs/adr/0010`](docs/adr/0010-multilingual-embeddings-beat-arabic-specific-ones.md).
 
-**Deploy:** merge to main → path-filtered CI builds only what changed → image
-tagged with the git SHA → PR bumps that tag in `infra/envs/staging.env` → merge
-triggers a self-hosted runner on the GPU server. Rollback is `git revert`.
-Nothing is ever edited directly on the server.
+**Deploy:** merge to main → the `deploy` workflow builds the three images
+(frontend, backend, retrieval) tagged with the git SHA, pushes them to ECR,
+uploads `infra/compose.prod.yml` and the Caddyfile to S3, and runs
+`/opt/herhealth/deploy.sh <sha>` on the single EC2 host through SSM Run Command.
+The host migrates the database, switches the release, health-checks through
+Caddy, and rolls back to the previous tag by itself if the check fails.
+Rollback by hand is `git revert` (same pipeline). `terraform apply` is run
+manually, never by CI. Nothing is ever edited directly on the server — the SSM
+shell is for reading logs and diagnosing.
+
+Production runs the **Base model via OpenRouter only**; the model selector is
+off and the fine-tuned adapter stays campus/dev-only (see "The fine-tuned model"
+below). The retrieval index deployed to production must be built with quote-only
+(NHS) passages excluded (`index --exclude-quote-only`);
+`scripts/publish-index.sh` refuses to upload any index containing them, so NHS
+text is never in S3 or an image. Full procedure,
+trade-offs (single server, single-AZ database, no staging, no WAF) and the
+pre-demo checklist: [`docs/runbooks/aws-deploy.md`](docs/runbooks/aws-deploy.md).
+The earlier plan of a self-hosted runner on the GPU server is not the
+production path; the campus GPU box remains the dev vLLM host.
 
 ---
 
@@ -124,36 +143,52 @@ Nothing is ever edited directly on the server.
 Seven files under `knowledge/`. Five are hand-authored and reviewed, kept as
 plain text in git so every change appears as a reviewable diff.
 
-Counts are **as built on 2026-08-19**, read from the files. They are not targets.
+Counts are **as built on 2026-09-02**, read from the files. They are not targets.
 If you change a file, change the number here in the same commit.
 
-**These counts reflect only APPROVED batches.** A larger dataset-generation pass
-landed 2026-08-19 with 11 more batches (`batch_13` through `batch_23`, ~30 rows,
-7 new conditions) still awaiting the second-reviewer approval the protocol
-requires — see `services/data/evidence_batches/`. Re-run `make evidence` and
-update this table again once they are reviewed; do not treat the numbers below
-as final.
+**Batches 13–24 have landed.** Batches 13–23 (drafted 2026-08-19) completed
+review, taking `evidence.csv` 98 → 135 rows and giving the seven conditions
+added that day their evidence. Batch 24 followed on 2026-09-02: two new
+features and 5 rows, 135 → 140. The numbers below are read from the files and
+count every approved batch in `services/data/evidence_batches/` (`batch_04`
+through `batch_24`).
 
 | File | Rows | What it is |
 |---|---|---|
-| `features.yaml` | 37 | Everything the system may ask about |
+| `features.yaml` | 39 | Everything the system may ask about |
 | `conditions.yaml` | 19 | Everything the system may suspect |
-| `evidence.csv` | 98 | The sparse grid connecting them |
+| `evidence.csv` | 140 | The sparse grid connecting them |
 | `red_flags.yaml` | 16 | Deterministic escalation rules |
 | `sources.yaml` | 5 | Provenance, licence, precedence |
 | `weights.yaml` | — | Ordinal-to-log-odds mapping, tunable |
 | `actions.yaml` | 4 | Four action codes, resolved per locale |
 
-`evidence.csv` rows by source: NHS 42, womenshealth 30, MedlinePlus 17, NICHD 8,
-CDC 1. By strength: `weak_support` 55, `strong_support` 34, `argues_against` 9,
+`evidence.csv` rows by source: womenshealth 57, NHS 47, MedlinePlus 26, NICHD 8,
+CDC 2. By strength: `weak_support` 85, `strong_support` 45, `argues_against` 10,
 and **no `rules_out` row has ever been authored** — see ADR 0009, which must be
 revisited before the first one is.
 
-**7 of 19 conditions currently have zero evidence** (`hypothyroidism`,
-`primary_ovarian_insufficiency`, `inherited_bleeding_disorder`, `bladder_pain`,
-`pelvic_organ_prolapse`, `iron_deficiency_anaemia`, `infertility`) — each is
-schema-valid and its evidence is drafted in a pending batch, but `make validate`
-correctly warns that nothing can raise them until that batch is approved.
+**Every condition now carries at least one evidence row.** The thinnest are
+`bacterial_vaginosis`, `infertility`, `inherited_bleeding_disorder` and
+`iron_deficiency_anaemia` (3 each), then `pelvic_organ_prolapse` (4) — these are
+where the differential is most likely to be weak, and where the next authoring
+pass should go before any new condition is added.
+
+**`make verify-quotes` is the check that makes the protocol real, and it needs a
+complete `build/clean`.** It reads the cleaned corpus, which is gitignored and
+absent on a fresh clone, so it reports `NOT_FOUND` for any row whose source page
+has not been fetched and cleaned locally — indistinguishable at a glance from a
+fabricated quote. On 2026-09-02 it failed on 31 quotes for exactly this reason:
+`build/clean` held 49 of 67 documents, all 18 missing ones belonging to the
+conditions added on 2026-08-19. After re-fetching them, **all 156 quotes verify
+verbatim**. Run `make fetch && make clean` before trusting a failure.
+
+**Seven features carry no evidence row, and that is correct.**
+`pregnancy_status`, `bleeding_after_menopause`, `feeling_faint`,
+`shoulder_tip_pain`, `right_upper_quadrant_pain`, `difficulty_breathing` and
+`sudden_confusion` appear only in `red_flags.yaml`. They exist to fire
+escalation rules, not to raise a condition in the roster — the same discipline
+that keeps cancers out of `conditions.yaml`. Do not "fill them in".
 
 Counting `evidence.csv` with `wc -l` gives the wrong answer. `source_quote` and
 `note` contain embedded newlines; parse it as CSV.
@@ -246,16 +281,31 @@ rather than escalated. That stale row was deleted the same day the red flag was
 added; see `services/data/evidence_batches/batch_07_perimenopause_sti.yaml`'s
 amended note.
 
+**Red-flag conclusions name no condition — except at `EMERGENCY`.** ADR 0011
+generalised the cancer rule above to every red flag: escalate on the symptom
+pattern, never assert what it is.
+[ADR 0013](docs/adr/0013-emergency-conclusions-may-name-conditions.md)
+(**proposed**, 2026-09-02) narrows that to allow `matching_conditions`
+alongside `red_flag_id` **only** when the action is `EMERGENCY` — so a woman
+being sent to an emergency department is told what patterns the warning sign
+relates to. `URGENT_SAME_DAY` red flags (most of `red_flags.yaml`, including
+`severe_pelvic_pain`) keep the original restriction unchanged. This is a
+product judgement, not a finding that the old rule was wrong, and ADR 0013's
+risk register says so plainly. It does not touch "never diagnoses": a named
+condition is still *"may match patterns our sources associate with…"*, never
+*"you have…"*. Cancer stays unmodelled and therefore unnameable — it is not in
+`conditions.yaml`, so the closed vocabulary still cannot produce it.
+
 ### The five evidence weights, and nothing else
 
 `strong_support` `weak_support` `neutral` `argues_against` `rules_out`
 
 `neutral` means **omit the row**. The file is sparse, and much sparser than it
-looks: 19 conditions × 37 features is 703 possible cells, and 98 carry meaning —
-**14% filled**, sparser than before despite more rows, because seven new
-conditions arrived with no evidence yet (see the pending-batches note above). A
-missing row is not a gap to be filled in; it is the correct
-representation of "this source does not connect these two things".
+looks: 19 conditions × 39 features is 741 possible cells, and 140 carry meaning —
+**19% filled**. Seven of those 39 features are red-flag-only and will never carry
+an evidence row (see above), so the reachable grid is smaller than 741 and the
+real fill is higher than 19%. A missing row is not a gap to be filled in; it is
+the correct representation of "this source does not connect these two things".
 
 ### The four action codes, and nothing else
 
@@ -353,12 +403,15 @@ it.
 | CDC | `cdc` | 4 | US federal, public domain *(unverified)* | **available** |
 | NHS website | `nhs` | 2 | Crown copyright, no reuse grant | **citable_only** |
 
-**`womenshealth` (womenshealth.gov) carries 30 of the 98 evidence rows** — the
-second-largest contributor after NHS, and the largest that may actually be
-ingested. NHS supplies more rows but none of them may enter `passages.parquet`,
-which is why the ingestable corpus is smaller than the row count suggests.
-MedlinePlus grew from 13 to 17 rows in the 2026-08-19 pass — still third, but
-narrowing the gap.
+**`womenshealth` (womenshealth.gov) carries 57 of the 140 evidence rows and has
+overtaken NHS (47) as the largest contributor.** That reversal matters more than
+the count: womenshealth is public domain and ingestable, NHS is `citable_only`
+and none of its rows may enter `passages.parquet`. So the ingestable corpus is
+still smaller than the row count suggests, but the gap is closing from the right
+side. MedlinePlus grew 17 → 26 across batches 13–23, CDC 1 → 2. **Prefer
+womenshealth and MedlinePlus when a fact is available from more than one source
+at equal precedence** — an NHS-only row is citable but unretrievable, so it
+strengthens the differential without strengthening RAG.
 
 **MedlinePlus has a split licence and it matters.** Health topic summaries are
 public domain. The A.D.A.M. Medical Encyclopedia (`medlineplus.gov/ency/*`) and
@@ -402,8 +455,21 @@ inheriting an assumption.
 womenshealth 3, then CDC 4. Numbering gaps are the removed sources, so the
 ordering stays stable if a licence is ever cleared. Three sources share
 precedence 3, so a conflict among them is **not resolvable by precedence** and
-must go to `build/conflicts.jsonl` with the higher urgency taken. Never resolve a
-conflict silently.
+is recorded in the relevant row's, feature's or condition's own `note` with the
+higher urgency taken. Never resolve a conflict silently.
+
+`build/conflicts.jsonl` is **not** that record, and the sentence above is
+deliberately not phrased in terms of it. The file does exist and holds real
+hand-written entries, but `build/` is gitignored and no pipeline stage writes
+it — so its contents reach no reviewer, survive no fresh clone, and appear in
+no diff. Recording a conflict only there loses it. Write the note in the
+tracked file and treat `conflicts.jsonl` as scratch.
+
+Precedence resolves which source *wins*; it does not license writing the
+losing side out. Where two sources contradict each other on whether a symptom
+occurs at all — as NHS and womenshealth do on itching in bacterial vaginosis —
+the safe move is to write no row in either direction and record why, because a
+missing row is neutral. See `discharge_smell`'s note in `features.yaml`.
 
 Raw fetches are immutable: `raw/{source}/{YYYY-MM-DD}/`, never overwritten.
 Every record stores `url`, `fetched_at`, `content_hash`, `licence`.
@@ -469,15 +535,33 @@ rules sit one answer away, so that case takes ten questions rather than four.
 
 ## The fine-tuned model from our evaluation paper
 
-The paper's model was trained with **QLoRA** on
-`services/data/eval/benchmark/gold_seeds_styled.csv`: 540 rows, 90 distinct
-answers × 6 registers (`canonical`, `layperson`, `clinical`, `ambiguous`,
-`emotionally_concerned`, `indirect_cultural`).
+**The adapter was NOT trained on `gold_seeds_styled.csv`.** That file is the
+*benchmark*, and this line previously said otherwise — corrected 2026-09-11
+after reading the training repository directly. The two datasets are
+deliberately disjoint and must not be conflated.
 
-**No `Answer` in that file contains a question mark.** Not one — while 529 of the
-540 `Question` values do. The dataset has an **`ambiguous` register**, and those
-rows are paired with a complete answer too. So the model was shown 90 ambiguous
-questions and taught, every time, to answer rather than ask.
+| | file | size | what it is |
+|---|---|---|---|
+| **trained on** | `HerHealthGPT-LU_seed/ft_corpus_v1.jsonl` (training repo) | **2,700 rows** | the adaptation corpus |
+| **measured on** | `services/data/eval/benchmark/gold_seeds_styled.csv` (copy in this repo) | 540 rows | the benchmark, 90 seeds × 6 registers |
+
+**The adaptation corpus**, read from the file: fields `instruction`, `input`,
+`output`, `category`, `source_dataset`, `source_row_id`. Balanced at exactly
+**900 rows each** across `menstrual`, `pcos`, `fertility`. Source corpora:
+MENST_train24K 1,471; HealthCareMagic-100k 1,105; ChatDoctor-iCliniq 72;
+MENST_training2K 52. Built 136,109 → 17,939 → 15,510 → 2,700, dropping 2,279
+exact QA duplicates and 150 on answer length, with 317 rows excluded by a
+dual-key leakage check (`(source_dataset, source_row_id)` plus an answer hash
+for MENST). **No row shares either key with any of the 90 frozen benchmark
+seeds** — the disjointness is enforced, not assumed.
+
+**All 2,700 rows carry one fixed `instruction`:** *"You are a supportive
+women's-health information assistant. Answer the patient's question clearly and
+safely, and recommend seeing a clinician for diagnosis or treatment decisions."*
+Every example asks the model to **answer**. Not one asks it to judge whether the
+question can be answered yet. The benchmark shows the same shape from the other
+side: 529 of its 540 `Question` values contain a question mark and **none of the
+540 `Answer` values do**, including the 90 `ambiguous` rows.
 
 That is the mechanical explanation for clarification-seeking collapsing to 0.000.
 It was not an alignment mystery; it is what the data asked for.
@@ -492,8 +576,8 @@ What follows from that, and what does not:
   [ADR 0011](docs/adr/0011-controller-free-triage.md) the reasoning model *is*
   now permitted to decide, in general — but only after this adapter is
   retrained on multi-turn conversational data where the correct assistant turn
-  is sometimes a clarifying question, which does not exist in
-  `gold_seeds_styled.csv` today. Handing the untrained adapter the decision
+  is sometimes a clarifying question, which exists in neither the adaptation
+  corpus nor the benchmark today. Handing the untrained adapter the decision
   would very likely reproduce the 0.994 under-triage collapse this project
   already measured. Bootstrap data for the retrain exists at
   `services/data/eval/benchmark/bootstrap_multi_turn.jsonl`; the retraining run
@@ -504,6 +588,42 @@ What follows from that, and what does not:
   and the base can be served from one process. The adapter was fitted against an
   NF4-quantised base, so serving it against an unquantised base is a small
   distribution shift — usually fine, but **measure it, do not assume it**.
+- **Where the adapter comes from, since none of it is in this tree.**
+  Nothing in this monorepo trains the adapter; this repo only *serves* it,
+  so its provenance was otherwise undiscoverable from here. The retrain that
+  rule 1 makes a precondition for letting the adapter decide anything has to
+  happen in the first of these, not in this repo.
+
+  | what | where |
+  |---|---|
+  | training code and data | `github.com/Mazen-Bahgat/HerHealthGPT`, branch **`hassan-pc`** — the valid branch, not the default one |
+  | adaptation corpus | `HerHealthGPT-LU_seed/ft_corpus_v1.jsonl` on that branch |
+  | benchmark, EN / AR / FR | `Used_Datasets/Consolidated_Datasets/200_Seed_Dataset/gold_seeds_styled{,_ar,_fr}.jsonl` |
+  | translation workflow | `HerHealthGPT-LU_seed/translation_handoff/` — per-row translator, reviewer, status and notes |
+  | lineage audit | `EXPERIMENT_LINEAGE_AUDIT.md` — **read this before comparing any two result sets** |
+  | published weights | `huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2` |
+  | weights as served | `/home/jovyan/models/herhealth-lora-v2` on the campus box, registered as `--lora-modules herhealth=…` |
+
+- **Arabic exists in two registers, and this is an asset that is easy to miss.**
+  Every benchmark row carries both Modern Standard Arabic (`ar_text`) and an
+  Egyptian-Arabic rendering (`ar_text_slang_eg`), and the two differ in **all
+  540 rows**. The evaluation reported in the paper uses MSA for terminological
+  consistency. Egyptian-Arabic text therefore already exists and does not need
+  to be created for the dialect work — do not plan to generate it.
+
+- **There are two benchmarks in the project history, and their numbers are not
+  interchangeable.** `gold_seeds_styled` ("gss") is what the paper's results are
+  computed on. `benchmark_multilingual_v1` ("menst") is a later, separate
+  benchmark used for subsequent runs; its gold is 100% `see-doctor`, so its
+  denominators differ. `EXPERIMENT_LINEAGE_AUDIT.md` establishes that both are
+  internally valid and that comparing across them is invalid. Quote a figure
+  together with the benchmark it came from, always.
+
+  **None of these were fetched or reviewed from this session** — they are as
+  supplied by the repo owner. In particular nobody has checked that the
+  branch, the Hugging Face repo and the directory actually served on the
+  campus box are the same weights, and the served path is version-suffixed
+  (`-v2`) in a way that invites exactly that drift.
 - **Rank and target modules, confirmed 2026-08-31 against the real
   `adapter_config.json`** on `herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`
   (private, not gated): `r=16`, `lora_alpha=16`, standard LoRA (`use_dora` and
@@ -511,6 +631,46 @@ What follows from that, and what does not:
   projections (`q/k/v/o_proj`, `gate/up/down_proj`). Base model confirmed as
   `Qwen/Qwen3.5-9B`. Trained via Unsloth, `peft==0.19.1`. `max_lora_rank=16` is
   sufficient for serving.
+- **The adapter's weights were verified clean on 2026-09-09**: every tensor
+  `float32`, zero NaN, zero Inf, max |weight| ~0.41 (typical 0.03-0.08). When
+  a serve produces garbage, the adapter is not the place to look — see the
+  serving constraints below.
+
+### The base is a multimodal hybrid, not a text model
+
+Established 2026-09-09 from a live serve, and it corrects what the rest of this
+document and `README.md` previously implied. `Qwen/Qwen3.5-9B` loads as
+**`Qwen3_5ForConditionalGeneration`**: a vision tower plus a *mixed* attention
+stack in which only every fourth layer is full attention and the remainder are
+gated linear-attention (Mamba-family) blocks. The adapter's own module list is
+independent confirmation — `mlp.{gate,up,down}_proj` on all 32 layers but
+`self_attn.{q,k,v,o}_proj` on layers **3, 7, 11, 15, 19, 23, 27, 31** only,
+under the key prefix `base_model.model.model.language_model.*`.
+
+Three consequences bind anyone serving this model:
+
+1. **Multimodality must be capped on both axes.** `--limit-mm-per-prompt
+   '{"image":0,"video":0}'`. Capping `image` alone still profiles a video item
+   and reserves a 12,288-token encoder cache. The log line
+   `running in text-only mode` is the check.
+2. **On multi-GPU hosts, `--disable-custom-all-reduce` is mandatory where GPU
+   peer-to-peer access is unavailable.** vLLM's custom all-reduce silently
+   corrupts activations across a broken link until the logits are NaN, at
+   which point the sampler emits token 0 — the character `!` in Qwen's
+   byte-level BPE vocabulary. The observed symptom is a reply of
+   `!!!!!!!!!!!`, and the same broken collective deadlocks engine startup.
+   Diagnosed and fixed on the campus VM 2026-09-09;
+   [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md) §0.1
+   is the full write-up and the first thing to read when a serve misbehaves.
+3. **`max_model_len` must exceed the injected prompt.** A triage turn's system
+   prompt is ~3,200-3,600 tokens *before* retrieval — `DEFAULT_SYSTEM_PROMPT`
+   plus the feature vocabulary plus all of `red_flags.yaml` rendered verbatim
+   plus the JSON shape instruction. 4096 leaves nothing to generate into;
+   8192 is the verified working value. `_chat_completions_body` in
+   `services/backend/src/herhealth_backend/triage/clients.py` sends no
+   `max_tokens`, so vLLM defaults to whatever remains in the window — which
+   turns an oversized prompt into a validation failure and a retry loop
+   rather than a clean error. That gap is open.
 
 ## Language scope
 

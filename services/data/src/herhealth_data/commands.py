@@ -80,7 +80,31 @@ def run_fetch(args: argparse.Namespace) -> int:
 
     write_lock(records, args.lock, args.date)
     print(f"lockfile written: {args.lock}")
-    return 1 if any(r.outcome is FetchOutcome.FAILED for r in records) else 0
+
+    failed = [r for r in records if r.outcome is FetchOutcome.FAILED]
+    if failed and args.tolerate_quote_only_failures:
+        base, problems = load_knowledge_base(args.knowledge)
+        if base is None:
+            for problem in problems:
+                print(problem)
+            return 2
+        ingestable = {s.id: s.may_be_ingested for s in base.sources}
+        failed = blocking_fetch_failures(failed, ingestable)
+        if not failed:
+            print("only quote-only sources failed; they never enter the deployed index")
+    return 1 if failed else 0
+
+
+def blocking_fetch_failures(
+    failed: list[FetchRecord], ingestable: dict[str, bool]
+) -> list[FetchRecord]:
+    """The failures that matter for an index built with --exclude-quote-only.
+
+    A quote-only source's text is dropped from that index anyway, so its page
+    failing to download changes nothing there. A source missing from
+    ``ingestable`` counts as ingestable: an unknown source's failure blocks.
+    """
+    return [r for r in failed if ingestable.get(r.source_id, True)]
 
 
 def _report_fetch(records: list[FetchRecord]) -> None:
@@ -214,6 +238,18 @@ def run_index(args: argparse.Namespace) -> int:
         mark = "" if ingestable_here else "  (quote-only)"
         print(f"  {source_id:<14} {count:>5}{mark}")
     print(f"\n{quote_only} passage(s) are quote-only and must never enter the served corpus.")
+
+    # The deployed index is built with this flag: the runtime filter already
+    # hides quote-only passages from search, but without it their TEXT is still
+    # in the index files, and those files go to S3 and into the retrieval image.
+    # Dropping them before embedding keeps NHS text out of both
+    # (docs/runbooks/aws-deploy.md, "The NHS decision").
+    if args.exclude_quote_only:
+        passages = [p for p in passages if p.may_be_ingested]
+        print(f"--exclude-quote-only: dropped {quote_only}, {len(passages)} remain.")
+        if not passages:
+            print("error: nothing left to index once quote-only passages are dropped")
+            return 1
 
     embedder = _load_embedder(args.model)
     print(f"\nembedding with {embedder.name} ({embedder.dimensions}d)...")
@@ -524,6 +560,35 @@ def run_tables(args: argparse.Namespace) -> int:
     for table in tables:
         print(f"  {table.name:<12} {len(table):>4} rows")
     print(f"\nwrote {len(written)} CSV(s) and {document}")
+    return 0
+
+
+def run_cards(args: argparse.Namespace) -> int:
+    """Render the evidence grid as readable cards, by condition and by answer.
+
+    Generated and disposable like ``run_tables``. The by-answer card is the
+    one with a job beyond readability: it reports how many features actually
+    separate conditions by value and lists the presence-only ones, which is
+    the authoring work list.
+    """
+    from herhealth_data.cards import feature_reports, write_cards
+
+    base, problems = load_knowledge_base(args.knowledge)
+    if base is None:
+        print("error: the knowledge base does not load; run `make validate` first")
+        for problem in problems:
+            print(problem)
+        return 1
+
+    reports = feature_reports(base)
+    separating = [r for r in reports if r.discriminates]
+    written = write_cards(base, args.out)
+
+    print(f"  features authored        {len(reports):>4}")
+    print(f"  separate by answer       {len(separating):>4}")
+    print(f"  presence-only            {len(reports) - len(separating):>4}")
+    for path in written:
+        print(f"wrote {path}")
     return 0
 
 

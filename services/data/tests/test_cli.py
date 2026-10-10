@@ -6,12 +6,15 @@ module with the right defaults, not what the commands do.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from herhealth_data import paths
 from herhealth_data.cli import build_parser, main
+from herhealth_data.commands import blocking_fetch_failures
+from herhealth_data.ingest.store import FetchOutcome, FetchRecord
 
 # --------------------------------------------------------------------------
 # Wiring
@@ -93,12 +96,99 @@ def test_fetch_with_a_missing_target_list_cannot_run(
     assert "no target list" in capsys.readouterr().out
 
 
-def test_fetch_dry_run_makes_no_request(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_fetch_dry_run_makes_no_request(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Uses the real target list but stays a dry run, so nothing is requested."""
     code = main(["fetch", "--raw-dir", str(tmp_path), "--date", "2099-01-01"])
     assert code == 0
     output = capsys.readouterr().out
     assert "Dry run" in output
     assert not list(tmp_path.rglob("*.html"))
+
+
+# --------------------------------------------------------------------------
+# index --exclude-quote-only, offline (hashing stand-in, no model download)
+# --------------------------------------------------------------------------
+
+
+def _write_clean_doc(clean_dir: Path, source_id: str, slug: str, sentence: str) -> None:
+    document = {
+        "source_id": source_id,
+        "slug": slug,
+        "sections": [{"heading": "Symptoms", "section_type": "symptoms", "paragraphs": [sentence]}],
+    }
+    (clean_dir / source_id).mkdir(parents=True, exist_ok=True)
+    (clean_dir / source_id / f"{slug}.json").write_text(json.dumps(document), encoding="utf-8")
+
+
+def _build_index(tmp_path: Path, *extra: str) -> list[dict[str, object]]:
+    clean_dir = tmp_path / "clean"
+    # Placeholder text, not clinical content: only the source id matters here.
+    _write_clean_doc(clean_dir, "womenshealth", "page", "A placeholder sentence, public domain.")
+    _write_clean_doc(clean_dir, "nhs", "page", "A placeholder sentence from a quote-only page.")
+    index_dir = tmp_path / "index"
+    code = main(
+        [
+            "index",
+            *("--clean-dir", str(clean_dir), "--index-dir", str(index_dir)),
+            *("--model", "hashing", *extra),
+        ]
+    )
+    assert code == 0
+    lines = (index_dir / "passages.jsonl").read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines]
+
+
+def test_index_without_the_flag_keeps_quote_only_text_in_the_files(tmp_path: Path) -> None:
+    """The authoring index: NHS is present, flagged, and filtered only at query time."""
+    passages = _build_index(tmp_path)
+    assert any(p["source_id"] == "nhs" for p in passages)
+    assert any(p["may_be_ingested"] is False for p in passages)
+
+
+def test_exclude_quote_only_leaves_no_nhs_text_in_the_index_files(tmp_path: Path) -> None:
+    """What scripts/publish-index.sh checks before anything reaches S3 or an image:
+    every passage ingestable, none from nhs. Covers both source passages and the
+    evidence statements built from knowledge/ (NHS backs many of those rows)."""
+    passages = _build_index(tmp_path, "--exclude-quote-only")
+    assert passages
+    assert all(p["may_be_ingested"] is True for p in passages)
+    assert not any(p["source_id"] == "nhs" for p in passages)
+    assert any(p["passage_type"] == "evidence_statement" for p in passages)
+
+
+def test_exclude_quote_only_defaults_off() -> None:
+    assert build_parser().parse_args(["index"]).exclude_quote_only is False
+
+
+# --------------------------------------------------------------------------
+# fetch --tolerate-quote-only-failures
+# --------------------------------------------------------------------------
+
+
+def _failed(source_id: str) -> FetchRecord:
+    return FetchRecord(
+        source_id=source_id,
+        slug="page",
+        url="https://example.org/",
+        licence="x",
+        outcome=FetchOutcome.FAILED,
+    )
+
+
+def test_a_quote_only_failure_does_not_block_the_deployed_index() -> None:
+    assert blocking_fetch_failures([_failed("nhs")], {"nhs": False}) == []
+
+
+def test_an_ingestable_failure_still_blocks() -> None:
+    failure = _failed("womenshealth")
+    assert blocking_fetch_failures(
+        [failure, _failed("nhs")], {"womenshealth": True, "nhs": False}
+    ) == [failure]
+
+
+def test_an_unknown_source_failure_blocks() -> None:
+    assert len(blocking_fetch_failures([_failed("newsource")], {})) == 1
+
+
+def test_tolerating_quote_only_failures_defaults_off() -> None:
+    assert build_parser().parse_args(["fetch"]).tolerate_quote_only_failures is False

@@ -77,6 +77,16 @@ class RetrievedPassage(BaseModel):
     #: how strongly it supports a condition.
     score: float = Field(ge=-1.0, le=1.0)
 
+    #: The page this text was actually fetched from, so a citation shown to a
+    #: user is a link she can open and read rather than an internal
+    #: ``source/slug`` label. Resolved from ``services/data/ingest.lock.jsonl``
+    #: — the tracked record of what was fetched (``raw/`` itself is
+    #: gitignored) — keyed on ``(source_id, slug)``. Optional because
+    #: resolution can miss: a LIVE_FALLBACK passage carries its own live url,
+    #: and a passage whose document predates the lock file has none. A
+    #: missing url is rendered as plain text, never as a broken link.
+    url: str | None = None
+
     #: Populated only when passage_type is EVIDENCE_STATEMENT. A source
     #: passage carries none of these — it is prose, not a graded claim.
     condition_id: Identifier | None = None

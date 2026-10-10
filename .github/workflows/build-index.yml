@@ -1,0 +1,117 @@
+name: build-index
+
+# Build the production retrieval index on a GitHub runner and publish it to
+# s3://<bucket>/index/<version>/, so nobody needs the sources or the 2.3 GB
+# model on a laptop. Run by hand: Actions -> build-index -> Run workflow (main).
+#
+#   1. fetch and clean the source pages listed in services/data/ingest_targets.yaml
+#   2. pin BAAI/bge-m3 to one commit (scripts/pin-bge-m3.py)
+#   3. build the index with --exclude-quote-only: no NHS text in the files
+#   4. scripts/publish-index.sh checks it (model, no quote-only passage, counts)
+#      and uploads it; it refuses if that version already exists
+#
+# The job summary prints RETRIEVAL_INDEX_VERSION and BGE_M3_REVISION. Set both
+# as repository variables, then run the deploy workflow.
+#
+# AWS access is the index role (iam_oidc.tf): it can write index/ and nothing
+# else. Like the deploy role it trusts only main, so control of main is control
+# of what the site retrieves. That is the trade-off accepted for building here
+# rather than by hand (docs/runbooks/aws-deploy.md, section 6).
+#
+# Repository VARIABLES this needs: AWS_INDEX_ROLE_ARN (terraform output
+# index_role_arn) and ARTIFACTS_BUCKET.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bge_m3_revision:
+        description: "40-hex BAAI/bge-m3 commit to pin (empty = the model's current head)"
+        required: false
+        default: ""
+
+concurrency:
+  group: build-index
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  build:
+    # workflow_dispatch can be started from any branch; only main may publish.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required repository variables
+        env:
+          ROLE: ${{ vars.AWS_INDEX_ROLE_ARN }}
+        run: |
+          missing=0
+          for v in ROLE ARTIFACTS_BUCKET; do
+            if [ -z "${!v}" ]; then echo "::error::repository variable for $v is not set (see the header of .github/workflows/build-index.yml)"; missing=1; fi
+          done
+          [ "$missing" = 0 ]
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install from lockfile
+        run: uv sync --locked --extra ingest --extra retrieval
+
+      # Fails if any document of an INGESTABLE source fails to fetch: an index
+      # silently missing a source is worse than no new index. Quote-only (NHS)
+      # failures are reported but tolerated, because --exclude-quote-only drops
+      # that text from this index anyway.
+      - name: Fetch the source pages
+        run: uv run python -m herhealth_data.cli fetch --yes --tolerate-quote-only-failures
+
+      - name: Clean them
+        run: uv run python -m herhealth_data.cli clean
+
+      - name: Pin bge-m3
+        id: pin
+        env:
+          REQUESTED: ${{ inputs.bge_m3_revision }}
+        run: |
+          rev="$(uv run python scripts/pin-bge-m3.py "$REQUESTED" | tail -n 1)"
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
+
+      - name: Build the index without quote-only text
+        env:
+          HF_HUB_OFFLINE: "1"
+        run: uv run python -m herhealth_data.cli index --exclude-quote-only --index-dir build/index-deploy
+
+      - name: Check the index (no AWS)
+        run: bash scripts/publish-index.sh --index-dir build/index-deploy --bge-m3-revision "${{ steps.pin.outputs.revision }}" --dry-run
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_INDEX_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish
+        id: publish
+        run: |
+          bash scripts/publish-index.sh --index-dir build/index-deploy --bge-m3-revision "${{ steps.pin.outputs.revision }}" | tee publish.log
+          echo "version=$(python3 -c 'import json; print(json.load(open("build/index-deploy/build-info.json"))["version"])')" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Index published"
+            echo
+            echo "Set these repository variables, then run the **deploy** workflow:"
+            echo
+            echo "| Variable | Value |"
+            echo "|---|---|"
+            echo "| \`RETRIEVAL_INDEX_VERSION\` | \`${{ steps.publish.outputs.version }}\` |"
+            echo "| \`BGE_M3_REVISION\` | \`${{ steps.pin.outputs.revision }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

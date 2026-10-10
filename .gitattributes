@@ -29,3 +29,16 @@ uv.lock          linguist-generated=true -merge
 # Shell scripts must stay LF or they will not run.
 *.sh             text eol=lf
 Makefile         text eol=lf
+
+# Server-side files. A carriage return left in any of these is read on Linux as
+# part of the value: a shell script fails on its first line, a Caddyfile
+# directive or Terraform string gains a trailing CR, and a user_data script
+# stops working at boot.
+*.tftpl          text eol=lf
+*.tf             text eol=lf
+*.hcl            text eol=lf
+*.yml            text eol=lf
+*.yaml           text eol=lf
+Caddyfile        text eol=lf
+Dockerfile       text eol=lf
+.dockerignore    text eol=lf

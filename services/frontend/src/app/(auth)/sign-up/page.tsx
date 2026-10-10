@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { AuthErrorAlert } from "@/components/auth/auth-error-alert";
+import {
+  AuthDivider,
+  GoogleSignInButton,
+} from "@/components/auth/google-sign-in-button";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,16 +19,20 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
+import { usePostAuthRedirect } from "@/hooks/use-post-auth-redirect";
 import { register } from "@/lib/api/accounts";
+import { isGoogleAuthConfigured } from "@/lib/google-auth";
 import { routes } from "@/lib/routes";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const redirectAfterAuth = usePostAuthRedirect();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const showGoogle = isGoogleAuthConfigured();
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +60,11 @@ export default function SignUpPage() {
   return (
     <AuthShell
       title="Create your account"
-      description="Free to use. We'll send a quick code to confirm your email."
+      description={
+        showGoogle
+          ? "Continue with Google, or sign up with your email."
+          : "Free to use. We'll send a quick code to confirm your email."
+      }
       footer={
         <>
           Already have an account?{" "}
@@ -65,51 +77,69 @@ export default function SignUpPage() {
         </>
       }
     >
-      <form onSubmit={(event) => void handleSubmit(event)} className="space-y-6">
+      <div className="space-y-5">
         <AuthErrorAlert error={error} />
 
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
+        {showGoogle ? (
+          <>
+            <GoogleSignInButton
+              disabled={isSubmitting}
+              onSuccess={redirectAfterAuth}
+              onError={(message) => setError(new Error(message))}
             />
-          </Field>
+            <AuthDivider label="or sign up with email" />
+          </>
+        ) : null}
 
-          <Field>
-            <FieldLabel htmlFor="password">Password</FieldLabel>
-            <PasswordInput
-              id="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-            <FieldDescription>At least 8 characters.</FieldDescription>
-          </Field>
+        <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                required
+              />
+            </Field>
 
-          <Field>
-            <FieldLabel htmlFor="confirm-password">Confirm password</FieldLabel>
-            <PasswordInput
-              id="confirm-password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              required
-            />
-          </Field>
-        </FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="password">Password</FieldLabel>
+              <PasswordInput
+                id="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+              <FieldDescription>At least 8 characters.</FieldDescription>
+            </Field>
 
-        <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-          {isSubmitting ? "Creating account…" : "Create account"}
-        </Button>
-      </form>
+            <Field>
+              <FieldLabel htmlFor="confirm-password">Confirm password</FieldLabel>
+              <PasswordInput
+                id="confirm-password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+              />
+            </Field>
+          </FieldGroup>
+
+          <Button
+            type="submit"
+            className="w-full"
+            size="lg"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Creating account…" : "Create account with email"}
+          </Button>
+        </form>
+      </div>
 
       <p className="text-center text-xs leading-relaxed text-muted-foreground">
         This app shares health information. It isn&apos;t a diagnosis and
