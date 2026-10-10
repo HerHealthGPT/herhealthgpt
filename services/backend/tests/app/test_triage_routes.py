@@ -246,6 +246,19 @@ _A_DECLINE_DECISION = TriageDecision(
     rationale="This tool covers women's reproductive health only.",
 )
 
+#: An informational answer grounded on _A_PASSAGE — ADR 0016. No action
+#: code, no matching conditions, and its text lives in answer_text.
+_AN_INFORM_DECISION = TriageDecision(
+    type=DecisionType.INFORM,
+    answer_text=(
+        "Our sources describe irregular periods as common and treatable.\n\n"
+        "That is general information, not an assessment of anything you are "
+        "experiencing."
+    ),
+    citations=(_A_PASSAGE.id,),
+    rationale="She asked what the condition is, having reported no symptom.",
+)
+
 
 async def test_a_declined_message_leaves_the_session_open(database_url: str) -> None:
     """An off-scope question must cost her nothing (ADR 0014). Unlike a
@@ -280,6 +293,76 @@ async def test_a_declined_message_leaves_the_session_open(database_url: str) -> 
         listed = await client.get("/triage/sessions")
 
     assert listed.status_code == 200, listed.text
+
+
+async def test_an_informational_answer_leaves_the_session_open(database_url: str) -> None:
+    """An in-scope question answered rather than triaged (ADR 0016). Like a
+    DECLINE and unlike a CONCLUDE it does not close the consultation, so she
+    carries on talking afterwards — and it carries no urgency level, while
+    still showing the sources it was drawn from."""
+    async for client in _build_client(
+        database_url, _scripted_agent(_AN_INFORM_DECISION, _A_CONCLUDE_DECISION)
+    ):
+        await _register_and_sign_in(client, "triage-inform@example.com")
+
+        informed = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "what are irregular periods, exactly?"},
+        )
+        assert informed.status_code == 200, informed.text
+        decision = informed.json()["decision"]
+        assert decision["type"] == "inform"
+        assert decision["answer_text"].startswith("Our sources describe")
+        # No urgency, and nothing named as hers — both enforced by schema.
+        assert decision["action_code"] is None
+        assert decision["matching_conditions"] == []
+        assert decision["red_flag_id"] is None
+        # Grounded, and resolved to a real passage so the UI can show it.
+        assert decision["citations"] == [_A_PASSAGE.id]
+        assert len(decision["cited_passages"]) == 1
+        session_id = informed.json()["session_id"]
+
+        # The consultation is still open — the point of the shape.
+        followed_up = await client.post(
+            "/triage/turn",
+            json={"session_id": session_id, "message": "mine have been off for 3 months."},
+        )
+        assert followed_up.status_code == 200, followed_up.text
+        assert followed_up.json()["decision"]["type"] == "conclude"
+
+        transcript = await client.get(f"/triage/sessions/{session_id}")
+
+    assert transcript.status_code == 200, transcript.text
+    messages = transcript.json()["messages"]
+    # answer_text is what was stored as the assistant's message, so a reopened
+    # conversation shows the answer rather than the rationale behind it.
+    answered = next(m for m in messages if m["decision"] and m["decision"]["type"] == "inform")
+    assert answered["content"].startswith("Our sources describe")
+
+
+async def test_demo_mode_answers_an_informational_question(database_url: str) -> None:
+    """The offline path too, so the inform shape is exercisable without
+    OpenRouter."""
+    base = load_knowledge_base(KNOWLEDGE)
+    agent = TriageAgent(
+        base=base,
+        reasoning=MvpDemoReasoningClient(),
+        retrieval=StaticRetrievalClient(),
+    )
+
+    async for client in _build_client(database_url, agent):
+        await _register_and_sign_in(client, "triage-demo-inform@example.com")
+        response = await client.post(
+            "/triage/turn",
+            json={"session_id": None, "message": "what is pcos?"},
+        )
+
+    assert response.status_code == 200, response.text
+    decision = response.json()["decision"]
+    assert decision["type"] == "inform"
+    assert decision["action_code"] is None
+    assert decision["answer_text"]
+    assert decision["citations"] == [_A_PASSAGE.id]
 
 
 async def test_demo_mode_declines_an_off_scope_message(database_url: str) -> None:

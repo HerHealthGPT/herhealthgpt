@@ -471,7 +471,12 @@ def _warn_if_the_pending_answer_was_dropped(
     ``"unknown"`` counts as recorded: "I'm not sure" is an answer, and it is
     what stops the same question being asked again.
     """
-    if pending is None or decision.type is DecisionType.DECLINE:
+    # An INFORM joins DECLINE here, for a different reason: she was asked
+    # something and chose to ask a question back instead of answering, so the
+    # pending feature is genuinely still open and nothing was dropped. The
+    # feature stays on `asked`, so it is not re-offered, and she can answer it
+    # next turn.
+    if pending is None or decision.type in (DecisionType.DECLINE, DecisionType.INFORM):
         return
     if pending in decision.observed:
         return
@@ -846,13 +851,22 @@ async def _persist_turn(
     shows the same quoted sources it showed live, without re-running a
     retrieval that might not return the same passages today.
     """
-    # A decline shares CONCLUDE's branch here — its rationale is the refusal
-    # she reads (see decision.py) — but deliberately not the status change
-    # below: an off-scope message must not burn her consultation, so the
-    # session stays active and she can ask something in scope next.
-    assistant_content = (
-        decision.question_text if decision.type is DecisionType.ASK else decision.rationale
-    )
+    # Each shape keeps its user-facing text in its own field, and the schema
+    # settles which one is filled: question_text on an ask, answer_text on an
+    # inform, rationale on a conclude or a decline. The `or` fallbacks guard a
+    # NOT NULL column against a shape that somehow arrived empty; they are not
+    # a real branch.
+    #
+    # Neither a decline nor an inform reaches the status change below, and for
+    # the same reason in both cases: an off-scope message must not burn her
+    # consultation, and neither must a question she asked along the way. The
+    # session stays active and the composer stays open.
+    if decision.type is DecisionType.ASK:
+        assistant_content = decision.question_text or decision.rationale
+    elif decision.type is DecisionType.INFORM:
+        assistant_content = decision.answer_text or decision.rationale
+    else:
+        assistant_content = decision.rationale
     async with database.session() as session:
         session.add(MessageRow(session_id=session_id, role="user", content=user_message))
         session.add(

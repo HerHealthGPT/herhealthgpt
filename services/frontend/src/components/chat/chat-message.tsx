@@ -7,6 +7,19 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { CitedPassage, DecisionReasoningModel } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
+/** Blank-line-separated paragraphs. HTML collapses whitespace, so a long
+ *  reply — an informational answer especially (ADR 0016), where the model is
+ *  asked for a full one — would otherwise arrive as a single unbroken block.
+ *  A message with no blank line in it yields one paragraph and renders
+ *  exactly as it did before. */
+function paragraphs(text: string): string[] {
+  const parts = text
+    .split(/\n\s*\n/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return parts.length > 0 ? parts : [text];
+}
+
 type ChatMessageProps = {
   role: "user" | "assistant";
   text: string;
@@ -62,7 +75,9 @@ export function ChatMessage({
             : "rounded-br-sm bg-primary text-primary-foreground",
         )}
       >
-        <p>{text}</p>
+        {paragraphs(text).map((paragraph, index) => (
+          <p key={index}>{paragraph}</p>
+        ))}
         {isAssistant ? <UnreviewedModelNotice model={reasoningModel} /> : null}
         {sources.length > 0 ? <CitedSources passages={sources} variant="question" /> : null}
         {reasoning ? <ReasoningDisclosure rationale={reasoning} /> : null}

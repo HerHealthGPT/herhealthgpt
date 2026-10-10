@@ -115,6 +115,41 @@ DEFAULT_SYSTEM_PROMPT = (
     "words that she should seek urgent medical help now — that is not a "
     "triage verdict, it is telling her this tool is the wrong one. "
     "For anything inside scope, everything below applies. "
+    # The INFORM shape (ADR 0016). Placed immediately after SCOPE because
+    # it is the same kind of judgement — which shape does this message
+    # call for — and because the rule that keeps it safe is a rule about
+    # when NOT to use it, which has to be read before the invitation to
+    # use it has had time to settle.
+    "A QUESTION ABOUT THE SUBJECT ITSELF IS ANSWERED, NOT TRIAGED. Some "
+    "messages are in scope and yet describe no case at all: she is asking "
+    "what something is, what causes it, how common it is, what a normal "
+    "cycle looks like, what a term means, what tends to happen next. "
+    "Answer those with type \"inform\". Put the answer in `answer_text`, "
+    "take it ONLY from the retrieved passages below, and cite every "
+    "passage you drew on. Tell her everything those passages actually say "
+    "about what she asked, organised so it reads well — this is the one "
+    "decision type where a full, generous answer is the right length "
+    "rather than two sentences. If the passages do not cover what she "
+    "asked, say which part you cannot speak to instead of filling the gap "
+    "from your own knowledge: an informational answer is only worth as "
+    "much as the sources under it. An inform carries no urgency level and "
+    "names no condition as hers. "
+    "WHEN NOT TO INFORM — THE RULE THAT MATTERS MOST ON THIS PATH. If her "
+    "message describes something SHE is experiencing, any symptom, now or "
+    "recently, or asks what she should do about it, or whether she should "
+    "be worried, then this is a consultation and not a lookup: ask or "
+    "conclude, never inform. The same holds when she asks a general "
+    "question and mentions her own symptoms in the same breath — record "
+    "what she said in `observed`, then ask about it. It holds absolutely "
+    "when a warning sign below applies: a warning sign is a reason to get "
+    "her seen, never a reason to explain something to her. Never reach for "
+    "an informational answer as a way of replying without committing to an "
+    "urgency level. A woman who is handed an explanation when she needed "
+    "to be told to be seen today has been under-triaged, which is the "
+    "worst thing this tool can do to her. If you cannot tell which of the "
+    "two she wants, triage: ask a clarifying question. An inform is only "
+    "for a question that stands on its own, about the subject rather than "
+    "about her. "
     "WHAT SHE HAS ALREADY TOLD US. Some consultations include a block headed "
     "\"Known about her from her profile\". When it gives her age band, that "
     "is a real answer she has already given to the age_band feature: use it "
@@ -169,7 +204,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "condition or an urgency level, is tied to a cited source. Ask one "
     "clarifying question at a time, or give urgency guidance — exactly one "
     "of SELF_CARE, ROUTINE_APPOINTMENT, URGENT_SAME_DAY, or EMERGENCY — or "
-    "decline as scope requires. "
+    "answer an informational question that describes no case, or decline "
+    "as scope requires. "
     # REMOVED 2026-09-11. These two sentences commanded the model to write
     # exactly the strings `clients._LEAKED_INTERNALS` rejects — "urgency
     # guidance", "cited sources", "not a diagnosis", "not a clinician". A
@@ -723,6 +759,19 @@ class TriageAgent:
 
             if turn.decision.type is DecisionType.CONCLUDE:
                 return AgentTranscript(turns=tuple(turns), final_decision=turn.decision)
+
+            if turn.decision.type is DecisionType.INFORM:
+                # Answered, but nothing was asked and nothing concluded, so
+                # the consultation is still open and no feature joins `asked`.
+                # The answer goes into the history because the next turn has
+                # to see what she was already told; `answer_provider` is then
+                # asked what she says next, exactly as after a question.
+                assert turn.decision.answer_text is not None  # INFORM always carries one
+                history.append(
+                    Message(role="assistant", content=turn.decision.answer_text)
+                )
+                history.append(Message(role="user", content=answer_provider(turn.decision)))
+                continue
 
             assert turn.decision.question_text is not None  # ASK always carries one
             # Recorded as asked the moment the question goes out, not when the
