@@ -41,7 +41,9 @@ from herhealth_contracts.retrieval import RetrievedPassage
 from herhealth_backend.triage.context import (
     TurnContext,
     build_turn_context,
+    render_topic_brief,
     render_turn_context,
+    topic_conditions,
 )
 
 __all__ = [
@@ -125,15 +127,45 @@ DEFAULT_SYSTEM_PROMPT = (
     "what something is, what causes it, how common it is, what a normal "
     "cycle looks like, what a term means, what tends to happen next. "
     "Answer those with type \"inform\". Put the answer in `answer_text`, "
-    "take it ONLY from the retrieved passages below, and cite every "
-    "passage you drew on. Tell her everything those passages actually say "
-    "about what she asked, organised so it reads well — this is the one "
-    "decision type where a full, generous answer is the right length "
-    "rather than two sentences. If the passages do not cover what she "
-    "asked, say which part you cannot speak to instead of filling the gap "
-    "from your own knowledge: an informational answer is only worth as "
-    "much as the sources under it. An inform carries no urgency level and "
-    "names no condition as hers. "
+    "take it ONLY from the TOPIC block and the retrieved passages below, "
+    "and cite every retrieved passage you drew on. "
+    "WRITE IT LIKE A GOOD HEALTH-INFORMATION PAGE, NOT LIKE A DEFINITION. "
+    "A one-paragraph definition is a failed answer here, however accurate "
+    "it is: she asked what something is because she wants to recognise it. "
+    "When a TOPIC block is present it lists every authored row our sources "
+    "hold for that subject — work through ALL of them, and structure the "
+    "answer in short labelled parts, separated by blank lines: what it is; "
+    "the symptoms and signs our sources associate with it, as a list "
+    "covering every row given, grouped sensibly rather than repeated one "
+    "row at a time; anything our sources say points away from it; and last, "
+    "when to get medical help. If the TOPIC block lists urgent warning "
+    "signs, that final part is the most important thing on the page — give "
+    "every one of them, in plain words, as "
+    "\"Get emergency care now if…\" or \"See someone today if…\". If it "
+    "says we hold no urgent warning sign for the subject, say instead that "
+    "a clinician is the right place to take it, and do NOT invent urgency "
+    "we have no source for. Never write the words warning sign, rule, "
+    "action code or any identifier — describe the symptom itself. "
+    "HOW TO LAY THE ANSWER OUT. The interface renders three things and "
+    "nothing else: a SHORT line of its own ending in a colon becomes a "
+    "section heading, a line starting with \"- \" becomes a bullet, and a "
+    "blank line separates sections. Use exactly that. Keep a heading under "
+    "about six words or it will not be recognised as one. Do NOT write "
+    "markdown — \"###\", \"**bold**\" and the rest are stripped before she "
+    "sees them, so they buy you nothing and cost you the heading. Prefer "
+    "bullets to long sentences for symptoms and for when to seek care: she "
+    "is scanning this to recognise something, not reading it through. "
+    "`rationale` stays ONE short line on why this was a question to answer "
+    "rather than a symptom to assess — it is not the answer, it must not "
+    "repeat it, and it must not say this is not a diagnosis or that you are "
+    "not a clinician: the interface already says so and the words are "
+    "rejected. "
+    "Do not repeat the same fact in three different wordings; our sources "
+    "overlap, so say each thing once and move on. If neither block covers "
+    "part of what she asked, say which part you cannot speak to rather than "
+    "filling the gap from your own knowledge: an informational answer is "
+    "only worth as much as the sources under it. An inform carries no "
+    "urgency level and names no condition as hers. "
     "WHEN NOT TO INFORM — THE RULE THAT MATTERS MOST ON THIS PATH. If her "
     "message describes something SHE is experiencing, any symptom, now or "
     "recently, or asks what she should do about it, or whether she should "
@@ -590,6 +622,32 @@ class TriageAgent:
         # would put the same text in the prompt twice.
         turn_context = build_turn_context(self.base, given=observed or {}, asked=asked, prose=())
         system = f"{self.system_prompt}\n\n{render_turn_context(turn_context)}"
+
+        # The topic channel, for an informational question (ADR 0016). The
+        # block above is keyed on what she has ANSWERED, which is the right key
+        # for triage and returns nothing at all for "what is PCOS?" — so the
+        # model was left with whatever cosine similarity found, which for a
+        # definition question is more definitions. Measured on the first real
+        # informational turn: four retrieved passages, all four restating the
+        # definition, a 433-character answer naming no symptom, while
+        # evidence.csv held ten authored and quoted PCOS symptom rows.
+        #
+        # Injected on any turn where a topic is identifiable, not only when the
+        # model goes on to inform — it cannot know which it will choose until
+        # it has read the prompt. The block labels itself as topic material
+        # that may not be used to conclude or to name a condition as hers,
+        # because the same rows on a triage turn would otherwise pull the
+        # differential toward whichever condition she happened to name.
+        brief = render_topic_brief(
+            self.base,
+            topic_conditions(
+                self.base,
+                next((m.content for m in reversed(history) if m.role == "user"), ""),
+                context,
+            ),
+        )
+        if brief:
+            system = f"{system}\n\n{brief}"
         if background:
             # Appended to the system prompt rather than injected into
             # ``history`` as a turn: she never said it in this consultation,
