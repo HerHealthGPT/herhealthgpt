@@ -60,6 +60,7 @@ ALLOWED_ROOT_ENTRIES = frozenset(
         "README.md",
         "branch_structure.json",
         "docs",
+        "graphify-out",
         "infra",
         "knowledge",
         "packages",
