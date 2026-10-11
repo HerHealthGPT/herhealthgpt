@@ -9,6 +9,12 @@ on:
       - "services/backend/**"
       - "packages/contracts/**"
       - "knowledge/**"
+      # scripts/tests runs under `make test`; it guards the model-serving
+      # definitions, including the compose/launcher parity check.
+      - "scripts/**"
+      - "infra/model/**"
+      - "infra/compose.model.yml"
+      - "Makefile"
       - "pyproject.toml"
       - "uv.lock"
       - ".python-version"
@@ -19,6 +25,12 @@ on:
       - "services/backend/**"
       - "packages/contracts/**"
       - "knowledge/**"
+      # scripts/tests runs under `make test`; it guards the model-serving
+      # definitions, including the compose/launcher parity check.
+      - "scripts/**"
+      - "infra/model/**"
+      - "infra/compose.model.yml"
+      - "Makefile"
       - "pyproject.toml"
       - "uv.lock"
       - ".python-version"

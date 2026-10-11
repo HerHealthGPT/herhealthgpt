@@ -125,12 +125,12 @@ triage-all:
 	done
 
 lint:
-	$(UV) run ruff check packages/contracts services/data services/backend services/model
+	$(UV) run ruff check packages/contracts services/data services/backend services/model scripts/smoke_models.py scripts/tests
 	$(UV) run mypy --config-file packages/contracts/pyproject.toml packages/contracts/src
 
 fmt:
-	$(UV) run ruff format packages/contracts services/data services/backend services/model
-	$(UV) run ruff check --fix packages/contracts services/data services/backend services/model
+	$(UV) run ruff format packages/contracts services/data services/backend services/model scripts/smoke_models.py scripts/tests
+	$(UV) run ruff check --fix packages/contracts services/data services/backend services/model scripts/smoke_models.py scripts/tests
 
 # --extra ingest because the clean-step tests import BeautifulSoup. `make
 # validate` deliberately works WITHOUT the extra; the test suite does not, and
@@ -140,7 +140,7 @@ fmt:
 # Docker. That suite is `make test-api`. Everything left runs offline with no
 # server and no database, which is the property the triage core must keep.
 test:
-	$(UV) run --extra ingest pytest packages/contracts/tests services/data/tests services/backend/tests services/model/tests --ignore=services/backend/tests/app -q
+	$(UV) run --extra ingest pytest packages/contracts/tests services/data/tests services/backend/tests services/model/tests scripts/tests --ignore=services/backend/tests/app -q
 
 # The backend's HTTP and database tests. Starts PostgreSQL in a container via
 # testcontainers, so Docker must be running. No AWS account, no credentials.

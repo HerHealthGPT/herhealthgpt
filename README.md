@@ -462,7 +462,7 @@ Add these only when testing Fine-tuned (after campus + Lobot proxy work):
 
 ```env
 HERHEALTH_MODEL_SELECTOR=on
-HERHEALTH_VLLM_URL=https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000
+HERHEALTH_VLLM_URL=https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8002
 HERHEALTH_VLLM_MODEL=herhealth
 HERHEALTH_VLLM_API_KEY=<JUPYTERHUB_API_TOKEN from the pod — rotates on cull>
 ```
@@ -626,50 +626,23 @@ Keep a Lab tab open while testing.
 | Base | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) |
 | Fine-tune (HF) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) |
 | Adapter id (vLLM / env) | `herhealth` |
-| Adapter path on VM | `/home/jovyan/models/herhealth-lora-v2` |
-| Venv | `~/herhealthgpt-venv` (fallback `~/vllm-env`) |
-| Port **inside the pod** | **8000** |
+| Adapter path on VM | `herhealth-lora-v2/` in the repo root (gitignored) |
+| Venv | `~/herhealthgpt-venv` |
+| Ports **inside the pod** | chat **8002**, embeddings 8003, reranker 8004 |
 | Pod IP `10.244.x.x` | **Not reachable from the laptop** |
 
-**1. Clean** (JupyterLab → Terminal):
+**1. Start** the chat, embedding and reranker processes (verified
+**2026-10-11**, vLLM 0.28.0, all three answering about two and a half minutes
+after the command):
 
 ```bash
-pkill -9 -f 'vllm serve' || true
-pkill -9 -f 'VLLM::' || true
-sleep 3
-nvidia-smi --query-gpu=index,memory.used --format=csv
-# expect ~0 MiB on both GPUs
+bash scripts/serve-models.sh clean        # stop everything, free the GPUs
+bash scripts/serve-models.sh start all
+bash scripts/serve-models.sh check
 ```
 
-**2. Start** (verified **2026-09-09**, vLLM 0.28.0 — engine init 15.98 s):
-
-```bash
-source ~/herhealthgpt-venv/bin/activate
-# if that fails: source ~/vllm-env/bin/activate
-
-rm -rf ~/.cache/vllm          # stale GPU P2P probe — see the runbook §0.1
-
-nohup env \
-  NCCL_P2P_DISABLE=1 \
-  NCCL_IB_DISABLE=1 \
-  VLLM_USE_FLASHINFER_SAMPLER=0 \
-  NCCL_DEBUG=INFO \
-  TRITON_CACHE_DIR=/home/jovyan/.cache/triton \
-  HF_HOME=/home/jovyan/.cache/huggingface \
-  vllm serve Qwen/Qwen3.5-9B \
-  --enable-lora \
-  --lora-modules herhealth=/home/jovyan/models/herhealth-lora-v2 \
-  --max-lora-rank 16 \
-  --max-model-len 8192 \
-  --tensor-parallel-size 2 \
-  --disable-custom-all-reduce \
-  --enforce-eager \
-  --limit-mm-per-prompt '{"image":0,"video":0}' \
-  --host 127.0.0.1 --port 8000 \
-  > /home/jovyan/vllm.log 2>&1 &
-echo $! > /home/jovyan/vllm.pid
-tail -f /home/jovyan/vllm.log
-```
+Every model id, revision, port and GPU is in `infra/model/serve.conf`. Logs are
+in `/home/jovyan/herhealth-serve/`. The chat process runs with these settings:
 
 | Flag / env | Why |
 |---|---|
@@ -679,28 +652,24 @@ tail -f /home/jovyan/vllm.log
 | `--enforce-eager` | Avoids CUDA-graph / Inductor spin at empty VRAM |
 | `--limit-mm-per-prompt '{"image":0,"video":0}'` | **Both** keys — the base is a multimodal hybrid, not a text model (runbook §0.2) |
 | `--tensor-parallel-size 2` | 17.98 GiB of bf16 weights do not fit one 14.6 GiB A16 |
-| `--max-model-len 8192` | The triage prompt is ~3,200–3,600 tokens before retrieval; 4096 leaves no room to generate (runbook §0.3) |
+| `--max-model-len 32768` | Set in `infra/model/serve.conf`. The token cache holds 234,599 tokens with `--enforce-eager`, so 7.16 full-length requests fit (runbook §0.3) |
 | `TRITON_CACHE_DIR` under `/home/jovyan` | Survives culls |
 
 Wait for **`Application startup complete.`** (~30 s). Hundreds of `no matching
 PunicaWrapper ... will be ignored` warnings on the way are expected — that is
 vLLM skipping LoRA on the vision tower. Ctrl+C stops `tail` only.
 
-First-time install after a wipe:
+After a wipe, restore vLLM and the models first: `docs/runbooks/uni-server-vllm.md`.
+
+**2. Smoke-test on the VM:**
 
 ```bash
-bash scripts/setup-uni-vllm.sh --clean
-bash scripts/setup-uni-vllm.sh
-bash scripts/setup-uni-vllm.sh --check
-```
+uv run python scripts/smoke_models.py --skip-structured   # all three processes
 
-**3. Smoke-test on the VM:**
-
-```bash
-curl -s http://127.0.0.1:8000/v1/models
+curl -s http://127.0.0.1:8002/v1/models
 # must list Qwen/Qwen3.5-9B and herhealth
 
-curl http://127.0.0.1:8000/v1/chat/completions \
+curl http://127.0.0.1:8002/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "herhealth",
@@ -721,7 +690,7 @@ cluster (`api.trycloudflare.com` timeout) — use the Jupyter proxy below.
 ```bash
 echo "len=${#JUPYTERHUB_API_TOKEN}"
 curl -sS -H "Authorization: token ${JUPYTERHUB_API_TOKEN}" \
-  "https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000/v1/models"
+  "https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8002/v1/models"
 ```
 
 Expect JSON listing `herhealth`. Copy the token:
@@ -759,7 +728,7 @@ If Fine-tuned stays greyed out: hard-refresh so `GET /triage/models` reloads.
 If you get `502` / `10061`: fix `:8001` first.
 
 **If RAG succeeds but chat returns `504 Gateway Time-out` on the Lobot proxy**
-(backend log shows `POST …/proxy/8000/v1/chat/completions` → 504, UI says
+(backend log shows `POST …/proxy/8002/v1/chat/completions` → 504, UI says
 *"A service we rely on is temporarily unavailable"*): local retrieval is fine;
 the Hub/nginx proxy cut the request at ~60s while campus vLLM was still
 generating (often first LoRA Triton JIT). Warm inside the pod first (below).

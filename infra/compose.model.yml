@@ -1,0 +1,158 @@
+# The three vLLM processes, for a host with Docker and the NVIDIA container
+# toolkit. Start with:
+#
+#   docker compose -f infra/compose.model.yml --env-file infra/model/serve.conf up -d
+#
+# The campus box cannot run this: it is an unprivileged pod with no Docker
+# daemon, so there the same processes are started natively by
+# scripts/serve-models.sh. Both read infra/model/serve.conf, and
+# scripts/tests/test_compose_parity.py fails if the argument lists differ.
+#
+# device_ids cannot be interpolated from a comma-separated variable, so they
+# are written out here and the same test checks them against *_GPUS.
+#
+# Nothing downloads at start-up: the Hugging Face cache is mounted read-only
+# and HF_HUB_OFFLINE=1. Fetch the models on the host first.
+
+name: herhealth-models
+
+x-vllm: &vllm
+  image: vllm/vllm-openai:v${VLLM_VERSION}
+  entrypoint: ["vllm"]
+  ipc: host   # shared memory between vLLM's worker processes
+  restart: unless-stopped
+
+services:
+  chat:
+    <<: *vllm
+    command:
+      - serve
+      - ${CHAT_MODEL}
+      - --revision
+      - ${CHAT_REVISION}
+      - --enable-lora
+      - --lora-modules
+      - ${CHAT_ADAPTER_NAME}=/adapters/herhealth
+      - --max-lora-rank
+      - "16"
+      - --max-model-len
+      - "${CHAT_MAX_MODEL_LEN}"
+      - --tensor-parallel-size
+      - "${CHAT_TP}"
+      # Mandatory. See docs/runbooks/uni-server-vllm.md section 0.1.
+      - --disable-custom-all-reduce
+      - --enforce-eager
+      # Both keys. The base is a multimodal hybrid. Runbook section 0.2.
+      - --limit-mm-per-prompt
+      - '{"image":0,"video":0}'
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${CHAT_PORT}"
+    environment:
+      HF_HOME: /hf
+      HF_HUB_OFFLINE: "1"
+      NCCL_P2P_DISABLE: "1"
+      NCCL_IB_DISABLE: "1"
+      VLLM_USE_FLASHINFER_SAMPLER: "0"
+    volumes:
+      - ${HF_HOME}:/hf:ro
+      - ../${CHAT_ADAPTER_DIR}:/adapters/herhealth:ro
+    ports:
+      - "127.0.0.1:${CHAT_PORT}:${CHAT_PORT}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0", "1"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${CHAT_PORT}/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+
+  embed:
+    <<: *vllm
+    command:
+      - serve
+      - ${EMBED_MODEL}
+      - --revision
+      - ${EMBED_REVISION}
+      - --served-model-name
+      - ${EMBED_SERVED_NAME}
+      - --runner
+      - pooling
+      - --convert
+      - embed
+      - --max-model-len
+      - "${EMBED_MAX_MODEL_LEN}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${EMBED_PORT}"
+    environment:
+      HF_HOME: /hf
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${HF_HOME}:/hf:ro
+    ports:
+      - "127.0.0.1:${EMBED_PORT}:${EMBED_PORT}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["2"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${EMBED_PORT}/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+
+  rerank:
+    <<: *vllm
+    command:
+      - serve
+      - ${RERANK_MODEL}
+      - --revision
+      - ${RERANK_REVISION}
+      - --served-model-name
+      - ${RERANK_SERVED_NAME}
+      - --runner
+      - pooling
+      - --hf-overrides
+      - '{"architectures":["Qwen3ForSequenceClassification"],"classifier_from_token":["no","yes"],"is_original_qwen3_reranker":true}'
+      - --chat-template
+      - /templates/qwen3_reranker.jinja
+      - --max-model-len
+      - "${RERANK_MAX_MODEL_LEN}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${RERANK_PORT}"
+    environment:
+      HF_HOME: /hf
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ${HF_HOME}:/hf:ro
+      - ./model/qwen3_reranker.jinja:/templates/qwen3_reranker.jinja:ro
+    ports:
+      - "127.0.0.1:${RERANK_PORT}:${RERANK_PORT}"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["3"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${RERANK_PORT}/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
