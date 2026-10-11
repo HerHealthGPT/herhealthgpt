@@ -55,3 +55,12 @@ crash.*.log
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+
+# Adding the Fine-tuned model files to .gitignore
+# Fine-tuned model files are large and can be regenerated from the training data and scripts.
+herhealth-lora-v2/
+
+#Adding graphify generated files to .gitignore
+# Graphify generated files are large and can be regenerated from the source data and scripts.
+graphify-out/cache/
+
