@@ -1,0 +1,237 @@
+"""The three additions to a turn: the extract step, the inform gate and the
+answer step. A scripted decision model and stub seams; the knowledge base is
+the real tracked one."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from pathlib import Path
+
+import pytest
+from herhealth_contracts.decision import DecisionType, TriageDecision
+from herhealth_contracts.knowledge import KnowledgeBase
+from herhealth_contracts.loading import load_knowledge_base
+from herhealth_contracts.retrieval import PassageType, RetrievedPassage
+
+from herhealth_backend.triage.agent import (
+    AttemptOutcome,
+    Message,
+    ReasoningAttempt,
+    ReasoningResult,
+    TriageAgent,
+)
+
+REPO = Path(__file__).resolve().parents[3]
+PASSAGE = RetrievedPassage(
+    id="0123456789abcdef",
+    passage_type=PassageType.SOURCE_PASSAGE,
+    source_id="womenshealth",
+    text="A placeholder passage.",
+    citation="womenshealth/page",
+    score=0.5,
+)
+OTHER = PASSAGE.model_copy(update={"id": "fedcba9876543210", "text": "Another placeholder."})
+BASE_ANSWER = (
+    "An explanation.\n\nWhen to get medical help:\n- Get emergency care now if it is sudden."
+)
+
+
+@pytest.fixture(scope="module")
+def base() -> KnowledgeBase:
+    return load_knowledge_base(REPO / "knowledge")
+
+
+def inform() -> TriageDecision:
+    return TriageDecision(
+        type=DecisionType.INFORM,
+        rationale="A general question about the subject.",
+        answer_text=BASE_ANSWER,
+        citations=(PASSAGE.id,),
+    )
+
+
+def ask(feature_id: str = "cycle_length") -> TriageDecision:
+    return TriageDecision(
+        type=DecisionType.ASK,
+        rationale="One more detail would help.",
+        next_feature_id=feature_id,
+        question_text="How many days are there between your periods?",
+        citations=(PASSAGE.id,),
+    )
+
+
+class Reasoning:
+    name = "decision-model"
+
+    def __init__(self, *decisions: TriageDecision) -> None:
+        self.decisions = list(decisions)
+        self.prompts: list[str] = []
+
+    def decide(self, *, system_prompt, history, context):  # type: ignore[no-untyped-def]
+        self.prompts.append(system_prompt)
+        return ReasoningResult(
+            decision=self.decisions.pop(0),
+            attempts=(ReasoningAttempt(client=self.name, outcome=AttemptOutcome.OK),),
+        )
+
+
+class Retrieval:
+    def search(self, query: str, *, k: int = 8) -> list[RetrievedPassage]:
+        return [PASSAGE, OTHER]
+
+
+class Extractor:
+    def __init__(self, found: dict[str, str]) -> None:
+        self.found = found
+        self.pending: list[str | None] = []
+
+    def extract(self, history: Sequence[Message], *, pending_feature: str | None) -> dict[str, str]:
+        self.pending.append(pending_feature)
+        return dict(self.found)
+
+
+class Writer:
+    name = "answer-model"
+
+    def __init__(self, text: str | None) -> None:
+        self.text = text
+        self.calls: list[tuple[str, list[str], str]] = []
+
+    def write(
+        self, question: str, passages: Sequence[RetrievedPassage], base_answer: str
+    ) -> str | None:
+        self.calls.append((question, [p.id for p in passages], base_answer))
+        return self.text
+
+
+def turn(agent: TriageAgent, message: str = "a placeholder message", **kwargs):  # type: ignore[no-untyped-def]
+    return agent.run_turn([Message(role="user", content=message)], **kwargs)
+
+
+# --- extract ------------------------------------------------------------------
+
+
+def test_the_agent_runs_without_an_extractor(base: KnowledgeBase) -> None:
+    agent = TriageAgent(base=base, reasoning=Reasoning(ask()), retrieval=Retrieval())
+    assert turn(agent).decision.type is DecisionType.ASK
+
+
+def test_extracted_values_reach_the_turn_context(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask())
+    agent = TriageAgent(
+        base=base,
+        reasoning=reasoning,
+        retrieval=Retrieval(),
+        extractor=Extractor({"cycle_regularity": "irregular"}),
+    )
+    turn(agent)
+    assert "cycle_regularity" in reasoning.prompts[0]
+    assert "irregular" in reasoning.prompts[0]
+
+
+def test_extracted_values_are_returned_on_the_decision(base: KnowledgeBase) -> None:
+    agent = TriageAgent(
+        base=base,
+        reasoning=Reasoning(ask()),
+        retrieval=Retrieval(),
+        extractor=Extractor({"cycle_regularity": "irregular"}),
+    )
+    assert turn(agent).decision.observed == {"cycle_regularity": "irregular"}
+
+
+def test_the_extractor_is_told_which_question_is_pending(base: KnowledgeBase) -> None:
+    extractor = Extractor({})
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(ask()), retrieval=Retrieval(), extractor=extractor
+    )
+    turn(agent, asked=["cycle_length"], observed={})
+    assert extractor.pending == ["cycle_length"]
+
+
+# --- the inform gate ----------------------------------------------------------
+
+
+def _gated(base: KnowledgeBase, reasoning: Reasoning, found: dict[str, str]) -> TriageAgent:
+    return TriageAgent(
+        base=base,
+        reasoning=reasoning,
+        retrieval=Retrieval(),
+        extractor=Extractor(found),
+        refuse_inform_with_symptoms=True,
+    )
+
+
+def test_inform_is_refused_when_she_described_a_symptom(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(inform(), ask())
+    result = turn(_gated(base, reasoning, {"cycle_regularity": "irregular"}))
+    assert result.decision.type is DecisionType.ASK
+    assert len(reasoning.prompts) == 2
+    assert "REJECTED" in reasoning.prompts[1]
+    assert len(result.attempts) == 2
+
+
+def test_inform_is_accepted_when_nothing_is_recorded(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(inform())
+    assert turn(_gated(base, reasoning, {})).decision.type is DecisionType.INFORM
+    assert len(reasoning.prompts) == 1
+
+
+def test_a_profile_age_band_alone_does_not_refuse(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(inform())
+    result = turn(_gated(base, reasoning, {}), observed={"age_band": "30_to_39"})
+    assert result.decision.type is DecisionType.INFORM
+
+
+def test_a_second_inform_stands(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(inform(), inform())
+    result = turn(_gated(base, reasoning, {"cycle_regularity": "irregular"}))
+    assert result.decision.type is DecisionType.INFORM
+    assert len(reasoning.prompts) == 2
+
+
+def test_the_gate_is_off_by_default(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(inform())
+    agent = TriageAgent(
+        base=base,
+        reasoning=reasoning,
+        retrieval=Retrieval(),
+        extractor=Extractor({"cycle_regularity": "irregular"}),
+    )
+    assert turn(agent).decision.type is DecisionType.INFORM
+    assert len(reasoning.prompts) == 1
+
+
+# --- the answer step ----------------------------------------------------------
+
+
+def test_the_writer_replaces_the_answer_of_an_inform(base: KnowledgeBase) -> None:
+    writer = Writer("The adapter's wording.")
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(inform()), retrieval=Retrieval(), answer_writer=writer
+    )
+    result = turn(agent, "what is it?")
+    assert result.decision.answer_text == "The adapter's wording."
+    assert writer.calls == [("what is it?", [PASSAGE.id], BASE_ANSWER)]  # only the cited passage
+    assert [(a.client, a.outcome) for a in result.attempts] == [
+        ("decision-model", AttemptOutcome.OK),
+        ("answer-model", AttemptOutcome.OK),
+    ]
+
+
+def test_an_unusable_answer_keeps_the_base_answer(base: KnowledgeBase) -> None:
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(inform()), retrieval=Retrieval(), answer_writer=Writer(None)
+    )
+    result = turn(agent)
+    assert result.decision.answer_text == BASE_ANSWER
+    assert result.attempts[-1].outcome is AttemptOutcome.REJECTED
+    assert result.served_by == "decision-model"
+
+
+def test_the_writer_runs_only_for_inform(base: KnowledgeBase) -> None:
+    writer = Writer("unused")
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(ask()), retrieval=Retrieval(), answer_writer=writer
+    )
+    turn(agent)
+    assert writer.calls == []

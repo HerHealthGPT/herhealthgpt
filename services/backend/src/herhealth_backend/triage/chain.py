@@ -2,8 +2,13 @@
 
 Three small components, each behind a seam ``TriageAgent`` owns:
 
+* :class:`LangChainFeatureExtractor` — the extract step. Her latest message
+  in, the feature values it states out. Never fails a turn.
 * :class:`LangChainReasoningClient` — the decide step. One reply in, one
   validated ``TriageDecision`` out, with the error fed back on a retry.
+* :class:`LangChainAnswerWriter` — the answer step. The fine-tuned adapter
+  words an informational answer from the cited passages. Never fails a turn,
+  and never touches an action code.
 
 The models are served by vLLM and reached over its OpenAI-compatible
 endpoint (``scripts/serve-models.sh``); nothing is loaded in this process.
@@ -14,12 +19,15 @@ the model is *called*, not what it is told. See ADR 0018.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from collections.abc import Sequence
 from typing import Any
 
 import httpx
 import openai
+from herhealth_contracts.knowledge import KnowledgeBase
 from herhealth_contracts.retrieval import RetrievedPassage
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
@@ -30,6 +38,7 @@ from herhealth_backend.triage.agent import (
     ReasoningResult,
 )
 from herhealth_backend.triage.clients import (
+    _LEAKED_INTERNALS,
     DecisionValidator,
     _build_messages,
     _reject_leaked_internals,
@@ -39,10 +48,14 @@ from herhealth_backend.triage.clients import (
 )
 
 __all__ = [
+    "LangChainAnswerWriter",
+    "LangChainFeatureExtractor",
     "LangChainReasoningClient",
     "ReasoningUnavailable",
     "build_chat_model",
+    "carry_warning_lines",
     "extract_json_object",
+    "trim_adapter_answer",
 ]
 
 logger = logging.getLogger(__name__)
@@ -178,3 +191,178 @@ class LangChainReasoningClient:
                 attempts=(ReasoningAttempt(client=self._name, outcome=AttemptOutcome.OK),),
             )
         raise AssertionError("unreachable: the loop returns or raises")
+
+
+# ---------------------------------------------------------------------------
+# The extract step
+# ---------------------------------------------------------------------------
+
+_EXTRACT_INSTRUCTIONS = (
+    "You record what a woman has just said about HERSELF, so that a later step "
+    "can decide what to ask her. Below is a list of features, each with the only "
+    "values it may take. Read her message and reply with ONE JSON object that "
+    "maps a feature id to one of that feature's listed values, for every feature "
+    "her message states about her own body or situation. Everyday, indirect and "
+    "emotional wording counts: map what she means onto the closest listed value. "
+    "Include a feature only when her message actually says it. A general question "
+    "about a subject, with nothing about herself, is {}. Never guess, never add a "
+    "feature she did not mention, and never write anything outside the JSON object."
+)
+
+
+class LangChainFeatureExtractor:
+    """Implements ``herhealth_backend.triage.agent.FeatureExtractor``."""
+
+    def __init__(self, chat: Any, base: KnowledgeBase) -> None:
+        self._chat = chat
+        self._allowed = {
+            feature.id: {str(value) for value in feature.allowed_values}
+            for feature in base.features
+            if feature.allowed_values
+        }
+        listing = "\n".join(
+            f"- {feature.id} ({feature.label}): "
+            + " | ".join(str(value) for value in feature.allowed_values)
+            for feature in base.features
+            if feature.allowed_values
+        )
+        self._system = f"{_EXTRACT_INSTRUCTIONS}\n\nFEATURES:\n{listing}"
+
+    def extract(self, history: Sequence[Message], *, pending_feature: str | None) -> dict[str, str]:
+        latest = next((m.content for m in reversed(history) if m.role == "user"), "")
+        if not latest.strip():
+            return {}
+        question = next((m.content for m in reversed(history) if m.role == "assistant"), None)
+        parts = []
+        if pending_feature:
+            asked = f': "{question}"' if question else "."
+            parts.append(
+                f"She was just asked about {pending_feature}{asked} "
+                "Her message below is her reply to that."
+            )
+        parts.append(f'Her message: "{latest}"')
+        try:
+            reply = _invoke(
+                self._chat,
+                [SystemMessage(content=self._system), HumanMessage(content="\n\n".join(parts))],
+                what="extraction",
+            )
+            raw = json.loads(extract_json_object(str(reply)))
+        except (openai.APITimeoutError, ReasoningUnavailable, ValueError) as error:
+            # Nothing recorded is today's behaviour; a failed turn would be worse.
+            logger.warning("feature extraction failed, continuing without it: %s", error)
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+        return {
+            str(feature_id): str(value)
+            for feature_id, value in raw.items()
+            if str(value) in self._allowed.get(str(feature_id), ())
+        }
+
+
+# ---------------------------------------------------------------------------
+# The answer step
+# ---------------------------------------------------------------------------
+
+#: The instruction every row of the adapter's training data carried
+#: (``ft_corpus_v1.jsonl``), word for word, so it is asked to do exactly what
+#: it was trained to do.
+ADAPTER_INSTRUCTION = (
+    "You are a supportive women's-health information assistant. Answer the "
+    "patient's question clearly and safely, and recommend seeing a clinician for "
+    "diagnosis or treatment decisions."
+)
+
+_ANSWER_FORMAT = (
+    "Use ONLY the passages given. If they do not cover part of the question, say "
+    "which part you cannot speak to. Write plain text in short paragraphs; start a "
+    'line with "- " for a list item. Do not add a list of sources.'
+)
+
+#: Longest answer accepted, in characters. The interface shows it in one bubble.
+MAX_ANSWER_CHARS = 2500
+
+_SOURCES_HEADING = re.compile(r"^\s*[#*_\s]*sources?\s*:?[*_\s]*:?\s*$", re.IGNORECASE)
+_WARNING_LINE = re.compile(r"get emergency care now if|see someone today if", re.IGNORECASE)
+
+
+def trim_adapter_answer(text: str) -> str:
+    """Cut a trailing "Sources:" section and strip markdown emphasis.
+
+    The adapter was trained to end with a source list; the interface renders
+    citations itself, and strips markdown, so both would only be noise.
+    """
+    kept: list[str] = []
+    for line in text.splitlines():
+        if _SOURCES_HEADING.match(line):
+            break
+        kept.append(re.sub(r"^\s*#+\s*", "", line).replace("**", "").replace("__", ""))
+    return "\n".join(kept).strip()
+
+
+def _normalise(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def carry_warning_lines(answer: str, base_answer: str) -> str:
+    """Append the decision model's warning-sign lines if the answer lacks them.
+
+    The decide prompt makes the base model end an informational answer with
+    lines such as "Get emergency care now if…". Those are the most important
+    lines in it, so they are carried over by code, verbatim, and never left
+    to the adapter to reproduce.
+    """
+    present = _normalise(answer)
+    missing = []
+    for line in base_answer.splitlines():
+        cleaned = line.strip().lstrip("-• ").strip()
+        if cleaned and _WARNING_LINE.search(cleaned) and _normalise(cleaned) not in present:
+            missing.append(f"- {cleaned}")
+    if not missing:
+        return answer
+    return f"{answer}\n\nWhen to get medical help:\n" + "\n".join(missing)
+
+
+class LangChainAnswerWriter:
+    """Implements ``herhealth_backend.triage.agent.AnswerWriter``."""
+
+    def __init__(self, chat: Any, *, name: str) -> None:
+        self._chat = chat
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def write(
+        self, question: str, passages: Sequence[RetrievedPassage], base_answer: str
+    ) -> str | None:
+        listed = "\n".join(f"- {passage.text}" for passage in passages)
+        try:
+            reply = _invoke(
+                self._chat,
+                [
+                    SystemMessage(content=f"{ADAPTER_INSTRUCTION} {_ANSWER_FORMAT}"),
+                    HumanMessage(content=f"Passages:\n{listed}\n\nQuestion: {question}"),
+                ],
+                what="answer",
+            )
+        except (openai.APITimeoutError, ReasoningUnavailable) as error:
+            logger.warning(
+                "the answer model failed; keeping the decision model's answer: %s", error
+            )
+            return None
+        text = trim_adapter_answer(str(reply))
+        if not text or len(text) > MAX_ANSWER_CHARS:
+            logger.warning(
+                "the answer model's reply was empty or too long; keeping the base answer"
+            )
+            return None
+        for pattern in _LEAKED_INTERNALS:
+            if pattern.search(text):
+                logger.warning(
+                    "the answer model's reply used banned wording; keeping the base answer"
+                )
+                return None
+        return carry_warning_lines(text, base_answer)

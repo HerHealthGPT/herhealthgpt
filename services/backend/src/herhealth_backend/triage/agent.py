@@ -49,8 +49,10 @@ from herhealth_backend.triage.context import (
 __all__ = [
     "AgentTranscript",
     "AgentTurn",
+    "AnswerWriter",
     "AttemptOutcome",
     "DEFAULT_SYSTEM_PROMPT",
+    "FeatureExtractor",
     "MaxTurnsExceeded",
     "Message",
     "ReasoningAttempt",
@@ -377,6 +379,41 @@ class ReasoningClient(Protocol):
     ) -> ReasoningResult: ...
 
 
+@runtime_checkable
+class FeatureExtractor(Protocol):
+    """Maps her latest message onto the feature list, before the decision.
+
+    A separate, focused step because the decision model, asked to do this
+    and decide at once, recorded what she said in only 3 of 23 valid turns
+    (measured 2026-10-12). Everything that makes a clarifying question
+    possible is computed from that record, so with it empty the model had
+    nothing to ask about and explained instead. See ADR 0018.
+
+    Returns only real feature ids with listed values, and ``{}`` on any
+    failure: extraction improves a turn and must never fail one.
+    """
+
+    def extract(
+        self, history: Sequence[Message], *, pending_feature: str | None
+    ) -> dict[str, str]: ...
+
+
+@runtime_checkable
+class AnswerWriter(Protocol):
+    """Writes the text of an informational answer from the cited passages.
+
+    Returns ``None`` when it has nothing usable; the decision model's own
+    answer then stands. It never sees or sets an action code.
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    def write(
+        self, question: str, passages: Sequence[RetrievedPassage], base_answer: str
+    ) -> str | None: ...
+
+
 class MaxTurnsExceeded(RuntimeError):
     """The turn cap was reached without a CONCLUDE decision.
 
@@ -570,6 +607,18 @@ class TriageAgent:
     #: simply be left to the prompt.
     min_answers: int = 0
 
+    #: The extract step. ``None`` in tests and in demo mode.
+    extractor: FeatureExtractor | None = None
+
+    #: Refuse an ``inform`` once when she has described symptoms of her own or
+    #: a warning sign is close. Off here and switched on by the deployment,
+    #: for the same reason as ``min_answers``.
+    refuse_inform_with_symptoms: bool = False
+
+    #: The answer step, applied to an accepted ``inform``. ``None`` leaves the
+    #: decision model's own answer in place.
+    answer_writer: AnswerWriter | None = None
+
     def run_turn(
         self,
         history: Sequence[Message],
@@ -620,7 +669,13 @@ class TriageAgent:
         # the reasoning client (`clients._render_context`), which is also what
         # feeds `_available_ids_hint` on a retry. Rendering them here as well
         # would put the same text in the prompt twice.
-        turn_context = build_turn_context(self.base, given=observed or {}, asked=asked, prose=())
+        given = dict(observed or {})
+        extracted: dict[str, str] = {}
+        if self.extractor is not None:
+            pending = next((f for f in reversed(list(asked)) if f not in given), None)
+            extracted = self.extractor.extract(history, pending_feature=pending)
+            given.update(extracted)
+        turn_context = build_turn_context(self.base, given=given, asked=asked, prose=())
         system = f"{self.system_prompt}\n\n{render_turn_context(turn_context)}"
 
         # The topic channel, for an informational question (ADR 0016). The
@@ -658,11 +713,106 @@ class TriageAgent:
         result = self._refuse_premature_conclusion(
             result, turn_context, system, history, context
         )
+        result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
+        decision, attempts = result.decision, result.attempts
+
+        # What the extract step read is carried on the decision, so the
+        # caller's existing merge-and-persist of ``observed`` keeps it for the
+        # next turn. The model's own reading wins where both name a feature.
+        # Not on a decline: an off-scope message asserts nothing about her.
+        if extracted and decision.type is not DecisionType.DECLINE:
+            decision = decision.model_copy(update={"observed": {**extracted, **decision.observed}})
+
+        if decision.type is DecisionType.INFORM and self.answer_writer is not None:
+            decision, attempt = self._write_answer(decision, history, context)
+            attempts = (*attempts, attempt)
+
         return AgentTurn(
             history_before=tuple(history),
             retrieved=context,
-            decision=result.decision,
-            attempts=result.attempts,
+            decision=decision,
+            attempts=attempts,
+        )
+
+    def _refuse_inform_with_symptoms(
+        self,
+        result: ReasoningResult,
+        turn_context: TurnContext,
+        system: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> ReasoningResult:
+        """Send an explanation back when she has described symptoms of her own.
+
+        An ``inform`` carries no urgency level. Measured 2026-10-12, the
+        decision model informed on 21 of 23 valid first turns, including
+        messages such as "now my period is all over the place" — which is
+        under-triage by another route: she is handed an explanation when she
+        needed a question or a level. The prompt already forbids it; this is
+        the check that the prompt alone did not deliver.
+
+        Same shape, and the same limit, as :meth:`_refuse_premature_conclusion`:
+        it refuses once, names why, and picks nothing itself. If the model
+        informs again, that stands.
+        """
+        if (
+            not self.refuse_inform_with_symptoms
+            or result.decision.type is not DecisionType.INFORM
+        ):
+            return result
+        # Her age band comes from her profile, not from what she said today.
+        described = sorted(f for f in turn_context.given if f != "age_band")
+        near = turn_context.fired is not None or bool(turn_context.near_misses)
+        if not described and not near:
+            return result
+
+        why = (
+            f"she has described something she is experiencing herself ({', '.join(described)})"
+            if described
+            else "a warning sign applies or is one answer away"
+        )
+        retry = (
+            f"{system}\n\nYOUR PREVIOUS ANSWER WAS AN EXPLANATION (type \"inform\") AND WAS "
+            f"REJECTED, because {why}. This is a consultation, not a lookup. Respond again "
+            "with type \"ask\" (a real next_feature_id from the list above, and "
+            "question_text) or type \"conclude\". Do not use type \"inform\"."
+        )
+        try:
+            retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+        except Exception:
+            # As with the conclusion gate: an improvement, not a guarantee.
+            return result
+        return ReasoningResult(
+            decision=retried.decision,
+            attempts=(*result.attempts, *retried.attempts),
+        )
+
+    def _write_answer(
+        self,
+        decision: TriageDecision,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> tuple[TriageDecision, ReasoningAttempt]:
+        """Let the answer writer word an accepted ``inform``.
+
+        It is shown only the passages the decision cited, and its text
+        replaces ``answer_text`` alone. If it returns nothing usable, the
+        decision model's own answer stands and the turn is unaffected.
+        """
+        assert self.answer_writer is not None
+        assert decision.answer_text is not None  # INFORM always carries one
+        question = next((m.content for m in reversed(history) if m.role == "user"), "")
+        cited = [passage for passage in context if passage.id in decision.citations]
+        text = self.answer_writer.write(question, cited, decision.answer_text)
+        if not text:
+            return decision, ReasoningAttempt(
+                client=self.answer_writer.name,
+                outcome=AttemptOutcome.REJECTED,
+                detail="no usable answer; the decision model's own answer was kept",
+            )
+        return (
+            decision.model_copy(update={"answer_text": text}),
+            ReasoningAttempt(client=self.answer_writer.name, outcome=AttemptOutcome.OK),
         )
 
     def _refuse_premature_conclusion(

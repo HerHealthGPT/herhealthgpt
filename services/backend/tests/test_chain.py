@@ -165,3 +165,109 @@ def test_build_chat_model_sets_temperature_tokens_and_no_retries() -> None:
     assert chat.model_name == "Qwen/Qwen3.5-9B"
     assert chat.extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
     assert str(chat.openai_api_base).rstrip("/") == "http://127.0.0.1:8002/v1"
+
+
+# --- the extract step ---------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+from herhealth_contracts.loading import load_knowledge_base  # noqa: E402
+
+from herhealth_backend.triage.chain import (  # noqa: E402
+    LangChainAnswerWriter,
+    LangChainFeatureExtractor,
+    carry_warning_lines,
+    trim_adapter_answer,
+)
+
+KNOWLEDGE = load_knowledge_base(Path(__file__).resolve().parents[3] / "knowledge")
+SAID = [Message(role="user", content="my periods are all over the place")]
+
+
+def _extractor(script: Scripted) -> LangChainFeatureExtractor:
+    return LangChainFeatureExtractor(RunnableLambda(script), KNOWLEDGE)
+
+
+def test_extraction_maps_a_message_to_listed_values() -> None:
+    script = Scripted('{"cycle_regularity": "irregular"}')
+    assert _extractor(script).extract(SAID, pending_feature=None) == {
+        "cycle_regularity": "irregular"
+    }
+    prompt = script.seen[0][0].content
+    assert "cycle_regularity" in prompt and "irregular" in prompt
+    assert "my periods are all over the place" in script.seen[0][-1].content
+
+
+def test_unknown_features_and_values_are_dropped() -> None:
+    script = Scripted('{"cycle_regularity": "wobbly", "made_up": "yes", "fever": "yes"}')
+    assert _extractor(script).extract(SAID, pending_feature=None) == {"fever": "yes"}
+
+
+@pytest.mark.parametrize("reply", ["not json", "[1, 2]", _timeout()])
+def test_a_failed_extraction_returns_nothing(reply: Any) -> None:
+    assert _extractor(Scripted(reply)).extract(SAID, pending_feature=None) == {}
+
+
+def test_the_pending_question_is_named_in_the_prompt() -> None:
+    script = Scripted("{}")
+    _extractor(script).extract(SAID, pending_feature="cycle_length")
+    assert "cycle_length" in script.seen[0][-1].content
+
+
+# --- the answer step ----------------------------------------------------------
+
+BASE_ANSWER = (
+    "Explanation.\n\nWhen to get medical help:\n"
+    "- Get emergency care now if the pain is sudden.\n"
+    "- See someone today if you have a fever."
+)
+
+
+def test_sources_section_is_trimmed() -> None:
+    text = "An answer.\n\n**Sources:**\n- first\n- second"
+    assert trim_adapter_answer(text) == "An answer."
+
+
+def test_markdown_emphasis_is_stripped() -> None:
+    assert trim_adapter_answer("### Heading\nThis is **important** and __clear__.") == (
+        "Heading\nThis is important and clear."
+    )
+
+
+def test_warning_lines_are_appended_when_missing() -> None:
+    out = carry_warning_lines("The adapter's answer.", BASE_ANSWER)
+    assert out.startswith("The adapter's answer.\n\nWhen to get medical help:\n")
+    assert "- Get emergency care now if the pain is sudden." in out
+    assert "- See someone today if you have a fever." in out
+
+
+def test_warning_lines_are_not_duplicated() -> None:
+    already = (
+        "An answer.\n- Get emergency care now if the pain is sudden.\n"
+        "- See someone today if you have a fever."
+    )
+    assert carry_warning_lines(already, BASE_ANSWER) == already
+
+
+def test_an_answer_with_no_warning_lines_to_carry_is_unchanged() -> None:
+    assert carry_warning_lines("An answer.", "A base answer with no urgent lines.") == "An answer."
+
+
+def _writer(script: Scripted) -> LangChainAnswerWriter:
+    return LangChainAnswerWriter(RunnableLambda(script), name="herhealth")
+
+
+def test_the_writer_returns_a_cleaned_answer_with_warning_lines() -> None:
+    script = Scripted("A supportive answer.\n\nSources:\n- x")
+    out = _writer(script).write("what is it?", [PASSAGE], BASE_ANSWER)
+    assert out is not None and out.startswith("A supportive answer.\n\nWhen to get medical help:")
+    user = script.seen[0][-1].content
+    assert "A placeholder passage." in user and "what is it?" in user
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ["", "   ", "x" * 3000, "You mentioned that this is not a diagnosis.", _timeout()],
+)
+def test_an_unusable_answer_returns_none(reply: Any) -> None:
+    assert _writer(Scripted(reply)).write("q", [PASSAGE], BASE_ANSWER) is None
