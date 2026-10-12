@@ -196,6 +196,13 @@ def run_script(agent: TriageAgent, script: Script, *, max_turns: int = 8) -> Scr
         transcript = replace(agent, max_turns=max_turns).run_consultation(script.opening, reply)
     except MaxTurnsExceeded:
         return ScriptResult(script.id, False, max_turns, None, tuple(asked), None)
+    except AssertionError:
+        # run_consultation expects a question, an answer or a conclusion; a
+        # decline in mid-consultation gives it nothing to continue with.
+        return ScriptResult(
+            script.id, False, turns + 1, None, tuple(asked),
+            "the model declined mid-consultation, so there was no question to answer",
+        )
     except Exception as error:
         return ScriptResult(
             script.id,
@@ -224,6 +231,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--scripts", type=Path, default=DEFAULT_SCRIPTS)
     parser.add_argument("--out", type=Path, default=Path("build/decision_eval.json"))
     parser.add_argument("--skip-scripts", action="store_true")
+    parser.add_argument("--skip-first-turns", action="store_true")
     args = parser.parse_args(argv)
 
     agent = _build_triage_agent()
@@ -231,7 +239,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("triage is not configured: set HERHEALTH_TRIAGE_MODE=vllm and build the index")
         return 2
 
-    records = run_first_turns(agent, load_questions(args.questions))
+    questions = [] if args.skip_first_turns else load_questions(args.questions)
+    records = run_first_turns(agent, questions)
     summary = summarise_first_turns(records)
     own = summary["describing_own_symptoms"]
     assert isinstance(own, dict)
