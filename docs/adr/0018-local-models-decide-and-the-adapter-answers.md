@@ -96,7 +96,46 @@ The scripts were corrected once before this run: the first version had no
 reply to the age question, so the model re-asked it, and a mid-consultation
 decline surfaced as a bare error. Both were faults in the evaluation.
 
+## Follow-up the same day: a question no longer has to cite a passage
+
+The repo owner decided the first open decision below on 2026-10-12: a
+clarifying question does not need a citation. `TriageDecision` now exempts
+`ask` from the grounding rule; its feature must still be a real one, and
+conclusions and explanations keep the requirement. The evaluation was re-run.
+
+| Measure | Before the chain | Chain | Chain, no citation on a question |
+|---|---|---|---|
+| First turns valid, of 30 | 23 | 26 | 28 |
+| Clarifying questions asked | 0 | 4 | 7 |
+| Median seconds per turn | 21 | 31 | 30 |
+| Own-symptom questions (12): valid | 7 | 8 | 11 |
+| ...of which asked / concluded / informed | 0 / 1 / 6 | 3 / 1 / 4 | 6 / 1 / 4 |
+| Scripted consultations concluded, of 10 | not run | 3 | 3 |
+
+First turns now meet the validity target (27). The informs on own-symptom
+questions are still 4 against a target of 2.
+
+**Scripted consultations are still 3 of 10, but they fail differently and
+later.** No turn was lost to a missing citation. Consultations now run five to
+eight turns before ending:
+
+| How the other seven ended | Scripts |
+|---|---|
+| Still asking after 8 turns, repeating questions already answered (one asked about the same feature four times) | 3 |
+| Case-note wording ("You mentioned…") on both attempts | 2 |
+| The model recorded an invented feature id in `observed` | 2 |
+
+So the citation rule was a real cause and removing it helped single turns,
+but it was hiding two further problems: the model re-asks what it has been
+told, and a made-up id in `observed` fails a whole turn. The second and third
+open decisions below still stand, and a fourth joins them: whether an
+unrecognised entry in the model's own `observed` should be dropped, as the
+extract step already does, instead of failing the turn.
+
 ## What this shows
+
+The points below describe the first run, before the citation change.
+
 
 - **The design does what it was meant to on first turns.** The system now
   asks, validity rose, and turns stay under a minute.
@@ -137,8 +176,8 @@ clinician-adjudicated.
   scripted consultations complete reliably. Shipping this to users as it is
   would put errors in front of most of them.
 - **Open decisions for the repo owner, none taken here:**
-  1. whether an `ask` whose `next_feature_id` comes from the offered question
-     list must still cite a passage;
+  1. ~~whether an `ask` must still cite a passage~~ decided 2026-10-12: it
+     need not (see the follow-up above);
   2. whether to allow a third attempt, or more specific feedback, when the
      wording check fails;
   3. how much to trust the extract step, and whether its output should be
