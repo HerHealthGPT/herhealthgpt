@@ -89,7 +89,6 @@ db_pass="$(jq -r .password <<<"$db_json" | urlencode)"
 # sslmode=require: RDS serves TLS; refuse to fall back to plaintext.
 database_url="postgresql+psycopg://${db_user}:${db_pass}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require"
 
-openrouter_key="$(get_secret "$SECRET_OPENROUTER")"
 session_secret="$(get_secret "$SECRET_SESSION")"
 google_client_id="$(get_optional_secret "$SECRET_GOOGLE")"
 
@@ -104,7 +103,6 @@ chmod 600 "$tmp"
   echo "HERHEALTH_DATABASE_URL=$database_url"
   echo "HERHEALTH_SESSION_SECRET=$session_secret"
   echo "HERHEALTH_GOOGLE_CLIENT_ID=$google_client_id"
-  echo "OPENROUTER_API_KEY=$openrouter_key"
 } >"$tmp"
 mv "$tmp" "$ENV_FILE"
 echo "$new_hash" >"$RUN_DIR/database-url.sha256"

@@ -42,10 +42,6 @@ from herhealth_backend.app.config import reasoning_timeout as configured_reasoni
 from herhealth_backend.app.db import Database
 from herhealth_backend.app.triage.models import ConsultationSession
 from herhealth_backend.app.triage.models import Message as MessageRow
-from herhealth_backend.app.triage.reasoning_models import (
-    ReasoningModelOption,
-    default_model_id,
-)
 from herhealth_backend.triage.age_bands import age_band_for
 from herhealth_backend.triage.agent import (
     AttemptOutcome,
@@ -92,25 +88,9 @@ class TriageTurnRequest(BaseModel):
     #: see triage_turn's ownership check.
     session_id: uuid.UUID | None = None
     message: str = Field(min_length=1)
-    #: Which reasoning model decides this turn — an id from
-    #: ``GET /triage/models``. None means the default, which is always a
-    #: reviewed model (see ``reasoning_models.default_model_id``): an
-    #: unreviewed one has to be asked for, never arrived at by omission.
-    #: Ignored entirely when the selector is off, so a crafted request
-    #: cannot reach the adapter on a deployment that does not offer it.
+    #: Accepted and ignored. The model selector was removed (ADR 0018); the
+    #: field stays so a client built before that does not get a 422.
     reasoning_model: str | None = None
-
-
-class ReasoningModelSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: str
-    label: str
-    description: str
-    #: False means every answer from this model must carry a warning — see
-    #: ``reasoning_models.ReasoningModelOption``.
-    reviewed: bool
-    is_default: bool
 
 
 class SessionSummary(BaseModel):
@@ -145,36 +125,6 @@ class SessionDetail(BaseModel):
     messages: list[SessionMessage]
 
 
-@router.get("/models", response_model=list[ReasoningModelSummary])
-async def list_reasoning_models(
-    http_request: Request,
-    user: User = Depends(get_current_user),  # noqa: B008
-) -> list[ReasoningModelSummary]:
-    """The models this deployment lets a caller choose between.
-
-    Empty when the selector is off, which is the default — the frontend then
-    shows no control at all rather than a disabled one. Authenticated like
-    every other triage route: which models a deployment runs is not
-    something to hand to an anonymous caller.
-    """
-    options: dict[str, ReasoningModelOption] = getattr(
-        http_request.app.state, "reasoning_models", {}
-    )
-    if not options:
-        return []
-    default_id = default_model_id(options)
-    return [
-        ReasoningModelSummary(
-            id=option.id,
-            label=option.label,
-            description=option.description,
-            reviewed=option.reviewed,
-            is_default=option.id == default_id,
-        )
-        for option in options.values()
-    ]
-
-
 @router.post("/turn")
 async def triage_turn(
     request: TriageTurnRequest,
@@ -198,27 +148,15 @@ async def triage_turn(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
                 "triage is not configured on this deployment "
-                "(set HERHEALTH_TRIAGE_MODE=demo for local testing, "
-                "openrouter or vllm for real reasoning, "
-                "or OPENROUTER_API_KEY for openrouter/vllm fallback; a real "
-                "mode also needs a retrieval index at HERHEALTH_INDEX_DIR)"
+                "(set HERHEALTH_TRIAGE_MODE=vllm for the local models, which also "
+                "needs a retrieval index at HERHEALTH_INDEX_DIR, or demo for "
+                "scripted replies)"
             ),
         )
 
-    options: dict[str, ReasoningModelOption] = getattr(
-        http_request.app.state, "reasoning_models", {}
-    )
-    chosen = _choose_reasoning_model(request.reasoning_model, options)
-    if chosen is not None:
-        # TriageAgent is a frozen dataclass, so swapping the reasoning
-        # client means a new instance rather than mutating shared app state
-        # — two concurrent turns on different models must not race over one
-        # agent's field.
-        agent = replace(agent, reasoning=chosen.client)
-
     database: Database = http_request.app.state.database
     try:
-        return await _run_turn(request, user, agent, database, model=chosen)
+        return await _run_turn(request, user, agent, database)
     except SQLAlchemyError as error:
         logger.exception("database error in triage_turn")
         raise HTTPException(
@@ -240,8 +178,6 @@ async def _run_turn(
     user: User,
     agent: TriageAgent,
     database: Database,
-    *,
-    model: ReasoningModelOption | None = None,
 ) -> dict[str, Any]:
     """Three short phases: read, the slow blocking call, then write — not
     one open database session spanning all of them (see the note on that
@@ -256,8 +192,8 @@ async def _run_turn(
     intermittently (confirmed live, 2026-09-01: two consecutive identical
     requests, one completed normally, the next hung the same way). The root
     cause is still open — a leading theory is thread-safety of the single,
-    long-lived ``httpx.Client`` each of ``OpenRouterReasoningClient`` and
-    the retrieval client holds, reused across concurrent requests'
+    long-lived HTTP client that the reasoning and retrieval clients each
+    hold, reused across concurrent requests'
     executor threads, but this is not yet confirmed. ``asyncio.wait_for``
     below is a deliberate containment measure, not a fix: whatever is
     hanging still hangs, but the request now fails cleanly and promptly
@@ -392,7 +328,7 @@ async def _run_turn(
 
     decision = enforce_provenance_cap(turn.decision, turn.retrieved)
     payload = _decision_payload(
-        decision, turn.retrieved, base=agent.base, observed=observed, model=model
+        decision, turn.retrieved, base=agent.base, observed=observed
     )
     served_by = _served_by_payload((*discarded, *turn.attempts))
     await _persist_turn(session_id, request.message, decision, payload, database, served_by)
@@ -540,7 +476,6 @@ def _decision_payload(
     *,
     base: KnowledgeBase,
     observed: Mapping[str, str] | None = None,
-    model: ReasoningModelOption | None = None,
 ) -> dict[str, Any]:
     """``TriageDecision`` as JSON, plus the passages its ``citations`` name.
 
@@ -584,45 +519,7 @@ def _decision_payload(
             ],
         ],
     }
-    if model is not None:
-        # Stored with the turn, not just returned: reopening an old
-        # consultation has to show which model produced it, or an answer
-        # from the unreviewed adapter becomes indistinguishable from a
-        # reviewed one the moment the page is reloaded.
-        payload["reasoning_model"] = {
-            "id": model.id,
-            "label": model.label,
-            "reviewed": model.reviewed,
-        }
     return payload
-
-
-def _choose_reasoning_model(
-    requested: str | None, options: dict[str, ReasoningModelOption]
-) -> ReasoningModelOption | None:
-    """Resolve a requested model id, or ``None`` to leave the agent as built.
-
-    Returns ``None`` when the selector is off, whatever was asked for: a
-    deployment that offers no choice must not be steerable by a request
-    body, which is what makes ``HERHEALTH_MODEL_SELECTOR`` an actual gate
-    rather than a UI preference.
-
-    An unknown id is a 400 rather than a silent fall back to the default.
-    Silently substituting would mean an answer labelled as coming from one
-    model was produced by another, and the label is the whole safety
-    mechanism for an unreviewed model.
-    """
-    if not options:
-        return None
-    if requested is None:
-        return options[default_model_id(options)]
-    option = options.get(requested)
-    if option is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"unknown reasoning model {requested!r}; see GET /triage/models",
-        )
-    return option
 
 
 def _profile_age_band(user: User) -> str | None:

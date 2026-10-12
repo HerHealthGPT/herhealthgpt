@@ -60,6 +60,12 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
+#: Output budgets per step. Always sent: without one vLLM allows whatever is
+#: left of the window, which turned an oversized prompt into a retry loop.
+EXTRACT_MAX_TOKENS = 300
+DECIDE_MAX_TOKENS = 1200
+ANSWER_MAX_TOKENS = 900
+
 
 class ReasoningUnavailable(httpx.HTTPError):
     """The chat endpoint could not be reached, or did not answer in time.

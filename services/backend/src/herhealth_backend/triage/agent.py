@@ -316,8 +316,7 @@ class ReasoningAttempt:
     """One call to one named backend, and how it ended.
 
     Recorded per call rather than per turn because a single turn can involve
-    several: :class:`~herhealth_backend.triage.clients.FallbackReasoningClient`
-    hands over to a **different model** on failure, and
+    several: the answer step is written by a **different model**, and
     :meth:`TriageAgent._refuse_premature_conclusion` calls ``decide`` a second
     time. "Which model answered this turn" is therefore a sequence, not a
     value, and collapsing it to a value early is what made the question

@@ -42,7 +42,7 @@ api = [
     "herhealth-backend[retrieval]",
     "fastapi>=0.115",
     "uvicorn>=0.30",
-    # OpenRouterReasoningClient and the vLLM client (triage/clients.py,
+    # The reranker call and the app's own HTTP tests (triage/retrieval.py,
     # ADR 0012) — the "model client and retrieval" this extra's own comment
     # above already named before either client existed.
     "httpx>=0.27",

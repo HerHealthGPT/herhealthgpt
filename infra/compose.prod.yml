@@ -76,17 +76,17 @@ services:
     expose:
       - "8000"
     mem_limit: 1g
-    # Secrets only: database URL, session secret, OpenRouter key, Google client
+    # Secrets only: database URL, session secret, Google client
     # id. Read when the container is created, which is why a rotated RDS
     # password needs the backend recreated (refresh-secrets.sh does that).
     env_file:
       - /run/herhealth/backend.env
     environment:
-      # Base model only. The fine-tuned adapter is NOT cleared to own triage
-      # decisions (CLAUDE.md, "The fine-tuned model"), so the selector is off
-      # and no VLLM_* variable exists in this file or in the secrets.
-      HERHEALTH_TRIAGE_MODE: openrouter
-      HERHEALTH_MODEL_SELECTOR: "off"
+      # The local models (ADR 0018): the base model decides, the adapter words
+      # informational answers. Until this host has a retrieval index and a
+      # route to the model endpoints (HERHEALTH_VLLM_URL, HERHEALTH_EMBEDDING_URL
+      # and HERHEALTH_INDEX_DIR), the backend reports triage as "not configured".
+      HERHEALTH_TRIAGE_MODE: vllm
       HERHEALTH_EMAIL_SENDER: ses
       HERHEALTH_COOKIE_SECURE: "true"
       HERHEALTH_CORS_ORIGINS: https://${DOMAIN}

@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from typing import Any
 
 from anyio import to_thread
 from fastapi import FastAPI, Request
@@ -41,34 +42,31 @@ from herhealth_backend.app.accounts.google_identity import (
 )
 from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import EMAIL_SENDER_ENV, database_url
+from herhealth_backend.app.config import answer_model as configured_answer_model
 from herhealth_backend.app.config import cors_origins as configured_cors_origins
+from herhealth_backend.app.config import decision_model as configured_decision_model
 from herhealth_backend.app.config import email_sender_kind as configured_email_sender_kind
 from herhealth_backend.app.config import google_client_id as configured_google_client_id
 from herhealth_backend.app.config import knowledge_dir as configured_knowledge_dir
-from herhealth_backend.app.config import model_selector_enabled as configured_model_selector_enabled
-from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.config import triage_mode as configured_triage_mode
 from herhealth_backend.app.config import vllm_api_key as configured_vllm_api_key
-from herhealth_backend.app.config import vllm_configured as configured_vllm_configured
 from herhealth_backend.app.config import vllm_max_attempts as configured_vllm_max_attempts
-from herhealth_backend.app.config import vllm_model as configured_vllm_model
 from herhealth_backend.app.config import vllm_timeout as configured_vllm_timeout
 from herhealth_backend.app.config import vllm_url as configured_vllm_url
 from herhealth_backend.app.db import Database
-from herhealth_backend.app.triage.reasoning_models import (
-    BASE_MODEL_ID,
-    FINE_TUNED_MODEL_ID,
-    ReasoningModelOption,
-)
 from herhealth_backend.app.triage.routes import router as triage_router
-from herhealth_backend.triage.agent import ReasoningClient, RetrievalClient, TriageAgent
-from herhealth_backend.triage.clients import (
-    DecisionValidator,
-    FallbackReasoningClient,
-    OpenRouterReasoningClient,
-    VllmReasoningClient,
+from herhealth_backend.triage.agent import RetrievalClient, TriageAgent
+from herhealth_backend.triage.chain import (
+    ANSWER_MAX_TOKENS,
+    DECIDE_MAX_TOKENS,
+    EXTRACT_MAX_TOKENS,
+    LangChainAnswerWriter,
+    LangChainFeatureExtractor,
+    LangChainReasoningClient,
+    build_chat_model,
 )
+from herhealth_backend.triage.clients import DecisionValidator
 from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient, StaticRetrievalClient
 from herhealth_backend.triage.retrieval import (
     IndexRefused,
@@ -131,26 +129,34 @@ def _build_retrieval() -> RetrievalClient | None:
         return None
 
 
+#: How many of her answers a real deployment wants recorded before it accepts
+#: a conclusion without challenge. Three is deliberately low — enough to stop a
+#: verdict from one sentence, not enough to make a consultation feel like a
+#: form. See ``TriageAgent._refuse_premature_conclusion``: the model still
+#: decides, this only sends an early conclusion back once with the reason.
+MIN_ANSWERS_BEFORE_CONCLUDING = 3
+
+
 def _build_triage_agent() -> TriageAgent | None:
     """Construct the triage agent for this deployment's mode.
 
-    ``HERHEALTH_TRIAGE_MODE=demo`` (the local-MVP default when no OpenRouter
-    key is set) wires offline scripted clients — no network, no GPU. ``off``
-    disables triage entirely. ``openrouter`` needs ``OPENROUTER_API_KEY`` and
-    a retrieval index and the two model endpoints. ``vllm`` tries ``HERHEALTH_VLLM_URL`` first
-    and falls back to OpenRouter when ``OPENROUTER_API_KEY`` is also set —
-    which is the single-path shape used when the model selector is off and
-    the fine-tuned adapter is the only model offered.
+    ``off`` disables triage. ``demo`` wires offline scripted clients — no
+    network, no GPU, no index. ``vllm`` is the real path (ADR 0018): the
+    retriever over the index on disk, then the local models through LangChain
+    — the base model extracts what she said and decides, and the fine-tuned
+    adapter words informational answers. There is no second provider behind
+    them.
+
+    ``None`` also when ``vllm`` is asked for but there is no usable index:
+    the turn route then answers 503 "not configured".
     """
     mode = configured_triage_mode()
-    base = load_knowledge_base(configured_knowledge_dir())
-    validator = _decision_validator(base)
-
     if mode == "off":
         return None
+    base = load_knowledge_base(configured_knowledge_dir())
     if mode == "demo":
-        # Demo mode keeps the gate off: MvpDemoReasoningClient is scripted and
-        # has no second answer to give when a conclusion is sent back.
+        # Demo mode keeps the gates off: MvpDemoReasoningClient is scripted and
+        # has no second answer to give when a reply is sent back.
         return TriageAgent(
             base=base,
             reasoning=MvpDemoReasoningClient(),
@@ -161,128 +167,35 @@ def _build_triage_agent() -> TriageAgent | None:
     if retrieval is None:
         return None
 
-    if mode == "vllm":
-        primary = VllmReasoningClient(
-            base_url=configured_vllm_url(),
-            model=configured_vllm_model(),
+    def chat(model: str, max_tokens: int) -> Any:
+        return build_chat_model(
+            url=configured_vllm_url(),
+            model=model,
             api_key=configured_vllm_api_key(),
-            decision_validator=validator,
             timeout=configured_vllm_timeout(),
-            max_attempts=configured_vllm_max_attempts(),
-        )
-        api_key = configured_openrouter_api_key()
-        reasoning: ReasoningClient
-        if api_key is None:
-            reasoning = primary
-        else:
-            reasoning = FallbackReasoningClient(
-                primary=primary,
-                fallback=OpenRouterReasoningClient(
-                    api_key=api_key, decision_validator=validator
-                ),
-                primary_name="fine-tuned adapter (campus vLLM)",
-                fallback_name="base model (OpenRouter)",
-            )
-        return TriageAgent(
-            base=base,
-            reasoning=reasoning,
-            retrieval=retrieval,
-            min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
+            max_tokens=max_tokens,
         )
 
-    api_key = configured_openrouter_api_key()
-    if api_key is None:
-        return None
+    deciding = configured_decision_model()
+    answering = configured_answer_model()
     return TriageAgent(
         base=base,
-        reasoning=OpenRouterReasoningClient(api_key=api_key, decision_validator=validator),
         retrieval=retrieval,
-        min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
-    )
-
-
-#: How many of her answers a real deployment wants recorded before it accepts
-#: a conclusion without challenge. Three is deliberately low — enough to stop a
-#: verdict from one sentence, not enough to make a consultation feel like a
-#: form. See ``TriageAgent._refuse_premature_conclusion``: the model still
-#: decides, this only sends an early conclusion back once with the reason.
-MIN_ANSWERS_BEFORE_CONCLUDING = 3
-
-
-def _build_reasoning_models() -> dict[str, ReasoningModelOption]:
-    """The models ``GET /triage/models`` offers and ``POST /triage/turn`` may
-    route to.
-
-    Empty unless ``HERHEALTH_MODEL_SELECTOR`` is on: without it the app has
-    exactly one reasoning path, chosen by ``HERHEALTH_TRIAGE_MODE``, and the
-    selector is invisible rather than present-but-disabled. That is the
-    dev-only scoping ADR 0016 asks for — the fine-tuned adapter must not be
-    reachable at all in a deployment someone is being shown.
-
-    An option appears only when it is actually configured, so the frontend
-    never lists a model that would fail on the first request.
-    """
-    if not configured_model_selector_enabled():
-        return {}
-
-    validator = _decision_validator(load_knowledge_base(configured_knowledge_dir()))
-    options: dict[str, ReasoningModelOption] = {}
-
-    openrouter_key = configured_openrouter_api_key()
-    if openrouter_key is not None:
-        options[BASE_MODEL_ID] = ReasoningModelOption(
-            id=BASE_MODEL_ID,
-            label="Base model",
-            description="Qwen3.5-9B as published, with no fine-tuning. The default.",
-            reviewed=True,
-            client=OpenRouterReasoningClient(
-                api_key=openrouter_key, decision_validator=validator
-            ),
-        )
-
-    if configured_vllm_configured():
-        # The adapter answers first; the base model answers instead when the
-        # adapter is unreachable or returns nothing that validates. Measured
-        # 2026-09-09, roughly one in four in-scope turns against the adapter
-        # alone ended in a 502 — see FallbackReasoningClient's docstring for
-        # the failure breakdown and for what this does and does not fix.
-        fine_tuned_client: ReasoningClient = VllmReasoningClient(
-            base_url=configured_vllm_url(),
-            model=configured_vllm_model(),
-            api_key=configured_vllm_api_key(),
-            decision_validator=validator,
-            timeout=configured_vllm_timeout(),
+        reasoning=LangChainReasoningClient(
+            chat(deciding, DECIDE_MAX_TOKENS),
+            name=deciding,
+            validator=_decision_validator(base),
             max_attempts=configured_vllm_max_attempts(),
-        )
-        if openrouter_key is not None:
-            fine_tuned_client = FallbackReasoningClient(
-                primary=fine_tuned_client,
-                fallback=OpenRouterReasoningClient(
-                    api_key=openrouter_key, decision_validator=validator
-                ),
-                primary_name="fine-tuned adapter (campus vLLM)",
-                fallback_name="base model (OpenRouter)",
-            )
-        options[FINE_TUNED_MODEL_ID] = ReasoningModelOption(
-            id=FINE_TUNED_MODEL_ID,
-            label="Fine-tuned model",
-            description=(
-                "Our QLoRA adapter, served on the campus GPU, with the base "
-                "model as an automatic fallback when it cannot produce an "
-                "answer. It was trained on phrasing rather than on multi-turn "
-                "conversation, so it tends to conclude before asking."
-            ),
-            # Selecting this no longer labels each answer in the UI. The
-            # remaining control on reachability is HERHEALTH_MODEL_SELECTOR,
-            # which is off by default: ADR 0016 scopes this option to dev, so
-            # it is absent — not merely unlabelled — in any deployment being
-            # shown to someone. `default_model_id` still resolves to the base
-            # model because that option is inserted first.
-            reviewed=True,
-            client=fine_tuned_client,
-        )
-
-    return options
+        ),
+        extractor=LangChainFeatureExtractor(chat(deciding, EXTRACT_MAX_TOKENS), base),
+        answer_writer=(
+            LangChainAnswerWriter(chat(answering, ANSWER_MAX_TOKENS), name=answering)
+            if answering
+            else None
+        ),
+        min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
+        refuse_inform_with_symptoms=True,
+    )
 
 
 def _build_google_verifier() -> GoogleTokenVerifier:
@@ -321,7 +234,7 @@ def create_app(
     or an ``UnconfiguredGoogleTokenVerifier`` otherwise — Google sign-in is
     optional, so its absence never stops the app from booting. ``triage_agent``
     (see ``app/triage/routes.py``) defaults to a real ``TriageAgent`` wired to
-    OpenRouter and the retrieval index when ``OPENROUTER_API_KEY`` is set, or
+    the local models and the retrieval index in ``vllm`` mode, or
     ``None`` otherwise — triage is likewise optional; ``POST /triage/turn``
     returns 503 rather than the app refusing to start.
     """
@@ -339,8 +252,6 @@ def create_app(
             app.state.google_verifier = _build_google_verifier()
         if getattr(app.state, "triage_agent", None) is None:
             app.state.triage_agent = _build_triage_agent()
-        if getattr(app.state, "reasoning_models", None) is None:
-            app.state.reasoning_models = _build_reasoning_models()
         try:
             yield
         finally:

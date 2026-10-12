@@ -12,9 +12,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from pathlib import Path
-from unittest.mock import MagicMock
 
-import httpx
 import pytest
 import pytest_asyncio
 from herhealth_contracts.decision import DecisionType, TriageDecision
@@ -35,7 +33,6 @@ from herhealth_backend.triage.agent import (
     ScriptedReasoningClient,
     TriageAgent,
 )
-from herhealth_backend.triage.clients import FallbackReasoningClient
 from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient
 from herhealth_backend.triage.vocabulary import ClosedVocabularyViolation
 
@@ -618,47 +615,6 @@ async def test_a_turn_reports_and_stores_the_backend_that_answered(
         # Her own message carries no attribution — nothing answered it.
         user_messages = [m for m in detail.json()["messages"] if m["role"] == "user"]
         assert user_messages[0]["served_by"] is None
-
-
-async def test_a_fallback_is_attributed_to_the_model_that_finished_the_turn(
-    database_url: str,
-) -> None:
-    """The case the console log used to be the only record of.
-
-    The adapter is unreachable, OpenRouter finishes the turn, and the answer
-    she reads is the base model's. Reporting this turn as the adapter's would
-    be wrong in exactly the direction that matters for the write-up.
-    """
-    base = load_knowledge_base(KNOWLEDGE)
-    unreachable = MagicMock()
-    unreachable.name = "fine-tuned adapter (campus vLLM)"
-    unreachable.decide.side_effect = httpx.ConnectError("connection refused")
-
-    agent = TriageAgent(
-        base=base,
-        reasoning=FallbackReasoningClient(
-            primary=unreachable,
-            fallback=ScriptedReasoningClient(
-                [_A_CONCLUDE_DECISION], name="base model (OpenRouter)"
-            ),
-        ),
-        retrieval=StaticRetrievalClient(),
-    )
-    async for client in _build_client(database_url, agent):
-        await _register_and_sign_in(client, "triage-fallback@example.com")
-
-        response = await client.post(
-            "/triage/turn", json={"session_id": None, "message": "irregular periods"}
-        )
-        assert response.status_code == 200, response.text
-        served = response.json()["served_by"]
-
-        assert served["final"] == "base model (OpenRouter)"
-        assert [(a["client"], a["outcome"]) for a in served["attempts"]] == [
-            ("fine-tuned adapter (campus vLLM)", "unreachable"),
-            ("base model (OpenRouter)", "ok"),
-        ]
-        assert "connection refused" in served["attempts"][0]["detail"]
 
 
 def test_a_turn_the_server_threw_away_is_not_counted_as_a_success() -> None:
