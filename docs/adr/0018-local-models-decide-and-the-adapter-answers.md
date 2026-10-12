@@ -132,6 +132,44 @@ open decisions below still stand, and a fourth joins them: whether an
 unrecognised entry in the model's own `observed` should be dropped, as the
 extract step already does, instead of failing the turn.
 
+## Second follow-up the same day: repeated questions and invented notes
+
+One scripted consultation was replayed turn by turn. The extract step recorded
+her replies correctly. The loop began when the model asked about a feature
+that already had a value recorded (a misreading from the first turn): the
+agent no longer treated that question as pending, her reply was not matched to
+it, and the model asked again. Three changes followed: the pending question
+is always the last one asked; a question about the feature she has just
+answered is refused once; and an entry in the model's own `observed` that
+names no real feature is dropped instead of failing the reply.
+
+| Measure | Chain | No citation on a question | Plus the repeat and note fixes |
+|---|---|---|---|
+| First turns valid, of 30 | 26 | 28 | 27 |
+| Clarifying questions asked | 4 | 7 | 7 |
+| Median seconds per turn | 31 | 30 | 29 |
+| Own-symptom questions (12): asked / concluded / informed | 3 / 1 / 4 | 6 / 1 / 4 | 6 / 1 / 3 |
+| Scripted consultations concluded, of 10 | 3 | 3 | **5** |
+
+First-turn validity moving between 27 and 28 is run-to-run variation, not an
+effect of these changes.
+
+How the five unfinished consultations ended:
+
+| Outcome | Scripts |
+|---|---|
+| Still asking after 8 turns, mostly new questions | 3 |
+| Case-note wording ("You mentioned…") on both attempts | 2 |
+
+No consultation was lost to an invented feature id, and none repeated the same
+question back to back. The 8-turn limit is this evaluation's own; the agent
+allows 12, and [ADR 0007](0007-what-the-first-real-consultations-showed.md)
+records that severe pelvic pain legitimately takes about ten questions, so one
+of those three (severe pain, eight distinct warning-sign questions) is the
+screen doing its job and running into the evaluation's cap. The wording check
+is now the leading cause of a failed turn, in first turns and in consultations
+alike.
+
 ## What this shows
 
 The points below describe the first run, before the citation change.
