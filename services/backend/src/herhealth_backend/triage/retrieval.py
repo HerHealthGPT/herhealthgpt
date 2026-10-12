@@ -5,8 +5,9 @@ Built from LangChain components (ADR 0017). Per query:
 1. the query is embedded by ``Qwen3-Embedding-4B`` (an HTTP call to vLLM);
 2. a FAISS index, held in this process, returns a wide candidate set, plus a
    separate pool of evidence statements;
-3. ``Qwen3-Reranker-4B`` (another HTTP call) scores every candidate against
-   the query;
+3. when ``HERHEALTH_RERANK=on``, ``Qwen3-Reranker-4B`` (another HTTP call)
+   scores every candidate against the query; otherwise they keep their
+   embedding order;
 4. the top ``k`` are returned, with slots reserved for evidence statements.
 
 No model weights load here. The index is three plain files written by
@@ -96,6 +97,11 @@ class RetrievalSettings:
     reranker_model: str
     api_key: str | None
     evidence_slots: int
+    #: Whether candidates are reranked. Off by default: measured on 2026-10-12
+    #: against user-style questions, the reranker changed which passages came
+    #: back but did not make them measurably better, and it adds a second
+    #: network call and a failure path to every query. See ADR 0017.
+    rerank: bool = False
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str] = os.environ) -> RetrievalSettings:
@@ -106,7 +112,13 @@ class RetrievalSettings:
             raise RuntimeError(
                 f"HERHEALTH_EVIDENCE_SLOTS={raw_slots!r} is not a whole number"
             ) from error
+        raw_rerank = environ.get("HERHEALTH_RERANK", "off").strip().lower() or "off"
+        if raw_rerank not in {"on", "off"}:
+            raise RuntimeError(
+                f"HERHEALTH_RERANK={raw_rerank!r} is not recognised. Use 'on' or 'off'."
+            )
         return cls(
+            rerank=raw_rerank == "on",
             index_dir=Path(environ.get("HERHEALTH_INDEX_DIR", "build/index")),
             embedding_url=environ.get("HERHEALTH_EMBEDDING_URL", "http://127.0.0.1:8003").rstrip(
                 "/"
@@ -150,9 +162,7 @@ def load_vector_store(
             (directory / MANIFEST_FILE).read_text(encoding="utf-8")
         )
         with (directory / PASSAGES_FILE).open(encoding="utf-8") as handle:
-            passages = [
-                IndexedPassage.model_validate_json(line) for line in handle if line.strip()
-            ]
+            passages = [IndexedPassage.model_validate_json(line) for line in handle if line.strip()]
         index = faiss.read_index(str(directory / INDEX_FILE))
     except ValidationError as error:
         raise IndexRefused(
@@ -372,9 +382,14 @@ class LangChainRetrievalClient:
 
     @classmethod
     def from_settings(
-        cls, settings: RetrievalSettings, *, rerank: bool = True
+        cls, settings: RetrievalSettings, *, rerank: bool | None = None
     ) -> LangChainRetrievalClient:
-        """Raises :class:`IndexRefused` if there is no usable index."""
+        """Raises :class:`IndexRefused` if there is no usable index.
+
+        ``rerank`` overrides ``settings.rerank`` when given; the recall check
+        uses that to compare both arms whatever the deployment's default is.
+        """
+        use_reranker = settings.rerank if rerank is None else rerank
         embeddings = build_embeddings(settings)
         store, manifest = load_vector_store(
             settings.index_dir, embeddings, expected_model=settings.embedding_model_id
@@ -392,7 +407,7 @@ class LangChainRetrievalClient:
                 api_key=settings.api_key,
                 client=httpx.Client(timeout=30.0),
             )
-            if rerank
+            if use_reranker
             else None
         )
         return cls(

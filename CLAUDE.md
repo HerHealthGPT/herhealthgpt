@@ -108,8 +108,9 @@ service boundaries. Enforced by import-linter in CI.
 are HTTP calls to vLLM on the campus GPU box (`scripts/serve-models.sh`,
 `infra/model/serve.conf`).
 
-**Retrieval is `Qwen/Qwen3-Embedding-4B` over sentence-level passages, reranked
-by `Qwen/Qwen3-Reranker-4B`, built on LangChain.** The retriever runs inside the
+**Retrieval is `Qwen/Qwen3-Embedding-4B` over sentence-level passages, built on
+LangChain. `Qwen/Qwen3-Reranker-4B` is implemented but off by default
+(`HERHEALTH_RERANK`): measured on user-style questions, it showed no gain.** The retriever runs inside the
 backend (`triage/retrieval.py`) over a FAISS index built by `make index`; there
 is no retrieval service. Sentence-level chunking is load-bearing for
 `make verify-quotes`, not a tuning knob. This was a product decision on

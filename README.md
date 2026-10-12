@@ -160,7 +160,7 @@ OpenRouter (Base tab) or campus vLLM with our LoRA (Fine-tuned tab).
 | Base reasoning | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | OpenRouter in local chat; also the vLLM base on campus |
 | Fine-tuned LoRA (experimental) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
 | Retrieval embeddings | [`Qwen/Qwen3-Embedding-4B`](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | vLLM on the campus box, port 8003; index built by `make index` |
-| Retrieval reranker | [`Qwen/Qwen3-Reranker-4B`](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | vLLM on the campus box, port 8004 |
+| Retrieval reranker (off by default) | [`Qwen/Qwen3-Reranker-4B`](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | vLLM on the campus box, port 8004; used only when `HERHEALTH_RERANK=on` (ADR 0017: no measured gain) |
 
 **`Qwen/Qwen3.5-9B` is a multimodal hybrid, not a plain text model.** It loads
 as `Qwen3_5ForConditionalGeneration`: a vision tower plus a mixed attention
@@ -439,10 +439,11 @@ for the Fine-tuned tab (next section).
 | `services/backend` (FastAPI) | **8000** | Triage API, auth, orchestration |
 | `services/frontend` (Next.js) | **3000** | Chat UI |
 
-**Retrieval needs the model endpoints.** A turn embeds the query and reranks
-candidates through `HERHEALTH_EMBEDDING_URL` and `HERHEALTH_RERANKER_URL`
-*before* the reasoning model. If the embedding endpoint is unreachable you get
-`502`; if only the reranker is, retrieval falls back to embedding order.
+**Retrieval needs the embedding endpoint.** A turn embeds the query through
+`HERHEALTH_EMBEDDING_URL` *before* the reasoning model; if that endpoint is
+unreachable you get `502`. Reranking through `HERHEALTH_RERANKER_URL` happens
+only when `HERHEALTH_RERANK=on`, and falls back to embedding order if the
+reranker is unreachable.
 
 ### 1. Configure `infra/envs/backend.env`
 

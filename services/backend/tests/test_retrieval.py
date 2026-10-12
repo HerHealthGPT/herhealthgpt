@@ -394,3 +394,43 @@ def test_a_manifest_whose_width_disagrees_with_the_vectors_is_refused(tmp_path: 
     path.write_text(path.read_text(encoding="utf-8").replace('"dimensions":8', '"dimensions":999'))
     with pytest.raises(IndexRefused, match="999.*8"):
         load_vector_store(tmp_path, AxisEmbeddings(), expected_model=MODEL_ID)
+
+
+# --- the reranker is optional, and off unless asked for ----------------------
+
+
+def test_the_reranker_is_off_by_default() -> None:
+    assert RetrievalSettings.from_env({}).rerank is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("on", True), ("ON", True), ("off", False), ("", False)]
+)
+def test_the_reranker_setting_is_read_from_the_environment(raw: str, expected: bool) -> None:
+    assert RetrievalSettings.from_env({"HERHEALTH_RERANK": raw}).rerank is expected
+
+
+def test_an_unrecognised_reranker_setting_names_the_variable() -> None:
+    with pytest.raises(RuntimeError, match="HERHEALTH_RERANK"):
+        RetrievalSettings.from_env({"HERHEALTH_RERANK": "maybe"})
+
+
+def _settings_for(directory: Path, **extra: str) -> RetrievalSettings:
+    return RetrievalSettings.from_env(
+        {"HERHEALTH_INDEX_DIR": str(directory), "HERHEALTH_EMBEDDING_MODEL_ID": MODEL_ID, **extra}
+    )
+
+
+def test_from_settings_builds_no_reranker_unless_it_is_switched_on(tmp_path: Path) -> None:
+    _write_index(tmp_path, SOURCES)
+    off = LangChainRetrievalClient.from_settings(_settings_for(tmp_path))
+    on = LangChainRetrievalClient.from_settings(_settings_for(tmp_path, HERHEALTH_RERANK="on"))
+    assert off._retriever.reranker is None
+    assert isinstance(on._retriever.reranker, VllmReranker)
+
+
+def test_an_explicit_argument_overrides_the_setting(tmp_path: Path) -> None:
+    # The recall check compares both arms regardless of the deployment's default.
+    _write_index(tmp_path, SOURCES)
+    forced = LangChainRetrievalClient.from_settings(_settings_for(tmp_path), rerank=True)
+    assert isinstance(forced._retriever.reranker, VllmReranker)

@@ -26,7 +26,8 @@ is deleted.
   vLLM. Queries carry the instruction prefix the model expects; documents do
   not.
 - **Reranker:** `Qwen/Qwen3-Reranker-4B`, served by vLLM, applied to about 50
-  candidates per query.
+  candidates per query **when `HERHEALTH_RERANK=on`. It is off by default**;
+  see "The reranker was measured and defaulted off" below.
 - **Pipeline:** LangChain components. `services/data` builds a FAISS index;
   the backend loads it into a LangChain FAISS store and retrieves through a
   `BaseRetriever` subclass with a custom reranking compressor.
@@ -121,6 +122,71 @@ reasoning did not return a valid decision after 55s: ValueError reasoning model 
   Value error, a decision must be grounded in at least one citation or a red_flag_id [type=value_error, input_value={'observed': {'cycle_regu...you ha
     For further information visit
 ```
+
+## The reranker was measured and defaulted off
+
+Decided by the repo owner on 2026-10-12, after a second measurement on
+user-style questions. The benchmark (`gold_seeds_styled.csv`) has 90 seed
+questions in six registers and no relevance labels, so three measures were
+used, each with the reranker on and off.
+
+**Blind relevance judgments.** Thirty questions (ten seeds on topics the corpus
+covers, in the layperson, ambiguous and emotionally-concerned registers). The
+passages both arms returned were pooled and shuffled, 358 in all, and each was
+graded 2 (answers the question), 1 (related) or 0 (unrelated) without knowing
+which arm returned it.
+
+| Measure | Reranker on | Reranker off |
+|---|---|---|
+| nDCG@8 | 0.830 | 0.840 |
+| Share of the top 3 that answer the question | 0.500 | 0.433 |
+| Questions with an answer in the top 3 | 21 of 30 | 20 of 30 |
+| Top passage answers the question | 16 of 30 | 16 of 30 |
+| Share of the top 8 that are unrelated | 0.104 | 0.075 |
+
+The mean nDCG difference is −0.010, with a bootstrap 95% interval of −0.070 to
++0.048. By register, nDCG was 0.891 against 0.875 (layperson), 0.936 against
+0.881 (emotionally concerned) and 0.663 against 0.764 (ambiguous), ten
+questions each.
+
+**Who judged.** The grades were assigned by an AI assistant (Claude), not by a
+person. The repo owner independently graded a random 40 of the 358: 33 of 40
+matched exactly (82%, Cohen's kappa 0.68), and none differed by more than one
+grade. In five of the seven differences the human grade was the higher one.
+
+**Automatic measures, all 540 questions.**
+
+| Measure | Reranker on | Reranker off |
+|---|---|---|
+| Source passages from the question's own topic pages, top 8 (348 questions on covered topics) | 0.632 | 0.613 |
+| The same, top 3 | 0.669 | 0.635 |
+| Overlap of a rewording's top 8 with the canonical wording's (Jaccard) | 0.268 | 0.290 |
+| Seconds per query | 1.43 | 0.08 |
+
+The two arms share under four of eight passages on average, so the reranker
+does reorder heavily; the reordering is not measurably better.
+
+**What this does and does not show.** No benefit was detected on English
+user-style questions. Thirty questions cannot detect a small effect in either
+direction, and nothing was measured in Arabic or French, where a reranker
+might matter more. So the code stays, behind `HERHEALTH_RERANK`, and the
+default is off because reranking adds a second network call and a failure path
+to every query for no measured gain.
+
+**Two findings that matter more than the reranker.**
+
+- Ambiguous questions retrieve poorly in both arms: the on-topic rate is about
+  0.33 for the ambiguous register against about 0.73 for the canonical one. A
+  single message that does not name its subject gives the retriever little to
+  work with; in a consultation, earlier turns supply it.
+- The benchmark's 180 "Pregnancy" questions fall outside the corpus, so a
+  third of it has nothing relevant to retrieve.
+
+The topic-to-page mapping used for the on-topic measure was chosen for this
+spike (PCOS to the four PCOS pages, Menopause to the menopause page, the nine
+menstrual topics to the menstruation and heavy-menstrual-bleeding pages). The
+spike's scripts were throwaway and are not in the repo; its raw output is in
+`build/reranker_spike/` on the campus box, which git does not track.
 
 ## Consequences
 

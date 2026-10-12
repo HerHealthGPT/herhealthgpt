@@ -175,6 +175,7 @@ Behaviour at the edges:
 | `HERHEALTH_RERANKER_MODEL` | `herhealth-rerank` | served model name |
 | `HERHEALTH_MODELS_API_KEY` | unset | bearer token, sent when set |
 | `HERHEALTH_EVIDENCE_SLOTS` | `3` | reserved evidence-statement slots |
+| `HERHEALTH_RERANK` | `off` | added 2026-10-12 after measurement; `on` enables the reranker (ADR 0017) |
 
 `HERHEALTH_MODEL_SERVICE_URL` is removed. With no index at
 `HERHEALTH_INDEX_DIR`, triage is "not configured" and the rest of the app
