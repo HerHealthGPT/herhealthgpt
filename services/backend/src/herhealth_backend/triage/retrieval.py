@@ -49,9 +49,11 @@ from pydantic import ConfigDict, ValidationError
 __all__ = [
     "IndexRefused",
     "LangChainRetrievalClient",
+    "RetrievalUnavailable",
     "RetrievalSettings",
     "TriageRetriever",
     "VllmReranker",
+    "build_embeddings",
     "load_vector_store",
 ]
 
@@ -62,6 +64,22 @@ _EVIDENCE = PassageType.EVIDENCE_STATEMENT.value
 
 class IndexRefused(RuntimeError):
     """The index on disk cannot be served. The message says why."""
+
+
+class RetrievalUnavailable(httpx.HTTPError):
+    """The embedding endpoint could not be reached or answered with an error.
+
+    An ``httpx.HTTPError`` on purpose: the turn route already maps that to
+    502 "a service we rely on is temporarily unavailable". The OpenAI client
+    raises its own exception types, which are not httpx errors and would
+    otherwise reach the user as a 500.
+    """
+
+
+#: Seconds to wait for the embedding endpoint. Without a timeout the client
+#: waits forever, and a hung turn strands its worker thread for the life of
+#: the process (the route's own timeout cannot cancel a thread).
+EMBEDDING_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,25 +132,34 @@ def load_vector_store(
     be meaningless against this model's queries), one whose files disagree
     with each other, and one that contains quote-only text.
     """
+    for name in (MANIFEST_FILE, PASSAGES_FILE, INDEX_FILE):
+        if not (directory / name).is_file():
+            raise IndexRefused(f"no retrieval index at {directory} ({name} is missing)")
+
+    # Only now the heavy imports: a host with no index (production today)
+    # should learn that without loading faiss and LangChain to find out.
     import faiss
     from langchain_community.docstore.in_memory import InMemoryDocstore
     from langchain_community.vectorstores import FAISS
     from langchain_community.vectorstores.utils import DistanceStrategy
 
-    for name in (MANIFEST_FILE, PASSAGES_FILE, INDEX_FILE):
-        if not (directory / name).is_file():
-            raise IndexRefused(f"no retrieval index at {directory} ({name} is missing)")
-
+    # A damaged or half-copied index must leave triage "not configured", not
+    # stop the whole backend from booting: accounts and /health do not need it.
     try:
         manifest = IndexManifest.model_validate_json(
             (directory / MANIFEST_FILE).read_text(encoding="utf-8")
         )
         with (directory / PASSAGES_FILE).open(encoding="utf-8") as handle:
-            passages = [IndexedPassage.model_validate_json(line) for line in handle if line.strip()]
+            passages = [
+                IndexedPassage.model_validate_json(line) for line in handle if line.strip()
+            ]
+        index = faiss.read_index(str(directory / INDEX_FILE))
     except ValidationError as error:
         raise IndexRefused(
             f"the index at {directory} is not in the expected format: {error}"
         ) from error
+    except (RuntimeError, OSError, UnicodeDecodeError) as error:
+        raise IndexRefused(f"the index at {directory} cannot be read: {error}") from error
 
     if expected_model is not None and manifest.embedding_model != expected_model:
         raise IndexRefused(
@@ -144,11 +171,14 @@ def load_vector_store(
             f"the index at {directory} contains quote-only text, which may not be "
             "served; build it without --authoring"
         )
-
-    index = faiss.read_index(str(directory / INDEX_FILE))
     if index.ntotal != len(passages):
         raise IndexRefused(
             f"the index at {directory} has {index.ntotal} vectors but {len(passages)} passages"
+        )
+    if index.d != manifest.dimensions:
+        raise IndexRefused(
+            f"the index at {directory} says {manifest.dimensions} dimensions in its "
+            f"manifest but its vectors have {index.d}"
         )
 
     store = FAISS(
@@ -246,7 +276,7 @@ class TriageRetriever(BaseRetriever):
         if not query.strip():
             return []
         limit = k or self.k
-        vector = self.embeddings.embed_query(format_query(query))
+        vector = self._embed(query)
 
         general = self.store.similarity_search_with_score_by_vector(
             vector, k=max(self.candidates, limit)
@@ -280,6 +310,15 @@ class TriageRetriever(BaseRetriever):
         rest = [d for d in ranked if d.metadata["id"] not in reserved_ids][: limit - len(reserved)]
         return sorted([*reserved, *rest], key=lambda d: -d.metadata["score"])
 
+    def _embed(self, query: str) -> list[float]:
+        import openai
+
+        try:
+            vector: list[float] = self.embeddings.embed_query(format_query(query))
+        except (openai.OpenAIError, OSError) as error:
+            raise RetrievalUnavailable(f"the embedding endpoint is unavailable: {error}") from error
+        return vector
+
     def _rank(self, query: str, candidates: list[Document]) -> list[Document]:
         by_embedding = sorted(candidates, key=lambda d: -d.metadata["score"])
         if self.reranker is None or not candidates:
@@ -309,6 +348,22 @@ def _to_retrieved(document: Document) -> RetrievedPassage:
     )
 
 
+def build_embeddings(settings: RetrievalSettings) -> Any:
+    """The served embedding model, through its OpenAI-compatible endpoint."""
+    from langchain_openai import OpenAIEmbeddings
+
+    return OpenAIEmbeddings(
+        model=settings.embedding_model,
+        base_url=f"{settings.embedding_url}/v1",
+        api_key=settings.api_key or "not-needed",
+        # Send text, not locally produced token ids, which a vLLM-served Qwen
+        # model would misread.
+        check_embedding_ctx_length=False,
+        timeout=EMBEDDING_TIMEOUT_SECONDS,
+        max_retries=1,
+    )
+
+
 class LangChainRetrievalClient:
     """Implements ``herhealth_backend.triage.agent.RetrievalClient``."""
 
@@ -320,16 +375,7 @@ class LangChainRetrievalClient:
         cls, settings: RetrievalSettings, *, rerank: bool = True
     ) -> LangChainRetrievalClient:
         """Raises :class:`IndexRefused` if there is no usable index."""
-        from langchain_openai import OpenAIEmbeddings
-
-        # check_embedding_ctx_length=False: send text, not locally produced
-        # token ids, which a vLLM-served Qwen model would misread.
-        embeddings = OpenAIEmbeddings(
-            model=settings.embedding_model,
-            base_url=f"{settings.embedding_url}/v1",
-            api_key=settings.api_key or "not-needed",
-            check_embedding_ctx_length=False,
-        )
+        embeddings = build_embeddings(settings)
         store, manifest = load_vector_store(
             settings.index_dir, embeddings, expected_model=settings.embedding_model_id
         )

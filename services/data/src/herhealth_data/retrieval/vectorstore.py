@@ -84,6 +84,10 @@ def endpoint_embeddings(*, url: str, model: str, api_key: str | None = None) -> 
         api_key=api_key or "not-needed",
         check_embedding_ctx_length=False,
         chunk_size=64,
+        # A batch of 64 sentences takes about a second. Without a timeout the
+        # client waits forever on an endpoint that accepts but never answers.
+        timeout=120.0,
+        max_retries=2,
     )
 
 

@@ -83,6 +83,12 @@ What they show, and what they do not:
   likely reasons, neither tested: three of the eight slots are reserved for
   evidence statements, and the row's own statement quotes the same sentence
   and may outrank it.
+- **Nine of the 93 scored rows cannot hit the source-sentence target at all**,
+  so its ceiling is 0.903, not 1.0. Their quoted text matches no source
+  passage in the index; eight of the nine quotes are shorter than the
+  40-character minimum for a passage (list items such as a three-word
+  symptom), so they were never indexed as sentences. Counted directly from
+  `build/index/passages.jsonl` and `evidence.csv`.
 - **The reranker did not improve the source-sentence target here.** The
   difference between 0.280 and 0.323 is four rows of 93, too few to call
   either way. Nothing in this run shows the reranker earning its GPU.

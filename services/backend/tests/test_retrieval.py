@@ -336,3 +336,61 @@ def test_from_settings_refuses_a_missing_index(tmp_path: Path) -> None:
     settings = RetrievalSettings.from_env({"HERHEALTH_INDEX_DIR": str(tmp_path / "absent")})
     with pytest.raises(IndexRefused):
         LangChainRetrievalClient.from_settings(settings)
+
+
+# --- failures of the embedding endpoint and of the index files ---------------
+
+
+class DownEmbeddings(Embeddings):
+    """Raises what the OpenAI client raises when the endpoint is unreachable."""
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        raise AssertionError("the retriever never embeds documents")
+
+    def embed_query(self, text: str) -> list[float]:
+        import openai
+
+        raise openai.APIConnectionError(request=httpx.Request("POST", "http://embed.test/v1"))
+
+
+def test_an_unreachable_embedding_endpoint_is_an_http_error(tmp_path: Path) -> None:
+    # The turn route maps httpx.HTTPError to 502. The OpenAI client's own
+    # exceptions are not httpx errors and would surface as a 500.
+    _write_index(tmp_path, SOURCES)
+    store, _ = load_vector_store(tmp_path, AxisEmbeddings(), expected_model=MODEL_ID)
+    client = LangChainRetrievalClient(TriageRetriever(store=store, embeddings=DownEmbeddings()))
+    with pytest.raises(httpx.HTTPError, match="embedding endpoint"):
+        client.search("query")
+
+
+def test_the_embedding_client_has_a_timeout() -> None:
+    # Without one the client waits forever, and each hung turn strands a
+    # worker thread for the life of the process.
+    from herhealth_backend.triage.retrieval import build_embeddings
+
+    embeddings = build_embeddings(RetrievalSettings.from_env({}))
+    assert embeddings.request_timeout == 30.0
+    assert embeddings.max_retries == 1
+
+
+def test_a_truncated_index_file_is_refused_not_a_crash(tmp_path: Path) -> None:
+    _write_index(tmp_path, SOURCES)
+    path = tmp_path / INDEX_FILE
+    path.write_bytes(path.read_bytes()[:20])
+    with pytest.raises(IndexRefused, match="cannot be read"):
+        load_vector_store(tmp_path, AxisEmbeddings(), expected_model=MODEL_ID)
+
+
+def test_an_undecodable_manifest_is_refused_not_a_crash(tmp_path: Path) -> None:
+    _write_index(tmp_path, SOURCES)
+    (tmp_path / MANIFEST_FILE).write_bytes(b"\xff\xfe\x00not utf-8")
+    with pytest.raises(IndexRefused):
+        load_vector_store(tmp_path, AxisEmbeddings(), expected_model=MODEL_ID)
+
+
+def test_a_manifest_whose_width_disagrees_with_the_vectors_is_refused(tmp_path: Path) -> None:
+    _write_index(tmp_path, SOURCES)
+    path = tmp_path / MANIFEST_FILE
+    path.write_text(path.read_text(encoding="utf-8").replace('"dimensions":8', '"dimensions":999'))
+    with pytest.raises(IndexRefused, match="999.*8"):
+        load_vector_store(tmp_path, AxisEmbeddings(), expected_model=MODEL_ID)
