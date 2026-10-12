@@ -19,11 +19,10 @@ type ChatHeaderProps = {
  * Three controls were removed from here on 2026-09-09, each for its own
  * reason:
  *
- * - **The Base / Fine-tuned selector.** The app now runs a single reasoning
- *   path (`HERHEALTH_TRIAGE_MODE=vllm`, the fine-tuned adapter with the base
- *   model as an automatic fallback), so there was nothing left to choose
- *   between. `ModelSelector` and the `/triage/models` endpoint still exist
- *   for side-by-side evaluation; they are simply not wired into the chat.
+ * - **The Base / Fine-tuned selector.** The app runs a single reasoning path
+ *   (`HERHEALTH_TRIAGE_MODE=vllm`: the base model decides and the fine-tuned
+ *   adapter words informational answers), so there is nothing to choose
+ *   between. The selector component and its endpoint were deleted (ADR 0018).
  * - **The Reasoning toggle.** It surfaced the decision's `rationale` a
  *   second time, behind a disclosure, on top of the answer the user is
  *   already reading. Two versions of the same sentence is not transparency.

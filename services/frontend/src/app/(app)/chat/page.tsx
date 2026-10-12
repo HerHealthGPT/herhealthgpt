@@ -321,7 +321,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     setErrorMessage(null);
 
     try {
-      const response = await sendTriageTurn(sessionId, text, null);
+      const response = await sendTriageTurn(sessionId, text);
       setSessionId(response.session_id);
       setSessionStatus(response.decision.type === "conclude" ? "concluded" : "active");
 

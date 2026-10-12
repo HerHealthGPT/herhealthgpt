@@ -106,23 +106,9 @@ export type CitedPassage = {
  *  matching_conditions and red_flag_id are forbidden there, so there is no
  *  urgency to render and no condition is being attached to her: render the
  *  answer and its sources. */
-/** One selectable reasoning model, from GET /triage/models.
- *
- *  `reviewed: false` means this model's decisions are not cleared for use as
- *  guidance — the fine-tuned adapter was trained without clarifying-question
- *  examples, so it concludes too early. Every answer it produces must be
- *  labelled in the UI. */
-export type ReasoningModelSummary = {
-  id: string;
-  label: string;
-  description: string;
-  reviewed: boolean;
-  is_default: boolean;
-};
-
-/** Which model produced a decision. Absent when the selector is off, which
- *  is the default deployment. Stored with the turn, so a reopened chat still
- *  shows it. */
+/** Which model produced a decision. Only on turns stored while the model
+ *  selector existed (it was removed in ADR 0018); absent on every new turn.
+ *  Stored with the turn, so a reopened chat still shows it. */
 export type DecisionReasoningModel = {
   id: string;
   label: string;
