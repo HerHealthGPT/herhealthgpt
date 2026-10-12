@@ -307,3 +307,39 @@ def test_urgent_advice_in_other_words_makes_the_base_answer_stand(base_answer: s
     # text must not replace an answer that contains urgent advice.
     assert carry_warning_lines("The adapter's answer.", base_answer) is None
     assert _writer(Scripted("A supportive answer.")).write("q", [PASSAGE], base_answer) is None
+
+
+# --- an invented name in the model's own notes ----------------------------------
+
+
+def test_unknown_notes_are_dropped_before_validation() -> None:
+    from herhealth_backend.triage.provenance import drop_unknown_observed
+
+    reply = json.dumps(
+        {
+            "type": "ask",
+            "rationale": "One more detail would help.",
+            "next_feature_id": "cycle_length",
+            "question_text": "How many days are there between your periods?",
+            "observed": {
+                "dark_velvety_patches": "yes",
+                "cycle_regularity": "wobbly",
+                "fever": "yes",
+                "pain_with_sex": "unknown",
+            },
+        }
+    )
+
+    def validator(decision: TriageDecision, context: Sequence[RetrievedPassage]) -> None:
+        assert dict(decision.observed) == {"fever": "yes", "pain_with_sex": "unknown"}
+
+    script = Scripted(reply)
+    client = LangChainReasoningClient(
+        RunnableLambda(script),
+        name="m",
+        validator=validator,
+        repair=lambda decision: drop_unknown_observed(decision, KNOWLEDGE),
+    )
+    result = client.decide(system_prompt="S", history=HISTORY, context=[PASSAGE])
+    assert dict(result.decision.observed) == {"fever": "yes", "pain_with_sex": "unknown"}
+    assert len(script.seen) == 1

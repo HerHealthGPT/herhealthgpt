@@ -22,11 +22,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import httpx
 import openai
+from herhealth_contracts.decision import TriageDecision
 from herhealth_contracts.knowledge import KnowledgeBase
 from herhealth_contracts.retrieval import RetrievedPassage
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -132,10 +133,14 @@ class LangChainReasoningClient:
         name: str,
         validator: DecisionValidator | None = None,
         max_attempts: int = 2,
+        repair: Callable[[TriageDecision], TriageDecision] | None = None,
     ) -> None:
         self._chat = chat
         self._name = name
         self._validator = validator
+        #: Applied to a parsed reply before it is checked. For repairs that
+        #: only ever remove something optional; see ``triage/provenance.py``.
+        self._repair = repair
         self._max_attempts = max(1, max_attempts)
 
     @property
@@ -178,6 +183,8 @@ class LangChainReasoningClient:
                 continue
             try:
                 decision = parse_decision_text(reply)
+                if self._repair is not None:
+                    decision = self._repair(decision)
                 _reject_leaked_internals(decision)
                 if self._validator is not None:
                     self._validator(decision, context)

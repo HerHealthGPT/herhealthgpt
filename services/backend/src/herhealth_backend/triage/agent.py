@@ -618,6 +618,10 @@ class TriageAgent:
     #: decision model's own answer in place.
     answer_writer: AnswerWriter | None = None
 
+    #: Refuse, once, a question about the feature she was asked last turn and
+    #: has now answered. Off here and switched on by the deployment.
+    refuse_repeated_question: bool = False
+
     def run_turn(
         self,
         history: Sequence[Message],
@@ -671,7 +675,10 @@ class TriageAgent:
         given = dict(observed or {})
         extracted: dict[str, str] = {}
         if self.extractor is not None:
-            pending = next((f for f in reversed(list(asked)) if f not in given), None)
+            # The last feature asked, whether or not something is already
+            # recorded for it: the model may re-ask what an earlier misreading
+            # recorded, and her reply must still be read as the answer to it.
+            pending = list(asked)[-1] if asked else None
             extracted = self.extractor.extract(history, pending_feature=pending)
             given.update(extracted)
         turn_context = build_turn_context(self.base, given=given, asked=asked, prose=())
@@ -716,6 +723,9 @@ class TriageAgent:
         result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
         result = self._refuse_premature_conclusion(
             result, turn_context, system, history, context
+        )
+        result = self._refuse_repeated_question(
+            result, turn_context, asked, system, history, context
         )
         decision, attempts = result.decision, result.attempts
 
@@ -784,6 +794,52 @@ class TriageAgent:
             retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
         except Exception:
             # As with the conclusion gate: an improvement, not a guarantee.
+            return result
+        return ReasoningResult(
+            decision=retried.decision,
+            attempts=(*result.attempts, *retried.attempts),
+        )
+
+    def _refuse_repeated_question(
+        self,
+        result: ReasoningResult,
+        turn_context: TurnContext,
+        asked: Sequence[str],
+        system: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> ReasoningResult:
+        """Send back a question she answered in the message just read.
+
+        Measured 2026-10-12: three of ten scripted consultations were still
+        asking after eight turns, one of them the same question four times.
+        The answer was recorded each time; the model asked again anyway.
+
+        Narrow on purpose. It applies only to the feature asked on the
+        previous turn, and only when her reply to it is recorded, so a
+        question she could not answer may still be put again, and the model
+        may still return to an older feature to check it. Refuses once; a
+        second repeat stands, like the other gates.
+        """
+        decision = result.decision
+        last = list(asked)[-1] if asked else None
+        if (
+            not self.refuse_repeated_question
+            or decision.type is not DecisionType.ASK
+            or last is None
+            or decision.next_feature_id != last
+            or last not in turn_context.given
+        ):
+            return result
+        retry = (
+            f"{system}\n\nYOUR PREVIOUS QUESTION WAS REJECTED: SHE HAS ALREADY ANSWERED IT. "
+            f"You asked about {last} on the last turn and her answer is recorded as "
+            f"{turn_context.given[last]!r}. Do not ask about {last} again. Ask about a "
+            "different feature from the list above, or conclude if you have enough."
+        )
+        try:
+            retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+        except Exception:
             return result
         return ReasoningResult(
             decision=retried.decision,

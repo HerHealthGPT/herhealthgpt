@@ -68,6 +68,7 @@ from herhealth_backend.triage.chain import (
 )
 from herhealth_backend.triage.clients import DecisionValidator
 from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient, StaticRetrievalClient
+from herhealth_backend.triage.provenance import drop_unknown_observed
 from herhealth_backend.triage.retrieval import (
     IndexRefused,
     LangChainRetrievalClient,
@@ -186,6 +187,7 @@ def _build_triage_agent() -> TriageAgent | None:
             name=deciding,
             validator=_decision_validator(base),
             max_attempts=configured_vllm_max_attempts(),
+            repair=lambda decision: drop_unknown_observed(decision, base),
         ),
         extractor=LangChainFeatureExtractor(chat(deciding, EXTRACT_MAX_TOKENS), base),
         answer_writer=(
@@ -195,6 +197,7 @@ def _build_triage_agent() -> TriageAgent | None:
         ),
         min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
         refuse_inform_with_symptoms=True,
+        refuse_repeated_question=True,
     )
 
 

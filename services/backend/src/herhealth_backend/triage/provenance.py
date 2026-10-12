@@ -18,7 +18,7 @@ from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.knowledge import ActionCode, KnowledgeBase
 from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 
-__all__ = ["drop_unknown_conditions", "enforce_provenance_cap"]
+__all__ = ["drop_unknown_conditions", "drop_unknown_observed", "enforce_provenance_cap"]
 
 logger = logging.getLogger(__name__)
 
@@ -111,3 +111,36 @@ def enforce_provenance_cap(
     if all(passage.passage_type is PassageType.LIVE_FALLBACK for passage in cited):
         return decision.model_copy(update={"action_code": ActionCode.ROUTINE_APPOINTMENT})
     return decision
+
+
+def drop_unknown_observed(decision: TriageDecision, base: KnowledgeBase) -> TriageDecision:
+    """Remove entries of ``observed`` that name no real feature, or give a
+    value the feature does not list.
+
+    ``observed`` is the model's note of what she said. Measured 2026-10-12:
+    two of ten scripted consultations were lost to a note filed under an
+    invented name (``dark_velvety_patches`` for ``acanthosis_nigricans``),
+    which failed the whole reply, question and all. An entry that cannot be
+    matched to the vocabulary cannot be used for anything, so dropping it
+    leaves exactly the state before the model wrote it: not recorded. The
+    extract step applies the same rule to its own output.
+
+    ``unknown`` is kept: "she was asked and could not say" is a real answer.
+    Nothing else on the decision is touched.
+    """
+    features = base.features_by_id
+    kept: dict[str, str] = {}
+    for feature_id, value in decision.observed.items():
+        feature = features.get(feature_id)
+        if feature is None:
+            continue
+        allowed = {str(item) for item in feature.allowed_values}
+        if allowed and value != "unknown" and value not in allowed:
+            continue
+        kept[feature_id] = value
+    if len(kept) == len(decision.observed):
+        return decision
+    logger.info(
+        "dropped %d unrecognised entr(ies) from observed", len(decision.observed) - len(kept)
+    )
+    return decision.model_copy(update={"observed": kept})

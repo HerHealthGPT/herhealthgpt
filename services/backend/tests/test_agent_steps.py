@@ -288,3 +288,55 @@ def test_an_unexpected_writer_error_keeps_the_base_answer(base: KnowledgeBase) -
     result = turn(agent)
     assert result.decision.answer_text == BASE_ANSWER
     assert result.attempts[-1].outcome is AttemptOutcome.REJECTED
+
+
+# --- repeated questions (2026-10-12) -------------------------------------------
+
+
+def test_the_pending_question_is_the_last_one_asked_even_if_already_recorded(
+    base: KnowledgeBase,
+) -> None:
+    # The model may re-ask something a wrong extraction recorded earlier. Her
+    # reply must still be read as the answer to it, or the question loops.
+    extractor = Extractor({})
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(ask()), retrieval=Retrieval(), extractor=extractor
+    )
+    turn(agent, asked=["cycle_regularity"], observed={"cycle_regularity": "irregular"})
+    assert extractor.pending == ["cycle_regularity"]
+
+
+def _repeat_guarded(base: KnowledgeBase, reasoning: Reasoning) -> TriageAgent:
+    return TriageAgent(
+        base=base, reasoning=reasoning, retrieval=Retrieval(), refuse_repeated_question=True
+    )
+
+
+def test_asking_the_question_she_just_answered_is_refused_once(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"), ask("fever"))
+    result = turn(
+        _repeat_guarded(base, reasoning),
+        asked=["cycle_length"],
+        observed={"cycle_length": "over_35_days"},
+    )
+    assert result.decision.next_feature_id == "fever"
+    assert len(reasoning.prompts) == 2
+    assert "cycle_length" in reasoning.prompts[1] and "ALREADY ANSWERED" in reasoning.prompts[1]
+
+
+def test_a_second_repeat_stands(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"), ask("cycle_length"))
+    result = turn(
+        _repeat_guarded(base, reasoning),
+        asked=["cycle_length"],
+        observed={"cycle_length": "over_35_days"},
+    )
+    assert result.decision.next_feature_id == "cycle_length"
+    assert len(reasoning.prompts) == 2
+
+
+def test_a_question_she_has_not_answered_may_be_asked_again(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"))
+    result = turn(_repeat_guarded(base, reasoning), asked=["cycle_length"], observed={})
+    assert result.decision.next_feature_id == "cycle_length"
+    assert len(reasoning.prompts) == 1
