@@ -36,17 +36,18 @@ ingest = [
 # run at different times and the model weights are large: authoring proposals
 # needs this, validating knowledge does not.
 retrieval = [
-    # The index is a normalised matrix and an exhaustive dot product. At a few
-    # thousand sentences that is exact, fast, and needs no index-building step —
-    # FAISS earns its keep somewhere above ~100k vectors, not here.
+    # Vectors are held as float32 arrays on the way into the index.
     "numpy>=1.26",
-    # Declared directly only so that the CPU-index source below applies: uv
-    # applies tool.uv.sources to DIRECT dependencies, and torch otherwise arrives
-    # only through sentence-transformers. No upper bound; uv.lock pins the version.
-    "torch>=2.0",
-    # Wraps BAAI/bge-m3. Chosen on published Arabic RAG results; see ADR 0010.
-    # Imported lazily, so this is only needed when actually embedding.
-    "sentence-transformers>=3.0",
+    # The index itself. Exact inner-product search over unit vectors, which is
+    # cosine similarity; at a few thousand passages nothing approximate is
+    # needed. Written with faiss's own serialiser, never pickled.
+    "faiss-cpu>=1.9",
+    # The pipeline is built from LangChain components (ADR 0017): the
+    # embeddings interface, the FAISS vector store, and the OpenAI-compatible
+    # client that talks to the vLLM embedding endpoint.
+    "langchain-core>=1.0",
+    "langchain-community>=0.4",
+    "langchain-openai>=1.0",
 ]
 
 # Test/lint tooling is declared once, in the workspace root's dev group.
@@ -56,9 +57,6 @@ herhealth-data = "herhealth_data.cli:main"
 
 [tool.uv.sources]
 herhealth-contracts = { workspace = true }
-# Linux only: Windows/macOS wheels on PyPI are already CPU builds. The index
-# itself is declared in the workspace root pyproject.toml.
-torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/herhealth_data"]

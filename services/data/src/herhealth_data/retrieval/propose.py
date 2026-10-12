@@ -35,10 +35,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from herhealth_contracts.knowledge import Condition, Feature, KnowledgeBase
+from herhealth_contracts.retrieval import IndexedPassage
 
-from herhealth_data.retrieval.embed import Embedder
-from herhealth_data.retrieval.index import Hit, PassageIndex
-from herhealth_data.retrieval.passages import Passage
+from herhealth_data.retrieval.vectorstore import Hit, PassageStore
 
 __all__ = ["Gap", "Proposal", "find_gaps", "propose_rows", "render_batch"]
 
@@ -74,7 +73,7 @@ class Gap:
 @dataclass(frozen=True, slots=True)
 class Proposal:
     gap: Gap
-    passage: Passage
+    passage: IndexedPassage
     score: float
 
 
@@ -110,8 +109,7 @@ def find_gaps(base: KnowledgeBase, condition_ids: Sequence[str] | None = None) -
 
 def propose_rows(
     base: KnowledgeBase,
-    index: PassageIndex,
-    embedder: Embedder,
+    store: PassageStore,
     *,
     condition_ids: Sequence[str] | None = None,
     per_gap: int = 2,
@@ -131,16 +129,13 @@ def propose_rows(
     likely way a plausible-but-wrong row gets proposed.
     """
     proposals: list[Proposal] = []
-
     for gap in find_gaps(base, condition_ids):
         allowed = set(gap.condition.source_ids) if cited_sources_only else None
 
-        def keep(passage: Passage, allowed: set[str] | None = allowed) -> bool:
+        def keep(passage: IndexedPassage, allowed: set[str] | None = allowed) -> bool:
             return allowed is None or passage.source_id in allowed
 
-        hits: list[Hit] = index.search(
-            gap.query(), embedder, k=per_gap, where=keep, min_score=min_score
-        )
+        hits: list[Hit] = store.search(gap.query(), k=per_gap, where=keep, min_score=min_score)
         proposals.extend(
             Proposal(gap=gap, passage=hit.passage, score=hit.score) for hit in hits
         )

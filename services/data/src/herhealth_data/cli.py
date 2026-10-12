@@ -101,25 +101,35 @@ def build_parser() -> argparse.ArgumentParser:
     icd_parser.set_defaults(func=commands.run_icd)
 
     index_parser = subparsers.add_parser(
-        "index", help="embed build/clean/ into a searchable passage index"
+        "index", help="embed build/clean/ and knowledge/ into a retrieval index"
     )
     index_parser.add_argument("--clean-dir", type=Path, default=paths.CLEAN_DIR)
-    index_parser.add_argument("--index-dir", type=Path, default=paths.INDEX_DIR)
+    index_parser.add_argument(
+        "--index-dir",
+        type=Path,
+        default=None,
+        help="defaults to build/index, or build/index-authoring",
+    )
     index_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
     index_parser.add_argument(
-        "--model", default=None, help="defaults to bge-m3; 'hashing' for the offline stand-in"
+        "--model",
+        default=None,
+        help="'hashing' for the offline stand-in; default is the served embedder",
     )
     index_parser.add_argument(
-        "--exclude-quote-only",
+        "--embedding-url", default=None, help="defaults to the port in infra/model/serve.conf"
+    )
+    index_parser.add_argument(
+        "--authoring",
         action="store_true",
-        help="drop quote-only (NHS) passages before embedding; required for the deployed index",
+        help="keep quote-only (NHS) passages; for the proposal tool only, never served",
     )
     index_parser.set_defaults(func=commands.run_index)
 
-    search_parser = subparsers.add_parser("search", help="query the passage index by hand")
+    search_parser = subparsers.add_parser("search", help="query a retrieval index by hand")
     search_parser.add_argument("query")
     search_parser.add_argument("--index-dir", type=Path, default=paths.INDEX_DIR)
-    search_parser.add_argument("--model", default=None, help="defaults to the index's own model")
+    search_parser.add_argument("--embedding-url", default=None)
     search_parser.add_argument("-k", type=int, default=8)
     search_parser.set_defaults(func=commands.run_search)
 
@@ -127,8 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
         "propose", help="propose candidate evidence rows into a DRAFT batch"
     )
     propose_parser.add_argument("--knowledge", type=Path, default=paths.KNOWLEDGE_DIR)
-    propose_parser.add_argument("--index-dir", type=Path, default=paths.INDEX_DIR)
-    propose_parser.add_argument("--model", default=None)
+    propose_parser.add_argument("--index-dir", type=Path, default=paths.AUTHORING_INDEX_DIR)
+    propose_parser.add_argument("--embedding-url", default=None)
     propose_parser.add_argument(
         "--condition", action="append", default=[], help="restrict to a condition, repeatable"
     )

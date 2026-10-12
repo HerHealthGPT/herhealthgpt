@@ -106,7 +106,7 @@ def test_fetch_dry_run_makes_no_request(tmp_path: Path, capsys: pytest.CaptureFi
 
 
 # --------------------------------------------------------------------------
-# index --exclude-quote-only, offline (hashing stand-in, no model download)
+# index, offline (hashing stand-in, no model, no endpoint)
 # --------------------------------------------------------------------------
 
 
@@ -120,10 +120,16 @@ def _write_clean_doc(clean_dir: Path, source_id: str, slug: str, sentence: str) 
     (clean_dir / source_id / f"{slug}.json").write_text(json.dumps(document), encoding="utf-8")
 
 
-def _build_index(tmp_path: Path, *extra: str) -> list[dict[str, object]]:
+def _build_index(tmp_path: Path, *extra: str) -> tuple[list[dict[str, object]], dict[str, object]]:
     clean_dir = tmp_path / "clean"
     # Placeholder text, not clinical content: only the source id matters here.
-    _write_clean_doc(clean_dir, "womenshealth", "page", "A placeholder sentence, public domain.")
+    # Longer than MIN_SENTENCE_CHARS (40), or it is never indexed at all.
+    _write_clean_doc(
+        clean_dir,
+        "womenshealth",
+        "page",
+        "A placeholder sentence from a page that is in the public domain.",
+    )
     _write_clean_doc(clean_dir, "nhs", "page", "A placeholder sentence from a quote-only page.")
     index_dir = tmp_path / "index"
     code = main(
@@ -135,29 +141,53 @@ def _build_index(tmp_path: Path, *extra: str) -> list[dict[str, object]]:
     )
     assert code == 0
     lines = (index_dir / "passages.jsonl").read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines]
+    manifest = json.loads((index_dir / "manifest.json").read_text(encoding="utf-8"))
+    return [json.loads(line) for line in lines], manifest
 
 
-def test_index_without_the_flag_keeps_quote_only_text_in_the_files(tmp_path: Path) -> None:
-    """The authoring index: NHS is present, flagged, and filtered only at query time."""
-    passages = _build_index(tmp_path)
-    assert any(p["source_id"] == "nhs" for p in passages)
-    assert any(p["may_be_ingested"] is False for p in passages)
-
-
-def test_exclude_quote_only_leaves_no_nhs_text_in_the_index_files(tmp_path: Path) -> None:
-    """What scripts/publish-index.sh checks before anything reaches S3 or an image:
-    every passage ingestable, none from nhs. Covers both source passages and the
-    evidence statements built from knowledge/ (NHS backs many of those rows)."""
-    passages = _build_index(tmp_path, "--exclude-quote-only")
-    assert passages
+def test_the_served_index_has_no_quote_only_text(tmp_path: Path) -> None:
+    """The default build is the one the backend serves and the one that may be
+    copied to a server: every passage ingestable, none from nhs. Covers source
+    passages and the evidence statements built from knowledge/ alike."""
+    passages, manifest = _build_index(tmp_path)
+    assert any(p["passage_type"] == "source_passage" for p in passages)
     assert all(p["may_be_ingested"] is True for p in passages)
     assert not any(p["source_id"] == "nhs" for p in passages)
     assert any(p["passage_type"] == "evidence_statement" for p in passages)
+    assert manifest["contains_quote_only"] is False
 
 
-def test_exclude_quote_only_defaults_off() -> None:
-    assert build_parser().parse_args(["index"]).exclude_quote_only is False
+def test_the_authoring_index_keeps_quote_only_text_and_says_so(tmp_path: Path) -> None:
+    passages, manifest = _build_index(tmp_path, "--authoring")
+    assert any(p["source_id"] == "nhs" for p in passages)
+    assert manifest["contains_quote_only"] is True
+
+
+def test_index_writes_no_pickle(tmp_path: Path) -> None:
+    _build_index(tmp_path)
+    assert sorted(p.name for p in (tmp_path / "index").iterdir()) == [
+        "index.faiss",
+        "manifest.json",
+        "passages.jsonl",
+    ]
+
+
+def test_authoring_defaults_off_and_the_old_flag_is_gone() -> None:
+    assert build_parser().parse_args(["index"]).authoring is False
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["index", "--exclude-quote-only"])
+
+
+def test_search_finds_a_passage_in_a_built_index(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _build_index(tmp_path)
+    # The passage's own words: with a bag-of-words stand-in that is the one
+    # query guaranteed to rank it first among the real evidence statements.
+    query = "A placeholder sentence from a page that is in the public domain."
+    code = main(["search", query, "--index-dir", str(tmp_path / "index"), "-k", "1"])
+    assert code == 0
+    assert query in capsys.readouterr().out
 
 
 # --------------------------------------------------------------------------

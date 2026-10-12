@@ -37,11 +37,17 @@ CLEAN_DIR: Final[Path] = BUILD_DIR / "clean"
 #: The passage index: a vector matrix plus one JSON line per passage.
 #: Generated and gitignored — rebuildable from build/clean/ with `make index`.
 INDEX_DIR: Final[Path] = BUILD_DIR / "index"
+#: Includes quote-only (NHS) passages. For the evidence-proposal tool on the
+#: authoring machine only; never served and never copied to a server.
+AUTHORING_INDEX_DIR: Final[Path] = BUILD_DIR / "index-authoring"
 
 DATA_SERVICE_DIR: Final[Path] = REPO_ROOT / "services" / "data"
 
 #: What to fetch, and the per-source guards. Tracked.
 INGEST_TARGETS_FILE: Final[Path] = DATA_SERVICE_DIR / "ingest_targets.yaml"
+INGEST_LOCK_FILE: Final[Path] = DATA_SERVICE_DIR / "ingest.lock.jsonl"
+#: Model ids, pinned revisions and ports for the vLLM processes (step 1).
+SERVE_CONF: Final[Path] = REPO_ROOT / "infra" / "model" / "serve.conf"
 
 #: Reviewed evidence rows, authored as YAML. Tracked. knowledge/evidence.csv
 #: is generated from these by `make evidence`.

@@ -45,17 +45,6 @@ herhealth-data = { workspace = true }
 herhealth-backend = { workspace = true }
 herhealth-model = { workspace = true }
 
-# torch on Linux comes from PyTorch's CPU index (services/data declares the
-# source). PyPI's Linux wheel depends on the CUDA 13 stack (nvidia-*, triton:
-# ~1.5 GB compressed, 10 packages), and none of our hosts has a GPU: that is dead
-# weight in the retrieval image and in every pull. Windows and macOS keep PyPI's
-# wheels, which are CPU builds already. `explicit = true` means only packages
-# that name this index use it; everything else still resolves from PyPI.
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
 # Tooling shared by every member. Installed by default; `uv sync --no-dev`
 # gives the runtime-only environment.
 [dependency-groups]

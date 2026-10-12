@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt hygiene test test-api test-frontend db-up db-down migrate serve clean-build
+.PHONY: index index-authoring help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt hygiene test test-api test-frontend db-up db-down migrate serve clean-build
 
 # A demonstration case for `make triage`. Override to run another:
 #   make triage CASE=services/backend/cases/says_nothing.yaml
@@ -72,6 +72,15 @@ fetch:
 # Needs the ingest extra: make install-ingest
 clean:
 	$(UV) run --extra ingest python -m herhealth_data.cli clean
+
+# Needs the embedding endpoint (scripts/serve-models.sh) and build/clean/.
+# The served index: no quote-only text, safe to copy to a server.
+index:
+	$(UV) run --extra retrieval python -m herhealth_data.cli index --knowledge $(KNOWLEDGE_DIR)
+
+# Keeps quote-only (NHS) passages. For `herhealth-data propose` only.
+index-authoring:
+	$(UV) run --extra retrieval python -m herhealth_data.cli index --authoring --knowledge $(KNOWLEDGE_DIR)
 
 # evidence.csv is generated, never hand-edited. Edit the batch YAML instead.
 evidence:
@@ -140,7 +149,7 @@ fmt:
 # Docker. That suite is `make test-api`. Everything left runs offline with no
 # server and no database, which is the property the triage core must keep.
 test:
-	$(UV) run --extra ingest pytest packages/contracts/tests services/data/tests services/backend/tests services/model/tests scripts/tests --ignore=services/backend/tests/app -q
+	$(UV) run --extra ingest --extra retrieval pytest packages/contracts/tests services/data/tests services/backend/tests services/model/tests scripts/tests --ignore=services/backend/tests/app -q
 
 # The backend's HTTP and database tests. Starts PostgreSQL in a container via
 # testcontainers, so Docker must be running. No AWS account, no credentials.
