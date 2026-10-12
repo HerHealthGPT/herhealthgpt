@@ -190,11 +190,10 @@ _JSON_SHAPE_INSTRUCTION = (
     # Its own paragraph, deliberately. It used to be concatenated straight
     # onto the sentence above with no break, so the single most-violated
     # rule in the prompt was buried mid-paragraph.
-    "\n\nMANDATORY: citations must be non-empty UNLESS red_flag_id is set — this applies to "
-    "an ask as much as a conclude. If you are asking a question because of something a "
-    "retrieved passage suggests, cite that passage's id even though you have not "
-    "concluded yet. An ask or conclude with empty citations and no red_flag_id is "
-    "invalid and will be rejected.\n\n"
+    "\n\nMANDATORY: on a conclude, citations must be non-empty UNLESS red_flag_id is "
+    "set; a conclude with empty citations and no red_flag_id is invalid and will be "
+    "rejected. An ask does not need a citation: cite a retrieved passage if one is the "
+    "reason for your question, otherwise send citations as [].\n\n"
     "A DECLINE IS THE EXACT OPPOSITE, and is how you refuse an off-scope message (see "
     "the scope rule at the top of this prompt). type \"decline\" takes ONLY rationale: "
     "next_feature_id, question_text, action_code, matching_conditions, red_flag_id must "
