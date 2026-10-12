@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from herhealth_model.source_urls import load_source_urls
+from herhealth_data.retrieval.source_urls import load_source_urls
 
 REPO = Path(__file__).resolve().parents[3]
 REAL_LOCK = REPO / "services" / "data" / "ingest.lock.jsonl"

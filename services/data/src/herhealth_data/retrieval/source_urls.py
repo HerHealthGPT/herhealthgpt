@@ -8,8 +8,8 @@ of what ``make fetch`` retrieved, kept in version control precisely because
 which is what a passage has, so a lookup built from it closes the gap
 without touching the ingestion pipeline or re-fetching anything.
 
-Read once at start-up. The file is small (tens of records) and only changes
-when ``make fetch`` runs, which is not while this service is up.
+Read once per index build. The url is written into each passage's record in
+``passages.jsonl``, so nothing downstream needs the lock file.
 """
 
 from __future__ import annotations
