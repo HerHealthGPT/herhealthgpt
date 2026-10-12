@@ -11,9 +11,7 @@ from herhealth_data.retrieval.vectorstore import HashingEmbeddings, PassageStore
 
 
 def _store_for(text: str, source_id: str) -> PassageStore:
-    passage = Passage(
-        source_id=source_id, slug="page", heading="", section_type="other", text=text
-    )
+    passage = Passage(source_id=source_id, slug="page", heading="", section_type="other", text=text)
     return PassageStore.build(
         [to_indexed(passage, {})],
         HashingEmbeddings(),

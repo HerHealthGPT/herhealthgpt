@@ -228,9 +228,7 @@ class PassageStore:
 
         manifest = read_manifest(directory)
         with (directory / PASSAGES_FILE).open(encoding="utf-8") as handle:
-            passages = [
-                IndexedPassage.model_validate_json(line) for line in handle if line.strip()
-            ]
+            passages = [IndexedPassage.model_validate_json(line) for line in handle if line.strip()]
         index = faiss.read_index(str(directory / INDEX_FILE))
         return cls(passages, index, embeddings, manifest, query_formatter=query_formatter)
 
