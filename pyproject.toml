@@ -14,7 +14,6 @@ dependencies = [
     "herhealth-contracts",
     "herhealth-data",
     "herhealth-backend",
-    "herhealth-model",
 ]
 
 # Re-exposed from the data service so `uv sync --extra ingest` works from the
@@ -35,7 +34,6 @@ members = [
     "packages/contracts",
     "services/data",
     "services/backend",
-    "services/model",
 ]
 
 # The local packages resolve to the working tree, never to an index.
@@ -43,7 +41,6 @@ members = [
 herhealth-contracts = { workspace = true }
 herhealth-data = { workspace = true }
 herhealth-backend = { workspace = true }
-herhealth-model = { workspace = true }
 
 # Tooling shared by every member. Installed by default; `uv sync --no-dev`
 # gives the runtime-only environment.

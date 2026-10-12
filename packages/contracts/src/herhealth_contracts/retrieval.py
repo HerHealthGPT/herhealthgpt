@@ -9,8 +9,8 @@ retrieval is promoted from "propose evidence rows for a human to review" to
 shape it can hold without importing ``services/data``. This is that shape.
 
 A :class:`RetrievedPassage` is what a search returns; nothing constructs one
-directly from scratch. Whatever runs the search — today ``services/data``,
-later ``services/model`` or the backend's own retrieval client — is
+directly from scratch. Whatever runs the search — the backend's retrieval
+client, or ``services/data`` during authoring — is
 responsible for turning a ``Passage`` plus a similarity score into one of
 these before it crosses the service boundary.
 """

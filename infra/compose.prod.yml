@@ -1,12 +1,11 @@
-# Production topology: ONE host, four containers. Run by
+# Production topology: ONE host, three containers. Run by
 # /opt/herhealth/deploy.sh -- never by hand except to diagnose (runbook:
 # docs/runbooks/aws-deploy.md). infra/compose.yml is the local-development file.
 #
 #   internet -> :80/:443 -> caddy -> frontend:3000
 #                                 -> backend:8000  --> RDS (private subnet)
-#                                                  --> retrieval:8001
 #
-# Only caddy publishes ports. retrieval and the others are reachable on the
+# Only caddy publishes ports. The others are reachable on the
 # internal compose network and nowhere else.
 #
 # Logging: every service uses the awslogs driver into a log group that
@@ -88,7 +87,6 @@ services:
       # and no VLLM_* variable exists in this file or in the secrets.
       HERHEALTH_TRIAGE_MODE: openrouter
       HERHEALTH_MODEL_SELECTOR: "off"
-      HERHEALTH_MODEL_SERVICE_URL: http://retrieval:8001
       HERHEALTH_EMAIL_SENDER: ses
       HERHEALTH_COOKIE_SECURE: "true"
       HERHEALTH_CORS_ORIGINS: https://${DOMAIN}
@@ -102,28 +100,6 @@ services:
       options:
         awslogs-region: ${AWS_REGION}
         awslogs-group: /herhealth/prod/backend
-        tag: "{{.Name}}"
-
-  retrieval:
-    image: ${ECR_REGISTRY}/herhealth-retrieval:${TAG}
-    restart: unless-stopped
-    expose:
-      - "8001"
-    # bge-m3 is about 2 GB resident. The cap protects the host (and Caddy and
-    # the database client) from this container; the host also has 2 GB of swap.
-    mem_limit: 4g
-    environment:
-      # The weights are baked into the image at a pinned revision. Never reach
-      # out to the Hugging Face hub at runtime: a moving revision would no
-      # longer match the index's vectors.
-      HF_HUB_OFFLINE: "1"
-    # Healthcheck is defined in the image; start_period is 180 s because the
-    # model takes tens of seconds to load.
-    logging:
-      driver: awslogs
-      options:
-        awslogs-region: ${AWS_REGION}
-        awslogs-group: /herhealth/prod/retrieval
         tag: "{{.Name}}"
 
 volumes:

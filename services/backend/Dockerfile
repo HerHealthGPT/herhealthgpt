@@ -6,11 +6,11 @@
 #
 # The root is the build context because this is a uv workspace: herhealth-backend
 # depends on herhealth-contracts by path (`[tool.uv.sources] workspace = true`),
-# and uv resolves every workspace member from the lockfile, so all four member
+# and uv resolves every workspace member from the lockfile, so all three member
 # manifests must exist even though only two are installed here.
 #
-# No model weights load in this process — embedding is an HTTP call to
-# services/model. That is an architectural rule, and it is why this image is
+# No model weights load in this process — embedding and reranking are HTTP
+# calls to vLLM. That is an architectural rule, and it is why this image is
 # small and needs no GPU.
 
 FROM python:3.12-slim AS builder
@@ -30,12 +30,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/contracts/pyproject.toml packages/contracts/
 COPY services/data/pyproject.toml services/data/
-COPY services/model/pyproject.toml services/model/
 COPY services/backend/pyproject.toml services/backend/
 
 # Workspace members must exist as directories for the lock to resolve, but the
 # two this image never imports contribute nothing beyond their manifest.
-RUN mkdir -p packages/contracts/src services/data/src services/model/src services/backend/src
+RUN mkdir -p packages/contracts/src services/data/src services/backend/src
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra api --no-install-workspace

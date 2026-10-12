@@ -47,7 +47,7 @@ flock -n 9 || { echo "another deploy is already running" >&2; exit 1; }
 
 S3="s3://${ARTIFACTS_BUCKET}/deploy/${SHA}"
 STAGE="$HOME_DIR/next"
-MIN_FREE_GB=15 # the retrieval image is several GB compressed and more extracted
+MIN_FREE_GB=15 # room for two image pulls and the previous release
 
 say() { echo "[deploy $(date -u +%H:%M:%S)] $*"; }
 

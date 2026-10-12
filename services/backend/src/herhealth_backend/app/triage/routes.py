@@ -187,8 +187,8 @@ async def triage_turn(
     (``httpx.Client``, not ``AsyncClient`` — see ``triage/clients.py``), so
     this route is ``async def`` for its database access but routes that one
     call through a plain ``loop.run_in_executor`` (see ``_run_turn``) rather
-    than blocking the event loop for however long OpenRouter or
-    ``services/model`` takes to answer — the same reasoning
+    than blocking the event loop for however long the reasoning model or
+    retrieval takes to answer — the same reasoning
     ``app/main.py``'s ``_build_email_sender`` documents for its own blocking
     call inside an async context.
     """
@@ -415,8 +415,8 @@ def _red_flag_citation(decision: TriageDecision, base: KnowledgeBase) -> dict[st
     **This is also the only route by which NHS can be cited, and that is a
     licence constraint, not an oversight.** NHS is ``citable_only``: its text
     may be quoted with attribution but may never enter the served corpus, so
-    ``services/model``'s ``/search`` filters every NHS passage out (707 of
-    4,454). Quoting a rule's ``source_quote`` with attribution is exactly the
+    the served index is built without any NHS passage
+    (``herhealth-data index``). Quoting a rule's ``source_quote`` with attribution is exactly the
     use its licence permits. Most of ``red_flags.yaml`` is NHS-derived, so in
     practice this is where NHS appears.
 

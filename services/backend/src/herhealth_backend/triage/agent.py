@@ -13,12 +13,12 @@ vector index to import or to test:
 * :class:`ReasoningClient` — one call, one turn: history and retrieved
   context in, a validated :class:`~herhealth_contracts.decision.TriageDecision`
   out. Guided decoding against ``TriageDecision.model_json_schema()`` is
-  expected to happen on the other side of this seam (``services/model``);
+  expected to happen on the other side of this seam (the vLLM server);
   Pydantic validates again on receipt here, because a client that already
   returned invalid JSON would otherwise fail somewhere less legible than this.
 * :class:`RetrievalClient` — a query string in, ``RetrievedPassage`` hits out.
-  ``services/data``'s ``PassageIndex.search`` does the real work; nothing here
-  knows its return type, only
+  ``triage/retrieval.py`` does the real work; nothing here knows its
+  internals, only
   :class:`herhealth_contracts.retrieval.RetrievedPassage`.
 
 What this module deliberately does **not** do: decide anything. Every

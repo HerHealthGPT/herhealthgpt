@@ -76,8 +76,10 @@ def enforce_provenance_cap(
     decision: TriageDecision, context: Sequence[RetrievedPassage]
 ) -> TriageDecision:
     """Floor a ``SELF_CARE`` conclusion at ``ROUTINE_APPOINTMENT`` when every
-    citation behind it is a live, unreviewed fallback fetch (see
-    ``herhealth_model.web_fallback``) rather than a reviewed passage.
+    citation behind it is a live, unreviewed fallback fetch rather than a
+    reviewed passage. Nothing produces such a passage since the web fallback
+    was removed with the retrieval service (ADR 0017); the floor stays as a
+    guard should one ever be reintroduced.
 
     A red-flag-driven conclusion is untouched: it never carries citations by
     design (``red_flags.yaml`` is injected, never retrieved — see

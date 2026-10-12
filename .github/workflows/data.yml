@@ -51,7 +51,7 @@ jobs:
       # --extra ingest: the clean-step tests import BeautifulSoup. Without it
       # test_clean.py fails at collection, which is how this was first found.
       - name: Install from lockfile
-        run: uv sync --locked --extra ingest
+        run: uv sync --locked --extra ingest --extra retrieval
 
       - name: Lint
         run: make lint

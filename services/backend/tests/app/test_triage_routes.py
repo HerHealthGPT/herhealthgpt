@@ -3,7 +3,7 @@
 Uses the REAL knowledge base, like ``test_triage_cli.py`` — a scripted
 decision still has to satisfy ``validate_against_knowledge_base`` against
 real ``features.yaml``/``red_flags.yaml`` content, not a fixture. No real
-OpenRouter or ``services/model`` call: ``ScriptedReasoningClient`` (already
+OpenRouter or retrieval call: ``ScriptedReasoningClient`` (already
 built for exactly this in ``triage/agent.py``) and a small local
 ``StaticRetrievalClient`` stand in for both.
 """
