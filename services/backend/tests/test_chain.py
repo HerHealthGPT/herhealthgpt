@@ -152,7 +152,11 @@ def test_an_unreachable_endpoint_is_an_http_error() -> None:
 
 def test_build_chat_model_sets_temperature_tokens_and_no_retries() -> None:
     chat = build_chat_model(
-        url="http://127.0.0.1:8002/", model="Qwen/Qwen3.5-9B", api_key=None, timeout=50.0, max_tokens=1200
+        url="http://127.0.0.1:8002/",
+        model="Qwen/Qwen3.5-9B",
+        api_key=None,
+        timeout=50.0,
+        max_tokens=1200,
     )
     assert chat.temperature == 0
     assert chat.max_tokens == 1200
