@@ -25,6 +25,7 @@ from herhealth_backend.triage.agent import (
 
 __all__ = [
     "DecisionValidator",
+    "WordingRejected",
     "extract_json_object",
     "parse_decision_text",
     "retry_feedback",
@@ -471,6 +472,21 @@ _LEAKED_INTERNALS = (
 )
 
 
+class WordingRejected(ValueError):
+    """A reply whose decision is sound but whose user-facing text is not.
+
+    A ``ValueError``, so every existing handler still treats it as an invalid
+    reply. A type of its own because it is the one failure where everything
+    that matters is right and only a phrase is wrong, which is worth one more
+    attempt with feedback about the phrase alone.
+    """
+
+    def __init__(self, field: str, phrase: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+        self.phrase = phrase
+
+
 def _reject_leaked_internals(decision: TriageDecision) -> None:
     """Raise ``ValueError`` if user-facing text carries this system's plumbing.
 
@@ -508,7 +524,9 @@ def _reject_leaked_internals(decision: TriageDecision) -> None:
         for pattern in _LEAKED_INTERNALS:
             found = pattern.search(text)
             if found is not None:
-                raise ValueError(
+                raise WordingRejected(
+                    field,
+                    found.group(0),
                     f"{field} contains internal machinery {found.group(0)!r}, which is shown "
                     "to the user verbatim. Rewrite it as plain language addressed to her, "
                     "with no identifiers, no action codes and no mention of warning-sign "

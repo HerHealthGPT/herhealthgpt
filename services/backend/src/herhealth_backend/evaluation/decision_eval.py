@@ -179,7 +179,15 @@ def summarise_first_turns(records: Sequence[TurnRecord]) -> dict[str, object]:
     }
 
 
-def run_script(agent: TriageAgent, script: Script, *, max_turns: int = 8) -> ScriptResult:
+#: The agent's own limit. A shorter one here would count a long but
+#: legitimate consultation as unfinished: the warning-sign screen for severe
+#: pelvic pain alone takes about ten questions (ADR 0007).
+SCRIPT_MAX_TURNS = 12
+
+
+def run_script(
+    agent: TriageAgent, script: Script, *, max_turns: int = SCRIPT_MAX_TURNS
+) -> ScriptResult:
     """One scripted consultation, to a conclusion or until the turns run out."""
     asked: list[str] = []
     turns = 0
@@ -200,7 +208,11 @@ def run_script(agent: TriageAgent, script: Script, *, max_turns: int = 8) -> Scr
         # run_consultation expects a question, an answer or a conclusion; a
         # decline in mid-consultation gives it nothing to continue with.
         return ScriptResult(
-            script.id, False, turns + 1, None, tuple(asked),
+            script.id,
+            False,
+            turns + 1,
+            None,
+            tuple(asked),
             "the model declined mid-consultation, so there was no question to answer",
         )
     except Exception as error:

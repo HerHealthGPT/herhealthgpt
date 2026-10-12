@@ -343,3 +343,32 @@ def test_unknown_notes_are_dropped_before_validation() -> None:
     result = client.decide(system_prompt="S", history=HISTORY, context=[PASSAGE])
     assert dict(result.decision.observed) == {"fever": "yes", "pain_with_sex": "unknown"}
     assert len(script.seen) == 1
+
+
+# --- a reply rejected only for its wording gets one more attempt ----------------
+
+CASE_NOTE = "You mentioned something outside this tool's scope."
+
+
+def test_a_wording_failure_gets_one_extra_attempt_with_specific_feedback() -> None:
+    script = Scripted(_decline(CASE_NOTE), _decline(CASE_NOTE), _decline())
+    result = _decide(_client(script, max_attempts=2))
+    assert result.decision.rationale.startswith("This tool covers")
+    assert len(script.seen) == 3
+    final_prompt = script.seen[2][0].content
+    assert "ONLY problem is the wording" in final_prompt
+    assert "You mentioned" in final_prompt
+
+
+def test_three_wording_failures_still_raise() -> None:
+    script = Scripted(_decline(CASE_NOTE), _decline(CASE_NOTE), _decline(CASE_NOTE))
+    with pytest.raises(ValueError, match="internal machinery"):
+        _decide(_client(script, max_attempts=2))
+    assert len(script.seen) == 3
+
+
+def test_other_failures_do_not_get_the_extra_attempt() -> None:
+    script = Scripted("prose", "prose", _decline())
+    with pytest.raises(ValueError, match="no JSON object"):
+        _decide(_client(script, max_attempts=2))
+    assert len(script.seen) == 2

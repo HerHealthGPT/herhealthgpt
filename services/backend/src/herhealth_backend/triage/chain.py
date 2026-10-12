@@ -41,6 +41,7 @@ from herhealth_backend.triage.agent import (
 from herhealth_backend.triage.clients import (
     _LEAKED_INTERNALS,
     DecisionValidator,
+    WordingRejected,
     _build_messages,
     _reject_leaked_internals,
     extract_json_object,
@@ -155,7 +156,12 @@ class LangChainReasoningClient:
         context: Sequence[RetrievedPassage],
     ) -> ReasoningResult:
         feedback = ""
-        for attempt in range(1, self._max_attempts + 1):
+        # One attempt beyond the limit, used only when the last failure was
+        # wording alone: the decision in that reply was sound.
+        limit = self._max_attempts
+        attempt = 0
+        while attempt < limit:
+            attempt += 1
             messages = _to_messages(
                 _build_messages(
                     system_prompt=system_prompt,
@@ -170,7 +176,7 @@ class LangChainReasoningClient:
                 # A slow answer is not a broken one: latency for an identical
                 # request varies widely on these cards, so the next attempt
                 # is often fast.
-                if attempt >= self._max_attempts:
+                if attempt >= limit:
                     raise ReasoningUnavailable(
                         f"the reasoning model did not answer in time ({self._max_attempts} "
                         "attempt(s))"
@@ -188,14 +194,33 @@ class LangChainReasoningClient:
                 _reject_leaked_internals(decision)
                 if self._validator is not None:
                     self._validator(decision, context)
+            except WordingRejected as error:
+                if attempt == self._max_attempts and limit == self._max_attempts:
+                    limit += 1
+                if attempt >= limit:
+                    raise
+                feedback = retry_feedback(error, context) + (
+                    f"\nThe ONLY problem is the wording of {error.field}: it contains "
+                    f"{error.phrase!r}. Keep every other field exactly as it was. Rewrite "
+                    f"{error.field} so it does not refer to what she said, reported or "
+                    'mentioned at all: name the symptom itself, as in "Pain this severe '
+                    'with a fever" rather than "You reported severe pain and a fever".'
+                )
+                logger.warning(
+                    "decision attempt %s/%s failed on wording (%s) — retrying",
+                    attempt,
+                    limit,
+                    error.phrase,
+                )
+                continue
             except ValueError as error:
-                if attempt >= self._max_attempts:
+                if attempt >= limit:
                     raise
                 feedback = retry_feedback(error, context)
                 logger.warning(
                     "decision attempt %s/%s failed (%s) — retrying with feedback",
                     attempt,
-                    self._max_attempts,
+                    limit,
                     error,
                 )
                 continue
