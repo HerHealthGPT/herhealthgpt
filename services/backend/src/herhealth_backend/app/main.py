@@ -236,7 +236,10 @@ def create_app(
     (see ``app/triage/routes.py``) defaults to a real ``TriageAgent`` wired to
     the local models and the retrieval index in ``vllm`` mode, or
     ``None`` otherwise — triage is likewise optional; ``POST /triage/turn``
-    returns 503 rather than the app refusing to start.
+    returns 503 rather than the app refusing to start. The one exception is an
+    unrecognised ``HERHEALTH_TRIAGE_MODE``, which stops start-up with the valid
+    modes named, so a host left on a removed mode is told instead of silently
+    losing triage.
     """
 
     @asynccontextmanager

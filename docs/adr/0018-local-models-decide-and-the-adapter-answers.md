@@ -42,10 +42,13 @@ symptoms, and recorded what she said in only 3 of them.
   answer from the cited passages).
 - **An `inform` is refused once** when she has described symptoms of her own
   or a warning sign is close. If the model informs again, that stands.
-- **The adapter can never fail a turn.** Its text replaces the answer only if
-  it is non-empty, within length and free of banned wording; warning-sign
-  lines are copied onto it from the base model's answer by code. Otherwise the
-  base model's own answer is used.
+- **The adapter cannot make a reply invalid.** Its text replaces the answer
+  only if it is non-empty, within length and free of banned wording.
+  Warning-sign lines are copied onto it from the base model's answer by code,
+  in the two layouts the prompt allows; if the base answer holds urgent advice
+  in any other wording, the adapter's text is discarded and the base answer
+  stands whole. Any error in the step leaves the base answer in place. It can
+  still cost time: a slow answer step counts against the turn's time budget.
 - **One repair is applied to a reply**: the first complete JSON object is
   taken, so a code fence or trailing text does not fail a turn. No field is
   rewritten.
@@ -115,6 +118,11 @@ decline surfaced as a bare error. Both were faults in the evaluation.
   did not say.
 
 ## Limits
+
+The evaluation calls the agent directly. It applies neither the HTTP route's
+turn timeout nor its second whole-turn attempt, so "valid" here is close to,
+but not exactly, what a user of the API would see.
+
 
 Thirty questions and ten scripts, English only, from a benchmark whose labels
 are silver and not clinician-adjudicated. "Valid" means a reply passed this

@@ -235,3 +235,56 @@ def test_the_writer_runs_only_for_inform(base: KnowledgeBase) -> None:
     )
     turn(agent)
     assert writer.calls == []
+
+
+# --- found in review ----------------------------------------------------------
+
+
+def conclude_urgent() -> TriageDecision:
+    from herhealth_contracts.knowledge import ActionCode
+
+    return TriageDecision(
+        type=DecisionType.CONCLUDE,
+        rationale="This needs to be seen today.",
+        action_code=ActionCode.URGENT_SAME_DAY,
+        citations=(PASSAGE.id,),
+    )
+
+
+def test_a_conclusion_reached_through_the_inform_gate_is_still_challenged(
+    base: KnowledgeBase,
+) -> None:
+    # inform -> (refused) -> conclude on one recorded answer must meet the
+    # early-conclusion gate, exactly as a direct conclusion would.
+    reasoning = Reasoning(inform(), conclude_urgent(), ask())
+    agent = TriageAgent(
+        base=base,
+        reasoning=reasoning,
+        retrieval=Retrieval(),
+        extractor=Extractor({"cycle_regularity": "irregular"}),
+        refuse_inform_with_symptoms=True,
+        min_answers=3,
+    )
+    result = turn(agent)
+    assert len(reasoning.prompts) == 3
+    assert "CONCLUDED TOO EARLY" in reasoning.prompts[2]
+    assert result.decision.type is DecisionType.ASK
+
+
+class ExplodingWriter:
+    name = "answer-model"
+
+    def write(self, question, passages, base_answer):  # type: ignore[no-untyped-def]
+        raise RuntimeError("an error nobody anticipated")
+
+
+def test_an_unexpected_writer_error_keeps_the_base_answer(base: KnowledgeBase) -> None:
+    agent = TriageAgent(
+        base=base,
+        reasoning=Reasoning(inform()),
+        retrieval=Retrieval(),
+        answer_writer=ExplodingWriter(),
+    )
+    result = turn(agent)
+    assert result.decision.answer_text == BASE_ANSWER
+    assert result.attempts[-1].outcome is AttemptOutcome.REJECTED

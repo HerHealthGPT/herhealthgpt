@@ -1,4 +1,4 @@
-"""Offline triage clients for local MVP testing — no OpenRouter, no model service.
+"""Offline triage clients for local MVP testing — no model, no index, no network.
 
 Wired when ``HERHEALTH_TRIAGE_MODE=demo`` (see ``app/config.py``). Uses the
 same valid decisions as ``tests/app/test_triage_routes.py`` so vocabulary
@@ -6,7 +6,7 @@ and provenance checks pass against the real knowledge base.
 
 The demo client picks a small scenario from the user's words so local testing
 feels coherent. It is **not** clinical reasoning — switch to
-``HERHEALTH_TRIAGE_MODE=openrouter`` for real triage.
+``HERHEALTH_TRIAGE_MODE=vllm`` for real triage.
 """
 
 from __future__ import annotations

@@ -311,23 +311,61 @@ def _normalise(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def carry_warning_lines(answer: str, base_answer: str) -> str:
-    """Append the decision model's warning-sign lines if the answer lacks them.
+#: Wording that means the base answer contains urgent advice, whether or not
+#: it is phrased the way the prompt asks.
+_URGENT_ADVICE = re.compile(
+    r"emergency|urgent|right away|straight away|immediately|see someone today"
+    r"|when to (get|seek) (medical )?help|call an ambulance",
+    re.IGNORECASE,
+)
+
+
+def carry_warning_lines(answer: str, base_answer: str) -> str | None:
+    """The answer with the decision model's warning-sign lines appended, or
+    ``None`` when they cannot be carried safely.
 
     The decide prompt makes the base model end an informational answer with
     lines such as "Get emergency care now if…". Those are the most important
-    lines in it, so they are carried over by code, verbatim, and never left
-    to the adapter to reproduce.
+    lines in it, so they are copied over by code, verbatim, and never left to
+    the adapter to reproduce. Both shapes the prompt's layout rules allow are
+    handled: a self-contained line, and a heading ending in a colon followed
+    by bullets, which is carried with its bullets.
+
+    ``None`` means the base answer contains urgent advice in a form this
+    cannot recognise line by line. The adapter's text must then not replace
+    it: the caller keeps the base answer whole.
     """
     present = _normalise(answer)
-    missing = []
-    for line in base_answer.splitlines():
-        cleaned = line.strip().lstrip("-• ").strip()
-        if cleaned and _WARNING_LINE.search(cleaned) and _normalise(cleaned) not in present:
-            missing.append(f"- {cleaned}")
+    lines = base_answer.splitlines()
+    blocks: list[list[str]] = []
+    index = 0
+    while index < len(lines):
+        cleaned = lines[index].strip().lstrip("-• ").strip()
+        index += 1
+        if not cleaned or not _WARNING_LINE.search(cleaned):
+            continue
+        if not cleaned.endswith(":"):
+            blocks.append([f"- {cleaned}"])
+            continue
+        block = [cleaned]
+        while index < len(lines) and lines[index].strip().startswith(("-", "•")):
+            block.append("- " + lines[index].strip().lstrip("-• ").strip())
+            index += 1
+        if len(block) > 1:
+            blocks.append(block)
+
+    if not blocks:
+        return None if _URGENT_ADVICE.search(base_answer) else answer
+
+    missing = [
+        block
+        for block in blocks
+        if not all(_normalise(line.lstrip("- ")) in present for line in block)
+    ]
     if not missing:
         return answer
-    return f"{answer}\n\nWhen to get medical help:\n" + "\n".join(missing)
+    carried = "\n\n".join("\n".join(block) for block in missing)
+    return f"{answer}\n\nWhen to get medical help:\n{carried}"
 
 
 class LangChainAnswerWriter:
@@ -371,4 +409,9 @@ class LangChainAnswerWriter:
                     "the answer model's reply used banned wording; keeping the base answer"
                 )
                 return None
-        return carry_warning_lines(text, base_answer)
+        carried = carry_warning_lines(text, base_answer)
+        if carried is None:
+            logger.warning(
+                "the base answer holds urgent advice that could not be carried over; keeping it"
+            )
+        return carried

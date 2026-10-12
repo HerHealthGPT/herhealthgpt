@@ -250,7 +250,8 @@ def test_warning_lines_are_not_duplicated() -> None:
 
 
 def test_an_answer_with_no_warning_lines_to_carry_is_unchanged() -> None:
-    assert carry_warning_lines("An answer.", "A base answer with no urgent lines.") == "An answer."
+    result = carry_warning_lines("An answer.", "A base answer with nothing else in it.")
+    assert result == "An answer."
 
 
 def _writer(script: Scripted) -> LangChainAnswerWriter:
@@ -271,3 +272,38 @@ def test_the_writer_returns_a_cleaned_answer_with_warning_lines() -> None:
 )
 def test_an_unusable_answer_returns_none(reply: Any) -> None:
     assert _writer(Scripted(reply)).write("q", [PASSAGE], BASE_ANSWER) is None
+
+
+# --- found in review: warning signs in other shapes ----------------------------
+
+HEADED = (
+    "Explanation.\n\nGet emergency care now if:\n- the pain is sudden\n- you feel faint\n\n"
+    "See someone today if:\n- you have a fever"
+)
+
+
+def test_a_heading_with_bullets_is_carried_with_its_conditions() -> None:
+    out = carry_warning_lines("The adapter's answer.", HEADED)
+    assert out is not None
+    for line in (
+        "Get emergency care now if:",
+        "- the pain is sudden",
+        "- you feel faint",
+        "See someone today if:",
+        "- you have a fever",
+    ):
+        assert line in out
+
+
+@pytest.mark.parametrize(
+    "base_answer",
+    [
+        "Explanation.\n\nSeek emergency care immediately if the pain is sudden.",
+        "Explanation.\n\nWhen to get medical help:\n- Go to hospital urgently if you feel faint.",
+    ],
+)
+def test_urgent_advice_in_other_words_makes_the_base_answer_stand(base_answer: str) -> None:
+    # The lines cannot be recognised well enough to carry, so the adapter's
+    # text must not replace an answer that contains urgent advice.
+    assert carry_warning_lines("The adapter's answer.", base_answer) is None
+    assert _writer(Scripted("A supportive answer.")).write("q", [PASSAGE], base_answer) is None

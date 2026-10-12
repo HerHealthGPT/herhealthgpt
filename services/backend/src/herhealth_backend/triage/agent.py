@@ -709,10 +709,14 @@ class TriageAgent:
             # transcript that is meant to be replayable and auditable.
             system = f"{system}\n\n{background}"
         result = self.reasoning.decide(system_prompt=system, history=history, context=context)
+        # The inform gate first. Its re-prompt can come back as a conclusion,
+        # and that conclusion has to meet the early-conclusion gate like any
+        # other: in the other order it would be accepted unchallenged, on a
+        # path the model takes often (it informed on 21 of 23 first turns).
+        result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
         result = self._refuse_premature_conclusion(
             result, turn_context, system, history, context
         )
-        result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
         decision, attempts = result.decision, result.attempts
 
         # What the extract step read is carried on the decision, so the
@@ -802,7 +806,12 @@ class TriageAgent:
         assert decision.answer_text is not None  # INFORM always carries one
         question = next((m.content for m in reversed(history) if m.role == "user"), "")
         cited = [passage for passage in context if passage.id in decision.citations]
-        text = self.answer_writer.write(question, cited, decision.answer_text)
+        try:
+            text = self.answer_writer.write(question, cited, decision.answer_text)
+        except Exception:
+            # Wording an answer is an improvement, never a requirement: no
+            # failure here may cost her a turn that already has a valid reply.
+            text = None
         if not text:
             return decision, ReasoningAttempt(
                 client=self.answer_writer.name,
