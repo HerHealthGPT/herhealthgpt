@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: superseded by 0017 (web fallback) and 0018 (OpenRouter reasoning)
 ---
 
 # API-hosted reasoning model, and a guarded web-search fallback
