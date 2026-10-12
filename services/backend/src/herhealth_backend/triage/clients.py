@@ -352,17 +352,44 @@ def _drop_conditions_named_beside_a_red_flag(raw: object) -> object:
     return repaired
 
 
-def _parse_chat_completion_payload(payload: object) -> TriageDecision:
+def extract_json_object(text: str) -> str:
+    """The first complete JSON object in ``text``.
+
+    The one repair applied to a reply. A model that wraps a valid decision in
+    a code fence, or adds a sentence after it, has still produced the
+    decision; failing the turn on that costs a full extra generation for
+    nothing. Braces inside string values are skipped, so a rationale that
+    mentions one is not cut short. Nothing inside the object is changed.
+    """
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("the reply contains no JSON object")
+    depth = 0
+    in_string = False
+    escaped = False
+    for position in range(start, len(text)):
+        char = text[position]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : position + 1]
+    raise ValueError("the reply contains no JSON object (it starts one and never closes it)")
+
+
+def parse_decision_text(content: object) -> TriageDecision:
+    """A model reply, as text, into a validated ``TriageDecision``."""
     try:
-        # `assert` rather than a raised ValueError was a real gap, not a
-        # style point: AssertionError is not in the except clause below, so a
-        # provider returning `content: null` escaped as a bare
-        # `AssertionError: ` with no message and no retry — observed
-        # 2026-09-10, a consultation lost after 1,327 seconds to an error
-        # that said nothing about what happened.
-        if not isinstance(payload, dict):
-            raise TypeError(f"expected a JSON object, got {type(payload).__name__}")
-        content = payload["choices"][0]["message"]["content"]
         if not isinstance(content, str):
             raise TypeError(
                 f"message.content was {type(content).__name__}, not a string — the "
@@ -372,10 +399,38 @@ def _parse_chat_completion_payload(payload: object) -> TriageDecision:
         if not cleaned.strip():
             raise ValueError("model returned an empty message")
         return TriageDecision.model_validate(
-            _drop_conditions_named_beside_a_red_flag(json.loads(cleaned))
+            _drop_conditions_named_beside_a_red_flag(json.loads(extract_json_object(cleaned)))
         )
-    except (KeyError, IndexError, TypeError, json.JSONDecodeError, ValidationError) as error:
+    except (TypeError, json.JSONDecodeError, ValidationError) as error:
         raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
+
+
+def retry_feedback(error: Exception, context: Sequence[RetrievedPassage]) -> str:
+    """What the model is told when its previous reply was rejected."""
+    return (
+        f"\n\nYOUR PREVIOUS JSON WAS REJECTED: {error}\n"
+        "Fix it. If type is ask, include BOTH next_feature_id (a real "
+        "feature id from the system prompt list) AND question_text. "
+        "citations must be bare 16-character hex ids only "
+        '(e.g. "a6bf0793b2a9a509"), never "passage_id=…". '
+        "Use [] not null for empty arrays. If type is decline, send "
+        "rationale only — every other field null, citations []. If you "
+        "cannot ask a valid question, use type conclude with action_code "
+        "instead, or type decline if the message is out of scope.\n"
+        f"{_available_ids_hint(context)}\n"
+        "Do not invent, abbreviate or pluralise an id. Copy it character "
+        "for character from the list above."
+    )
+
+
+def _parse_chat_completion_payload(payload: object) -> TriageDecision:
+    try:
+        if not isinstance(payload, dict):
+            raise TypeError(f"expected a JSON object, got {type(payload).__name__}")
+        content = payload["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as error:
+        raise ValueError(f"reasoning model returned malformed JSON: {error}") from error
+    return parse_decision_text(content)
 
 
 def _chat_completions_body(
