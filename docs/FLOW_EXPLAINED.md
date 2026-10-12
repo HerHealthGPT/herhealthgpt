@@ -13,7 +13,7 @@ built.
    finish — a program, not a person).
 
 2. The backend sends her words to the **embedding model** (a small, dedicated
-   AI — specifically `bge-m3` — whose only job is turning text into a list of
+   AI — specifically `Qwen3-Embedding-4B` — whose only job is turning text into a list of
    numbers, called a **vector**, that captures its *meaning*, so that pieces
    of text with similar meaning end up with similar numbers). This is the
    **semantic search model** the industry mentors asked for: a model
@@ -175,7 +175,7 @@ way or at the same time. Two moments matter, and they're very different:
 
 1. The user's latest message (not a file — her actual words) becomes the
    search question.
-2. The **embedding model** (`bge-m3`) turns that question into numbers. No
+2. The **embedding model** (`Qwen3-Embedding-4B`) turns that question into numbers. No
    file is touched at this step.
 3. Those numbers search the index built in step 3 above. This is where
    `evidence.csv`'s content (as sentences) and the source pages come back —

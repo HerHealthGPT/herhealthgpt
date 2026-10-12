@@ -86,7 +86,6 @@ Monorepo. Four independently deployable services, one contracts package.
 services/frontend/    Next.js, responsive web app (NOT a PWA — see below)
 services/backend/     FastAPI: triage, tracker, directory, visit prep,
                       retrieval, safety rules, orchestration
-services/model/       vLLM: Qwen3.5-9B generation; bge-m3 embeddings (ADR 0010)
 services/data/        ingestion, evaluation harness, benchmark cases
 packages/contracts/   Pydantic schemas, error codes, safety policy
 packages/types-ts/    TypeScript generated from the OpenAPI spec
@@ -105,18 +104,23 @@ RTL support for Arabic. Do not add PWA scaffolding, and do not suggest it.
 **Import rule:** nothing outside `packages/contracts/` may be imported across
 service boundaries. Enforced by import-linter in CI.
 
-**No model weights load inside the backend process.** Embedding is an HTTP call
-to `services/model`.
+**No model weights load inside the backend process.** Embedding and reranking
+are HTTP calls to vLLM on the campus GPU box (`scripts/serve-models.sh`,
+`infra/model/serve.conf`).
 
-**Retrieval is `BAAI/bge-m3` over sentence-level passages, and there is no
-reranker.** Chosen on published Arabic RAG results — multilingual encoders beat
-Arabic-specific ones, which is the counterintuitive direction. Sentence-level
-chunking is load-bearing for `make verify-quotes`, not a tuning knob. A reranker
-is deferred until retrieval evaluation shows the right passage retrieved but
-ranked outside top *k*. See [`docs/adr/0010`](docs/adr/0010-multilingual-embeddings-beat-arabic-specific-ones.md).
+**Retrieval is `Qwen/Qwen3-Embedding-4B` over sentence-level passages, reranked
+by `Qwen/Qwen3-Reranker-4B`, built on LangChain.** The retriever runs inside the
+backend (`triage/retrieval.py`) over a FAISS index built by `make index`; there
+is no retrieval service. Sentence-level chunking is load-bearing for
+`make verify-quotes`, not a tuning knob. This was a product decision on
+2026-10-12, **not** a measured improvement over `bge-m3`: no comparison was run,
+and [ADR 0010](docs/adr/0010-multilingual-embeddings-beat-arabic-specific-ones.md)'s
+reasoning from the Arabic RAG literature is superseded, not refuted. See
+[`docs/adr/0017`](docs/adr/0017-qwen3-embedding-and-reranker-on-langchain.md),
+which also records the first recall numbers.
 
-**Deploy:** merge to main → the `deploy` workflow builds the three images
-(frontend, backend, retrieval) tagged with the git SHA, pushes them to ECR,
+**Deploy:** merge to main → the `deploy` workflow builds the two images
+(frontend, backend) tagged with the git SHA, pushes them to ECR,
 uploads `infra/compose.prod.yml` and the Caddyfile to S3, and runs
 `/opt/herhealth/deploy.sh <sha>` on the single EC2 host through SSM Run Command.
 The host migrates the database, switches the release, health-checks through
@@ -127,10 +131,10 @@ shell is for reading logs and diagnosing.
 
 Production runs the **Base model via OpenRouter only**; the model selector is
 off and the fine-tuned adapter stays campus/dev-only (see "The fine-tuned model"
-below). The retrieval index deployed to production must be built with quote-only
-(NHS) passages excluded (`index --exclude-quote-only`);
-`scripts/publish-index.sh` refuses to upload any index containing them, so NHS
-text is never in S3 or an image. Full procedure,
+below). The served retrieval index (`make index`) never contains quote-only (NHS)
+passages, and the backend refuses to load one that does. **Production has no
+index and no route to the model endpoints yet, so triage there reports "not
+configured"** until that is connected (ADR 0017). Full procedure,
 trade-offs (single server, single-AZ database, no staging, no WAF) and the
 pre-demo checklist: [`docs/runbooks/aws-deploy.md`](docs/runbooks/aws-deploy.md).
 The earlier plan of a self-hosted runner on the GPU server is not the
@@ -482,7 +486,7 @@ Ask before any network call. Tests never hit the network.
 **Superseded by [ADR 0011](docs/adr/0011-controller-free-triage.md), accepted
 2026-08-31.** `engine.py`, `state.py` and the `should_stop`-based path through
 `dialogue.py` are not yet deleted — they stay in the tree until the new
-`TriageAgent` loop is wired to a real `services/model` and reviewed (ADR 0011's
+`TriageAgent` loop is wired to a real model server and reviewed (ADR 0011's
 migration checklist, steps 4–8) — but this section describes the code being
 migrated away from, not the accepted architecture. In particular, **the
 escalation screen described below is a property of this outgoing code, not a

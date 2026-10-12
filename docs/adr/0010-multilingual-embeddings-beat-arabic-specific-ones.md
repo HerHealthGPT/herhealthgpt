@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by 0017
 ---
 
 # Multilingual embeddings beat Arabic-specific ones, and the chunk is a sentence

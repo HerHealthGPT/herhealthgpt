@@ -142,15 +142,15 @@ Monorepo. Four independently deployable services, one contracts package.
 |---|---|---|---|
 | `services/frontend` | Next.js, responsive web app | yes | Different runtime and build pipeline |
 | `services/backend` | FastAPI (Python 3.12) | yes | Triage, tracker, directory, visit prep, retrieval, safety, orchestration |
-| `services/model` | vLLM — Qwen3.5-9B, embeddings, reranker | yes | GPU-bound; scales on a different axis |
 | `services/data` | Python 3.12 | no — offline | Ingestion, validation, evaluation; runs in CI and by hand |
 
 **The frontend is a normal responsive web app.** No service worker, no manifest,
 no offline shell, no install prompt, no web push. Mobile-first layout with RTL
 support for Arabic. Do not add PWA scaffolding.
 
-**No model weights load inside the backend process.** Embeddings are an HTTP
-call to local `services/model` (bge-m3 on `:8001`). Reasoning is either
+**No model weights load inside the backend process.** The retriever runs in
+the backend over a FAISS index; embedding and reranking are HTTP calls to vLLM
+on the campus GPU box (ADR 0017). Reasoning is either
 OpenRouter (Base tab) or campus vLLM with our LoRA (Fine-tuned tab).
 
 ### Models this project uses
@@ -159,7 +159,8 @@ OpenRouter (Base tab) or campus vLLM with our LoRA (Fine-tuned tab).
 |---|---|---|
 | Base reasoning | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | OpenRouter in local chat; also the vLLM base on campus |
 | Fine-tuned LoRA (experimental) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
-| Retrieval embeddings | [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3) | Local `services/model` over `build/index` |
+| Retrieval embeddings | [`Qwen/Qwen3-Embedding-4B`](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | vLLM on the campus box, port 8003; index built by `make index` |
+| Retrieval reranker | [`Qwen/Qwen3-Reranker-4B`](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | vLLM on the campus box, port 8004 |
 
 **`Qwen/Qwen3.5-9B` is a multimodal hybrid, not a plain text model.** It loads
 as `Qwen3_5ForConditionalGeneration`: a vision tower plus a mixed attention
@@ -421,27 +422,27 @@ cp infra/envs/backend.env.example infra/envs/backend.env
 **`uv.lock` is committed and is the source of truth.** CI runs `uv sync
 --locked`.
 
-You also need a built retrieval index at `build/index/` (bge-m3). If that
-directory is missing, run the data pipeline / index step documented in
-[`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md) before starting `services/model`.
+You also need a built retrieval index at `build/index/`. It is built with
+`make fetch && make clean && make index`, which needs the embedding endpoint
+(`scripts/serve-models.sh`). Without an index, triage reports "not configured".
 
 ---
 
 ## Run the full app (local laptop)
 
-Four processes on the laptop. The campus GPU is **optional** and only needed
+Three processes on the laptop, plus the model endpoints the retriever calls. The campus GPU is **optional** and only needed
 for the Fine-tuned tab (next section).
 
 | Process | Port | Role |
 |---|---|---|
 | PostgreSQL (`infra/compose.yml`) | 5432 | Accounts + triage sessions |
-| `services/model` (retrieval) | **8001** | bge-m3 RAG over `build/index` |
 | `services/backend` (FastAPI) | **8000** | Triage API, auth, orchestration |
 | `services/frontend` (Next.js) | **3000** | Chat UI |
 
-**Order matters.** A turn always calls retrieval on `:8001` *before* the
-reasoning model. If `:8001` is down you get `502` / `WinError 10061` even when
-campus vLLM is healthy.
+**Retrieval needs the model endpoints.** A turn embeds the query and reranks
+candidates through `HERHEALTH_EMBEDDING_URL` and `HERHEALTH_RERANKER_URL`
+*before* the reasoning model. If the embedding endpoint is unreachable you get
+`502`; if only the reranker is, retrieval falls back to embedding order.
 
 ### 1. Configure `infra/envs/backend.env`
 
@@ -453,7 +454,9 @@ HERHEALTH_SESSION_SECRET=<openssl rand -hex 32>
 HERHEALTH_EMAIL_SENDER=console
 HERHEALTH_TRIAGE_MODE=openrouter
 OPENROUTER_API_KEY=sk-or-...
-HERHEALTH_MODEL_SERVICE_URL=http://127.0.0.1:8001
+HERHEALTH_INDEX_DIR=build/index
+HERHEALTH_EMBEDDING_URL=http://127.0.0.1:8003
+HERHEALTH_RERANKER_URL=http://127.0.0.1:8004
 HERHEALTH_COOKIE_SECURE=false
 HERHEALTH_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
@@ -502,22 +505,16 @@ uv run --extra api --package herhealth-backend python -c "import asyncio; from a
 # Prefer: cd services/backend; uv run --extra api alembic upgrade head
 ```
 
-### 3. Start retrieval (`:8001`) — required for every real turn
+### 3. Retrieval — nothing to start
 
-First load of `BAAI/bge-m3` can take **1–3 minutes**. Wait until `/health` is
-ok before opening chat.
-
-```powershell
-# Terminal A — repo root
-$env:HERHEALTH_INDEX_DIR = (Resolve-Path .\build\index).Path
-uv run --package herhealth-model python -m herhealth_model
-```
-
-Check:
+There is no retrieval service any more (ADR 0017). The backend loads
+`build/index/` itself and calls the embedding and reranker endpoints. Check
+that the index exists and the endpoints answer:
 
 ```powershell
-curl.exe http://127.0.0.1:8001/health
-# {"status":"ok"}
+Get-Content .\build\index\manifest.json
+curl.exe http://127.0.0.1:8003/health
+curl.exe http://127.0.0.1:8004/health
 ```
 
 ### 4. Start the backend (`:8000`)
@@ -570,8 +567,8 @@ triage dependency HTTP failure: [WinError 10061] No connection could be made...
 POST /triage/turn → 502
 ```
 
-That is almost always **`:8001` not listening**, not campus vLLM. Confirm
-`curl http://127.0.0.1:8001/health`, then retry. Campus can be up
+That is almost always **the embedding endpoint not reachable**, not the chat
+model. Confirm `curl <HERHEALTH_EMBEDDING_URL>/health`, then retry. Campus can be up
 (`/v1/models` 200 on Lobot) while this laptop still 502s.
 
 ---
@@ -715,7 +712,7 @@ Both `Bearer` and `token` schemes work against Lobot.
 
 ### C. Wire the laptop and test the Fine-tuned tab
 
-1. Confirm local `:8001`, `:8000`, `:3000` are up ([above](#run-the-full-app-local-laptop)).
+1. Confirm local `:8000` and `:3000` are up ([above](#run-the-full-app-local-laptop)).
 2. Set `HERHEALTH_MODEL_SELECTOR=on` and the three `HERHEALTH_VLLM_*` values.
 3. Restart the backend so it rebuilds the model list.
 4. Open [http://localhost:3000/chat](http://localhost:3000/chat) → **new** chat.
@@ -725,7 +722,7 @@ Both `Bearer` and `token` schemes work against Lobot.
    turn that still used local RAG + age band, with reasoning from campus.
 
 If Fine-tuned stays greyed out: hard-refresh so `GET /triage/models` reloads.
-If you get `502` / `10061`: fix `:8001` first.
+If you get `502`: check the embedding endpoint first.
 
 **If RAG succeeds but chat returns `504 Gateway Time-out` on the Lobot proxy**
 (backend log shows `POST …/proxy/8002/v1/chat/completions` → 504, UI says

@@ -66,7 +66,7 @@ and returns the top passages.
 `herhealth_data/retrieval/passages.py` is unchanged: `Passage`,
 `load_passages`, `evidence_statement_passages`, `split_sentences`.
 
-New module `herhealth_data/retrieval/store.py`:
+New module `herhealth_data/retrieval/vectorstore.py`:
 
 - Turns each `Passage` into a LangChain `Document`. `page_content` is the
   passage text. Metadata: `id`, `passage_type`, `source_id`, `slug`,
@@ -170,6 +170,7 @@ Behaviour at the edges:
 | `HERHEALTH_INDEX_DIR` | `build/index` | where the three index files are |
 | `HERHEALTH_EMBEDDING_URL` | `http://127.0.0.1:8003` | embedding endpoint |
 | `HERHEALTH_EMBEDDING_MODEL` | `herhealth-embed` | served model name |
+| `HERHEALTH_EMBEDDING_MODEL_ID` | `Qwen/Qwen3-Embedding-4B` | the model the index must have been built with |
 | `HERHEALTH_RERANKER_URL` | `http://127.0.0.1:8004` | reranker endpoint |
 | `HERHEALTH_RERANKER_MODEL` | `herhealth-rerank` | served model name |
 | `HERHEALTH_MODELS_API_KEY` | unset | bearer token, sent when set |

@@ -12,7 +12,6 @@ description: >
 
 services/frontend/    Next.js PWA
 services/backend/     FastAPI: triage, tracker, retrieval, safety, orchestration
-services/model/       vLLM: Qwen3.5-9B, embeddings, reranker
 services/data/        ingestion, evaluation harness, benchmark cases
 packages/contracts/   Pydantic schemas, error codes, safety policy
 packages/types-ts/    TypeScript types generated from OpenAPI

@@ -4,6 +4,15 @@ status: runbook
 
 # Runbook: serving the LoRA adapter on the university VM (JupyterHub)
 
+> **Retrieval changed on 2026-10-12 ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md)).**
+> `services/model`, port 8001, `bge-m3`, `HERHEALTH_MODEL_SERVICE_URL`,
+> `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
+> The retriever runs inside the backend over an index built by `make index`,
+> and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
+> `HERHEALTH_RERANKER_URL`). Passages below that describe the retrieval
+> service, its image or the published index are history and have not been
+> rewritten yet.
+
 ## Current layout: three processes (since 2026-10-11)
 
 Sections 0 to 5 below describe the single-process serve as it ran before
