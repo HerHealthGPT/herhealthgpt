@@ -200,7 +200,8 @@ async def triage_turn(
                 "triage is not configured on this deployment "
                 "(set HERHEALTH_TRIAGE_MODE=demo for local testing, "
                 "openrouter or vllm for real reasoning, "
-                "or OPENROUTER_API_KEY for openrouter/vllm fallback)"
+                "or OPENROUTER_API_KEY for openrouter/vllm fallback; a real "
+                "mode also needs a retrieval index at HERHEALTH_INDEX_DIR)"
             ),
         )
 
@@ -256,7 +257,7 @@ async def _run_turn(
     requests, one completed normally, the next hung the same way). The root
     cause is still open — a leading theory is thread-safety of the single,
     long-lived ``httpx.Client`` each of ``OpenRouterReasoningClient`` and
-    ``HttpRetrievalClient`` holds, reused across concurrent requests'
+    the retrieval client holds, reused across concurrent requests'
     executor threads, but this is not yet confirmed. ``asyncio.wait_for``
     below is a deliberate containment measure, not a fix: whatever is
     hanging still hangs, but the request now fails cleanly and promptly

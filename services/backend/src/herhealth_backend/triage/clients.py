@@ -21,7 +21,7 @@ import httpx
 from herhealth_contracts.decision import TriageDecision
 from herhealth_contracts.knowledge import ActionCode
 from herhealth_contracts.retrieval import RetrievedPassage
-from pydantic import TypeAdapter, ValidationError
+from pydantic import ValidationError
 
 from herhealth_backend.triage.agent import (
     AttemptOutcome,
@@ -36,7 +36,6 @@ __all__ = [
     "DecisionValidator",
     "DEFAULT_VLLM_MODEL",
     "FallbackReasoningClient",
-    "HttpRetrievalClient",
     "OPENROUTER_API_KEY_ENV",
     "OpenRouterReasoningClient",
     "VLLM_API_KEY_ENV",
@@ -959,26 +958,3 @@ class FallbackReasoningClient:
                 ReasoningAttempt(client=self._fallback_name, outcome=AttemptOutcome.OK),
             ),
         )
-
-
-class HttpRetrievalClient:
-    """Implements ``herhealth_backend.triage.agent.RetrievalClient`` against
-    ``services/model``'s ``/search`` endpoint. Never imports
-    ``herhealth_data`` — the whole reason that service exists is so this
-    client does not have to (import-linter forbids it across this boundary).
-    """
-
-    def __init__(
-        self,
-        *,
-        base_url: str = "http://127.0.0.1:8001",
-        client: httpx.Client | None = None,
-        timeout: float = 30.0,
-    ) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._client = client or httpx.Client(timeout=timeout)
-
-    def search(self, query: str, *, k: int = 8) -> list[RetrievedPassage]:
-        response = self._client.post(f"{self._base_url}/search", json={"query": query, "k": k})
-        response.raise_for_status()
-        return TypeAdapter(list[RetrievedPassage]).validate_python(response.json())

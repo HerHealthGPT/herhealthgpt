@@ -14,6 +14,7 @@ already know from the fact that it answered at all.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
@@ -45,7 +46,6 @@ from herhealth_backend.app.config import email_sender_kind as configured_email_s
 from herhealth_backend.app.config import google_client_id as configured_google_client_id
 from herhealth_backend.app.config import knowledge_dir as configured_knowledge_dir
 from herhealth_backend.app.config import model_selector_enabled as configured_model_selector_enabled
-from herhealth_backend.app.config import model_service_url as configured_model_service_url
 from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.config import triage_mode as configured_triage_mode
@@ -62,18 +62,24 @@ from herhealth_backend.app.triage.reasoning_models import (
     ReasoningModelOption,
 )
 from herhealth_backend.app.triage.routes import router as triage_router
-from herhealth_backend.triage.agent import ReasoningClient, TriageAgent
+from herhealth_backend.triage.agent import ReasoningClient, RetrievalClient, TriageAgent
 from herhealth_backend.triage.clients import (
     DecisionValidator,
     FallbackReasoningClient,
-    HttpRetrievalClient,
     OpenRouterReasoningClient,
     VllmReasoningClient,
 )
 from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient, StaticRetrievalClient
+from herhealth_backend.triage.retrieval import (
+    IndexRefused,
+    LangChainRetrievalClient,
+    RetrievalSettings,
+)
 from herhealth_backend.triage.vocabulary import validate_against_knowledge_base
 
 __all__ = ["create_app"]
+
+logger = logging.getLogger(__name__)
 
 
 def _build_email_sender() -> EmailSender:
@@ -111,20 +117,33 @@ def _decision_validator(base: KnowledgeBase) -> DecisionValidator:
     return validate
 
 
+def _build_retrieval() -> RetrievalClient | None:
+    """The retriever for this deployment, or ``None`` when it has no usable
+    index. ``None`` is not an error: triage is one feature of this backend,
+    and a host without an index still serves accounts and the rest — the turn
+    route answers 503 "not configured", the way it does without a reasoning
+    model. The reason is logged, so it is never silent.
+    """
+    try:
+        return LangChainRetrievalClient.from_settings(RetrievalSettings.from_env())
+    except IndexRefused as error:
+        logger.warning("triage retrieval is not configured: %s", error)
+        return None
+
+
 def _build_triage_agent() -> TriageAgent | None:
     """Construct the triage agent for this deployment's mode.
 
     ``HERHEALTH_TRIAGE_MODE=demo`` (the local-MVP default when no OpenRouter
     key is set) wires offline scripted clients — no network, no GPU. ``off``
     disables triage entirely. ``openrouter`` needs ``OPENROUTER_API_KEY`` and
-    a running ``services/model``. ``vllm`` tries ``HERHEALTH_VLLM_URL`` first
+    a retrieval index and the two model endpoints. ``vllm`` tries ``HERHEALTH_VLLM_URL`` first
     and falls back to OpenRouter when ``OPENROUTER_API_KEY`` is also set —
     which is the single-path shape used when the model selector is off and
     the fine-tuned adapter is the only model offered.
     """
     mode = configured_triage_mode()
     base = load_knowledge_base(configured_knowledge_dir())
-    retrieval = HttpRetrievalClient(base_url=configured_model_service_url())
     validator = _decision_validator(base)
 
     if mode == "off":
@@ -137,6 +156,10 @@ def _build_triage_agent() -> TriageAgent | None:
             reasoning=MvpDemoReasoningClient(),
             retrieval=StaticRetrievalClient(),
         )
+
+    retrieval = _build_retrieval()
+    if retrieval is None:
+        return None
 
     if mode == "vllm":
         primary = VllmReasoningClient(
@@ -298,7 +321,7 @@ def create_app(
     or an ``UnconfiguredGoogleTokenVerifier`` otherwise — Google sign-in is
     optional, so its absence never stops the app from booting. ``triage_agent``
     (see ``app/triage/routes.py``) defaults to a real ``TriageAgent`` wired to
-    OpenRouter and ``services/model`` when ``OPENROUTER_API_KEY`` is set, or
+    OpenRouter and the retrieval index when ``OPENROUTER_API_KEY`` is set, or
     ``None`` otherwise — triage is likewise optional; ``POST /triage/turn``
     returns 503 rather than the app refusing to start.
     """

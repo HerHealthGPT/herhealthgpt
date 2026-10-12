@@ -25,8 +25,6 @@ __all__ = [
     "google_client_id",
     "KNOWLEDGE_DIR_ENV",
     "knowledge_dir",
-    "MODEL_SERVICE_URL_ENV",
-    "model_service_url",
     "MODEL_SELECTOR_ENV",
     "model_selector_enabled",
     "OPENROUTER_API_KEY_ENV",
@@ -138,10 +136,6 @@ def email_sender_kind() -> str:
 #: it set for the API too.
 KNOWLEDGE_DIR_ENV = "HERHEALTH_KNOWLEDGE_DIR"
 
-#: services/model's base URL — see docs/adr/0012. Defaults to that service's
-#: own default port, so a dev box running both processes needs nothing set.
-MODEL_SERVICE_URL_ENV = "HERHEALTH_MODEL_SERVICE_URL"
-
 #: OpenRouterReasoningClient's key (triage/clients.py, ADR 0012). Optional at
 #: the app level, the same way GOOGLE_CLIENT_ID_ENV is: triage is one feature
 #: of this backend, not the whole of it, so its absence degrades one route
@@ -149,14 +143,14 @@ MODEL_SERVICE_URL_ENV = "HERHEALTH_MODEL_SERVICE_URL"
 OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 
 #: How triage is wired at boot. ``demo`` uses offline scripted clients (no
-#: OpenRouter, no services/model) for local MVP testing. ``openrouter`` needs
-#: OPENROUTER_API_KEY and a running services/model. ``vllm`` tries a
+#: OpenRouter, no retrieval index) for local MVP testing. ``openrouter`` needs
+#: OPENROUTER_API_KEY and a retrieval index (see triage/retrieval.py). ``vllm`` tries a
 #: self-hosted vLLM server (HERHEALTH_VLLM_URL) and falls back to OpenRouter
 #: when OPENROUTER_API_KEY is also set. ``off`` disables triage.
 TRIAGE_MODE_ENV = "HERHEALTH_TRIAGE_MODE"
 
 #: Self-hosted vLLM OpenAI-compatible API (see docs/runbooks/dev-vllm-lora-endpoint.md).
-#: Port 8002 by default — services/model retrieval uses 8001.
+#: Port 8002 by default (infra/model/serve.conf).
 VLLM_URL_ENV = "HERHEALTH_VLLM_URL"
 VLLM_MODEL_ENV = "HERHEALTH_VLLM_MODEL"
 
@@ -197,15 +191,6 @@ def knowledge_dir() -> Path:
     return Path(os.environ.get(KNOWLEDGE_DIR_ENV, "knowledge"))
 
 
-def model_service_url() -> str:
-    """Base URL for ``services/model`` (see docs/adr/0012). No required-value
-    check like :func:`database_url`'s: an unreachable url fails at the first
-    request, loudly, from ``HttpRetrievalClient`` — there is no silent wrong
-    default to guard against the way a database URL has one.
-    """
-    return os.environ.get(MODEL_SERVICE_URL_ENV, "http://127.0.0.1:8001")
-
-
 def openrouter_api_key() -> str | None:
     """The OpenRouter API key, or ``None`` if triage is not configured on
     this deployment. Unlike :func:`database_url` and :func:`session_secret`,
@@ -218,7 +203,7 @@ def openrouter_api_key() -> str | None:
 def triage_mode() -> str:
     """``demo``, ``openrouter``, ``vllm``, or ``off``. Defaults to ``openrouter`` when a
     key is set, otherwise ``off``. Set ``HERHEALTH_TRIAGE_MODE=demo`` explicitly
-    for local MVP testing without OpenRouter or services/model.
+    for local MVP testing without OpenRouter or a retrieval index.
     """
     explicit = os.environ.get(TRIAGE_MODE_ENV, "").strip().lower()
     if explicit in {"demo", "openrouter", "vllm", "off"}:
