@@ -236,7 +236,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     own = summary["describing_own_symptoms"]
     assert isinstance(own, dict)
     print(
-        f"first turns: {summary['valid']} of {summary['questions']} valid; by type {summary['by_type']}"
+        f"first turns: {summary['valid']} of {summary['questions']} valid; "
+        f"by type {summary['by_type']}"
     )
     print(f"  median {summary['median_seconds']:.0f}s, slowest {summary['max_seconds']:.0f}s")
     print(
