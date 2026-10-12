@@ -1,0 +1,30 @@
+{"id": 1, "style": "layperson", "topic": "Menopause", "question": "What exactly is menopause and when does it usually start?", "describes_own_symptoms": false}
+{"id": 2, "style": "ambiguous", "topic": "Menopause", "question": "What's this thing that happens to women when they get older, and when does it start?", "describes_own_symptoms": false}
+{"id": 3, "style": "emotionally_concerned", "topic": "Menopause", "question": "I keep hearing about menopause and I'm honestly scared of what it means and when it's going to happen to me.", "describes_own_symptoms": false}
+{"id": 4, "style": "layperson", "topic": "Menstrual Problems", "question": "What are the signs that something might actually be wrong with my period?", "describes_own_symptoms": false}
+{"id": 5, "style": "ambiguous", "topic": "Menstrual Problems", "question": "How do I know if this is actually a problem or not?", "describes_own_symptoms": false}
+{"id": 6, "style": "emotionally_concerned", "topic": "Menstrual Problems", "question": "I keep worrying that something's wrong with my period but I don't know what to look for, what are the warning signs?", "describes_own_symptoms": false}
+{"id": 7, "style": "layperson", "topic": "Menopause", "question": "What can I do if menopause symptoms are making it hard to stay active?", "describes_own_symptoms": false}
+{"id": 8, "style": "ambiguous", "topic": "Menopause", "question": "What do I do when this stage of life makes it hard to keep moving like I used to?", "describes_own_symptoms": false}
+{"id": 9, "style": "emotionally_concerned", "topic": "Menopause", "question": "Menopause has made it so hard for me to stay active and I feel like I'm losing myself, what can I do?", "describes_own_symptoms": true}
+{"id": 10, "style": "layperson", "topic": "Menstrual Health", "question": "Can stress from work actually mess with your period?", "describes_own_symptoms": false}
+{"id": 11, "style": "ambiguous", "topic": "Menstrual Health", "question": "Could all the stress I'm under be doing something to my cycle?", "describes_own_symptoms": false}
+{"id": 12, "style": "emotionally_concerned", "topic": "Menstrual Health", "question": "Work has been so stressful lately and now my period is all over the place, could the stress actually be causing this?", "describes_own_symptoms": true}
+{"id": 13, "style": "layperson", "topic": "Menstrual Problems", "question": "What should I do if my period pain is really bad or I'm bleeding way more than usual?", "describes_own_symptoms": false}
+{"id": 14, "style": "ambiguous", "topic": "Menstrual Problems", "question": "What do I do when it's way worse than it's ever been before?", "describes_own_symptoms": true}
+{"id": 15, "style": "emotionally_concerned", "topic": "Menstrual Problems", "question": "My period pain is unbearable this time and the bleeding is so much heavier than normal, I'm really scared, what should I do?", "describes_own_symptoms": true}
+{"id": 16, "style": "layperson", "topic": "PCOS", "question": "Can changing my lifestyle actually help with PCOS, and what should I be doing?", "describes_own_symptoms": false}
+{"id": 17, "style": "ambiguous", "topic": "PCOS", "question": "Does changing how I live actually make a difference with this, and what am I supposed to do?", "describes_own_symptoms": false}
+{"id": 18, "style": "emotionally_concerned", "topic": "PCOS", "question": "I keep hearing lifestyle changes can help PCOS but I don't know where to start and it's overwhelming me, what should I actually do?", "describes_own_symptoms": false}
+{"id": 19, "style": "layperson", "topic": "PCOS", "question": "I can't seem to lose weight and I think it might be from PCOS. What can I do about it?", "describes_own_symptoms": true}
+{"id": 20, "style": "ambiguous", "topic": "PCOS", "question": "I can't lose weight no matter what I do and I wonder if something else is going on. What can I do?", "describes_own_symptoms": true}
+{"id": 21, "style": "emotionally_concerned", "topic": "PCOS", "question": "I've tried everything to lose weight and nothing works, and I'm starting to think it's PCOS, I feel so discouraged, what can I do?", "describes_own_symptoms": true}
+{"id": 22, "style": "layperson", "topic": "PCOS", "question": "I've noticed extra hair growing on my chin and cheeks, could that mean PCOS?", "describes_own_symptoms": true}
+{"id": 23, "style": "ambiguous", "topic": "PCOS", "question": "Why is this happening to my face, is it a sign of something?", "describes_own_symptoms": true}
+{"id": 24, "style": "emotionally_concerned", "topic": "PCOS", "question": "I'm so self-conscious about the hair growing on my chin and cheeks and I'm scared it means I have PCOS, is that what this is?", "describes_own_symptoms": true}
+{"id": 25, "style": "layperson", "topic": "PCOS", "question": "How does PCOS mess with your periods?", "describes_own_symptoms": false}
+{"id": 26, "style": "ambiguous", "topic": "PCOS", "question": "How does having this thing change what happens every month?", "describes_own_symptoms": false}
+{"id": 27, "style": "emotionally_concerned", "topic": "PCOS", "question": "My periods have been so unpredictable since I found out I have PCOS and it's really unsettling, how does PCOS actually affect them?", "describes_own_symptoms": true}
+{"id": 28, "style": "layperson", "topic": "PCOS", "question": "How do conditions like endometriosis and PCOS affect your overall period health?", "describes_own_symptoms": false}
+{"id": 29, "style": "ambiguous", "topic": "PCOS", "question": "How much do these conditions really affect the whole picture of period health?", "describes_own_symptoms": false}
+{"id": 30, "style": "emotionally_concerned", "topic": "PCOS", "question": "I've been struggling with symptoms that might be endometriosis or PCOS and I'm worried about my overall menstrual health, how much do these conditions really affect it?", "describes_own_symptoms": true}
