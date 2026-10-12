@@ -9,9 +9,12 @@ status: runbook
 > `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
 > The retriever runs inside the backend over an index built by `make index`,
 > and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
-> `HERHEALTH_RERANKER_URL`). Passages below that describe the retrieval
-> service, its image or the published index are history and have not been
-> rewritten yet.
+> `HERHEALTH_RERANKER_URL`). **OpenRouter and the Base / Fine-tuned selector
+> were removed the same day ([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)):**
+> the mode is `HERHEALTH_TRIAGE_MODE=vllm`, the base model decides and the
+> adapter words informational answers. Passages below that describe the
+> retrieval service, its image, the published index, OpenRouter or the
+> selector are history and have not been rewritten yet.
 
 Production is **one EC2 server** running four containers — Caddy, frontend,
 backend, retrieval — plus a managed RDS PostgreSQL database, all in `us-east-1`,

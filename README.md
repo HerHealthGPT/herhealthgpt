@@ -150,15 +150,16 @@ support for Arabic. Do not add PWA scaffolding.
 
 **No model weights load inside the backend process.** The retriever runs in
 the backend over a FAISS index; embedding and reranking are HTTP calls to vLLM
-on the campus GPU box (ADR 0017). Reasoning is either
-OpenRouter (Base tab) or campus vLLM with our LoRA (Fine-tuned tab).
+on the campus GPU box (ADR 0017). Reasoning runs on the same box through
+LangChain (ADR 0018): the base model decides, and our LoRA adapter words
+informational answers. There is no OpenRouter and no model selector.
 
 ### Models this project uses
 
 | Role | Model | Where |
 |---|---|---|
-| Base reasoning | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | OpenRouter in local chat; also the vLLM base on campus |
-| Fine-tuned LoRA (experimental) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
+| Decisions (extract and decide) | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | vLLM on the campus box, port 8002 |
+| Informational answers (fine-tuned LoRA) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
 | Retrieval embeddings | [`Qwen/Qwen3-Embedding-4B`](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | vLLM on the campus box, port 8003; index built by `make index` |
 | Retrieval reranker (off by default) | [`Qwen/Qwen3-Reranker-4B`](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | vLLM on the campus box, port 8004; used only when `HERHEALTH_RERANK=on` (ADR 0017: no measured gain) |
 
@@ -429,6 +430,14 @@ You also need a built retrieval index at `build/index/`. It is built with
 ---
 
 ## Run the full app (local laptop)
+
+> **Changed on 2026-10-12 (ADR 0017, ADR 0018).** The steps below were written
+> for the earlier stack and still mention OpenRouter, the Base / Fine-tuned
+> tabs, `HERHEALTH_TRIAGE_MODE=openrouter` and a retrieval service on `:8001`.
+> None of those exist now. The backend needs `HERHEALTH_TRIAGE_MODE=vllm`, a
+> retrieval index (`make index`), and the three model endpoints from
+> `scripts/serve-models.sh`. See `infra/envs/backend.env.example` for the
+> current settings. This section has not been rewritten yet.
 
 Three processes on the laptop, plus the model endpoints the retriever calls. The campus GPU is **optional** and only needed
 for the Fine-tuned tab (next section).

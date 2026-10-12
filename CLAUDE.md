@@ -54,7 +54,12 @@ Consequences, all binding:
    clarifying question, which is the documented cause of clarification
    collapsing to 0.000 in the original evaluation. It must be retrained on
    multi-turn conversational data before it decides anything; until that
-   retrain ships and is reviewed, it stays phrasing-only.
+   retrain ships and is reviewed, it stays phrasing-only. Measured again on
+   2026-10-12: as the decision-maker it returned 0 valid decisions on 30
+   first-turn questions, against 23 for the base model. Since
+   [ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)
+   the base model (`Qwen/Qwen3.5-9B`, same vLLM process) decides, and the
+   adapter's one job is wording an accepted informational answer.
 2. **`TriageDecision`'s schema is the deterministic safety net that remains.**
    `ask` requires a `next_feature_id` from `features.yaml`'s closed
    vocabulary; `conclude` requires an `action_code` from `actions.yaml` and,
@@ -130,9 +135,10 @@ Rollback by hand is `git revert` (same pipeline). `terraform apply` is run
 manually, never by CI. Nothing is ever edited directly on the server — the SSM
 shell is for reading logs and diagnosing.
 
-Production runs the **Base model via OpenRouter only**; the model selector is
-off and the fine-tuned adapter stays campus/dev-only (see "The fine-tuned model"
-below). The served retrieval index (`make index`) never contains quote-only (NHS)
+**There is no OpenRouter and no model selector.** Every turn runs on the local
+models through LangChain ([ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)):
+the base model extracts what she said and decides, and the fine-tuned adapter
+words informational answers only (see "The fine-tuned model" below). The served retrieval index (`make index`) never contains quote-only (NHS)
 passages, and the backend refuses to load one that does. **Production has no
 index and no route to the model endpoints yet, so triage there reports "not
 configured"** until that is connected (ADR 0017). Full procedure,
