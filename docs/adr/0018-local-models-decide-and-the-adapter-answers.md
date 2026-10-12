@@ -170,6 +170,45 @@ screen doing its job and running into the evaluation's cap. The wording check
 is now the leading cause of a failed turn, in first turns and in consultations
 alike.
 
+## Third follow-up the same day: the wording check, and a 12-turn evaluation
+
+A reply rejected only for case-note phrasing ("You mentioned…") carries a
+sound decision. It now gets one attempt beyond the limit, with feedback naming
+the field and the phrase and asking for nothing else to change. The scripted
+consultations were also run to the agent's own limit of 12 turns, up from the
+evaluation's 8.
+
+| Measure | Before the chain | First chain | Final |
+|---|---|---|---|
+| First turns valid, of 30 | 23 | 26 | **29** |
+| Clarifying questions asked | 0 | 4 | **9** |
+| Median seconds per turn | 21 | 31 | 30 |
+| Own-symptom questions (12): valid | 7 | 8 | **12** |
+| ...of which asked / concluded / informed | 0 / 1 / 6 | 3 / 1 / 4 | 8 / 1 / 3 |
+| Scripted consultations concluded, of 10 | not run | 3 | **8** |
+
+The one invalid first turn named a warning-sign rule that does not exist,
+which is deliberately a hard failure: a made-up rule may not escalate or
+excuse anything.
+
+The eight consultations that concluded took 1, 4, 6, 6, 6, 8, 9 and 11 turns.
+The severe-pain script worked through eight warning-sign questions and
+concluded `URGENT_SAME_DAY` on the ninth turn; the heavy-bleeding-with-severe-
+pain script concluded `EMERGENCY` on the first. The two that did not conclude
+ran all 12 turns and repeated a question back to back two or three times: the
+repeat guard refuses once and then lets a second repeat stand, so a model that
+insists still loops.
+
+**What can and cannot be read from this.** Turns now complete and the system
+asks before it answers, on this sample. Nothing here says the urgency given
+was right: six of the eight conclusions were `ROUTINE_APPOINTMENT`, and no one
+has checked whether that was the appropriate level for the scripted answers.
+The targets were set, the fixes were made and the result was measured on the
+same 30 questions and 10 scripts, so these numbers are optimistic for unseen
+input; a fresh set of questions is needed before they are quoted as
+performance. Under-triage on the full benchmark has not been re-measured with
+this chain.
+
 ## What this shows
 
 The points below describe the first run, before the citation change.
@@ -210,9 +249,10 @@ clinician-adjudicated.
 
 ## Consequences
 
-- **Step 3b (connecting production to these endpoints) should wait** until
-  scripted consultations complete reliably. Shipping this to users as it is
-  would put errors in front of most of them.
+- **Step 3b (connecting production to these endpoints) was held** while only
+  3 of 10 scripted consultations completed. After the three follow-ups above,
+  8 of 10 do, which removes that objection; the urgency levels themselves
+  remain unevaluated.
 - **Open decisions for the repo owner, none taken here:**
   1. ~~whether an `ask` must still cite a passage~~ decided 2026-10-12: it
      need not (see the follow-up above);
