@@ -260,6 +260,10 @@ clinician-adjudicated.
      wording check fails;
   3. how much to trust the extract step, and whether its output should be
      shown to the decide step as a suggestion instead of as fact.
+  4. (2026-10-13) whether an informational answer to a question in a
+     see-doctor or urgent topic should always carry a line on when to seek
+     care, and whether an unclear question should be asked about instead of
+     declined. The full-benchmark run above is the evidence for both.
 - The adapter's informational answers are not checked for faithfulness to the
   passages; only wording, length and warning-sign lines are checked in code.
 - Production triage reports "not configured" until step 3b, as after ADR 0017.
