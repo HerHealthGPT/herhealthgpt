@@ -29,7 +29,9 @@ __all__ = [
     "DECISION_MODEL_ENV",
     "TRIAGE_MODES",
     "TRIAGE_MODE_ENV",
+    "PAGE_MODEL_ENV",
     "answer_model",
+    "page_model",
     "decision_model",
     "triage_mode",
     "VLLM_API_KEY_ENV",
@@ -230,6 +232,17 @@ def answer_model() -> str | None:
     if raw is None:
         return "herhealth"
     return raw.strip() or None
+
+
+#: The model that writes an informational answer as a page. Unset means the
+#: decision model: measured 2026-10-13, it wrote a complete page in 33 s where
+#: the adapter took 95 s and copied its passages sentence by sentence.
+PAGE_MODEL_ENV = "HERHEALTH_PAGE_MODEL"
+
+
+def page_model() -> str:
+    """The model that writes page-style informational answers."""
+    return os.environ.get(PAGE_MODEL_ENV, "").strip() or decision_model()
 
 
 def vllm_url() -> str:

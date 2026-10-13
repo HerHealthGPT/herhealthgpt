@@ -51,6 +51,11 @@ from herhealth_backend.triage.clients import (
 
 __all__ = [
     "LangChainAnswerWriter",
+    "MAX_PAGE_CHARS",
+    "PAGE_MAX_TOKENS",
+    "PAGE_SECTIONS",
+    "PAGE_TIMEOUT_SECONDS",
+    "shape_page",
     "LangChainFeatureExtractor",
     "LangChainReasoningClient",
     "ReasoningUnavailable",
@@ -67,6 +72,11 @@ logger = logging.getLogger(__name__)
 EXTRACT_MAX_TOKENS = 300
 DECIDE_MAX_TOKENS = 1200
 ANSWER_MAX_TOKENS = 900
+#: A page-style answer has five sections; measured at 260 to 630 tokens.
+PAGE_MAX_TOKENS = 1100
+#: One writer call. The adapter took 5 to 54 s on a page and the base model
+#: 21 to 39 s, so two writers in a row still fit the route's 150 s turn.
+PAGE_TIMEOUT_SECONDS = 60.0
 
 
 class ReasoningUnavailable(httpx.HTTPError):
@@ -400,12 +410,96 @@ def carry_warning_lines(answer: str, base_answer: str) -> str | None:
     return f"{answer}\n\nWhen to get medical help:\n{carried}"
 
 
-class LangChainAnswerWriter:
-    """Implements ``herhealth_backend.triage.agent.AnswerWriter``."""
+#: The sections of an informational page, in order: the heading she reads,
+#: and the words added to her question to search for that section. Searching
+#: once with the bare question returns near-identical definition sentences
+#: ("PCOS is a hormonal disorder", five ways), which is why the first answers
+#: were three sentences long.
+PAGE_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("Overview", "what it is"),
+    ("Symptoms", "symptoms and signs"),
+    ("Causes", "causes and risk factors"),
+    ("When to see a doctor", "when to see a doctor or get medical help"),
+    ("Treatment", "treatment and management"),
+)
 
-    def __init__(self, chat: Any, *, name: str) -> None:
+_PAGE_FORMAT = (
+    "You are given a DRAFT answer and PASSAGES from our sources, grouped by "
+    "section. Write a short health information page from them. Use ONLY facts "
+    "found in the draft or the passages. Keep EVERY point the draft makes, "
+    "including every item in its lists; add what the passages say that the "
+    "draft does not. Write in your own words: do not copy passages sentence by "
+    "sentence, and state each fact once. Use these section headings, each on "
+    "its own line and ending in a colon, in this order: {headings} Under "
+    "Overview write two or three sentences. Under the other headings write one "
+    "sentence and then, where there are several points, a list with each item "
+    'on its own line starting with "- ". Leave out a section entirely if '
+    "neither the draft nor the passages say anything about it. Do not tell her "
+    "what she has. Do not add a list of sources or a closing note."
+)
+
+#: Longest page accepted, in characters.
+MAX_PAGE_CHARS = 4500
+#: Fewer sections than this is an answer, not a page, and is not accepted as one.
+MIN_PAGE_SECTIONS = 3
+
+
+def shape_page(text: str, headings: Sequence[str]) -> str | None:
+    """Put each known heading on its own line, or ``None`` if it is not a page.
+
+    Both models write "Overview: PCOS is…" on one line as often as not, and
+    the interface only treats a line that *ends* in a colon as a heading.
+    Nothing else is changed: the words are the writer's.
+    """
+    known = {heading.lower(): heading for heading in headings}
+    lines: list[str] = []
+    found: set[str] = set()
+    for line in trim_adapter_answer(text).splitlines():
+        stripped = line.strip().strip("*").strip()
+        head, colon, rest = stripped.partition(":")
+        heading = known.get(head.strip().lower())
+        if not colon or heading is None:
+            lines.append(line)
+            continue
+        found.add(heading)
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(f"{heading}:")
+        if rest.strip():
+            lines.append(rest.strip())
+    if len(found) < MIN_PAGE_SECTIONS:
+        return None
+    return "\n".join(lines).strip()
+
+
+def _without_warning_lines(answer: str) -> str:
+    """The draft as shown to the page writer. Its urgent lines are left out
+    because code carries them onto the page verbatim afterwards; shown here
+    as well, they would appear twice."""
+    return "\n".join(line for line in answer.splitlines() if not _WARNING_LINE.search(line))
+
+
+class LangChainAnswerWriter:
+    """Implements ``herhealth_backend.triage.agent.AnswerWriter``.
+
+    ``fallback_chat`` is a second writer for the page form only. The adapter
+    was measured ignoring the page layout on one question in two, so a reply
+    from it that is not a page is rewritten by the fallback, and the turn
+    records which of them she actually read.
+    """
+
+    def __init__(
+        self,
+        chat: Any,
+        *,
+        name: str,
+        fallback_chat: Any | None = None,
+        fallback_name: str | None = None,
+    ) -> None:
         self._chat = chat
         self._name = name
+        self._fallback_chat = fallback_chat
+        self._fallback_name = fallback_name or "fallback"
 
     @property
     def name(self) -> str:
@@ -447,3 +541,58 @@ class LangChainAnswerWriter:
                 "the base answer holds urgent advice that could not be carried over; keeping it"
             )
         return carried
+
+    def write_page(
+        self,
+        question: str,
+        sections: Sequence[tuple[str, Sequence[RetrievedPassage]]],
+        base_answer: str,
+    ) -> tuple[str, str] | None:
+        """A page-style answer and the name of the model that wrote it.
+
+        ``None`` when neither writer produced a usable page; the caller then
+        falls back to :meth:`write`, and after that to the base answer.
+        """
+        filled = [(title, passages) for title, passages in sections if passages]
+        if not filled:
+            return None
+        # Every heading is offered, not only those a search filled: the draft
+        # can cover a section the search found nothing for, and a heading that
+        # is not offered is a part of the draft that gets dropped.
+        headings = [title for title, _ in sections]
+        listed = "\n\n".join(
+            f"{title}:\n" + "\n".join(f"- {passage.text}" for passage in passages)
+            for title, passages in filled
+        )
+        messages = [
+            SystemMessage(
+                content=f"{ADAPTER_INSTRUCTION} "
+                + _PAGE_FORMAT.format(headings=" ".join(f"{h}:" for h in headings))
+            ),
+            HumanMessage(
+                content=f"DRAFT:\n{_without_warning_lines(base_answer)}\n\n"
+                f"PASSAGES:\n{listed}\n\nQuestion: {question}"
+            ),
+        ]
+        writers = [(self._chat, self._name)]
+        if self._fallback_chat is not None:
+            writers.append((self._fallback_chat, self._fallback_name))
+        for chat, name in writers:
+            try:
+                reply = _invoke(chat, messages, what="answer")
+            except (openai.APITimeoutError, ReasoningUnavailable) as error:
+                logger.warning("%s failed to write the page: %s", name, error)
+                continue
+            page = shape_page(str(reply), headings)
+            if page is None or len(page) > MAX_PAGE_CHARS:
+                logger.warning("%s did not return a usable page", name)
+                continue
+            if any(pattern.search(page) for pattern in _LEAKED_INTERNALS):
+                logger.warning("%s used banned wording in the page", name)
+                continue
+            carried = carry_warning_lines(page, base_answer)
+            if carried is None:
+                logger.warning("urgent advice could not be carried onto the page")
+                return None
+            return carried, name
+        return None

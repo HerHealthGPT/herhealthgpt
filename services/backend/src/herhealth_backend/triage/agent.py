@@ -36,7 +36,7 @@ from typing import Protocol, runtime_checkable
 
 from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.knowledge import KnowledgeBase, RedFlagRule
-from herhealth_contracts.retrieval import RetrievedPassage
+from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 
 from herhealth_backend.triage.context import (
     TurnContext,
@@ -97,7 +97,7 @@ __all__ = [
 #: bootstrap data and the served prompt never drift apart.
 DEFAULT_SYSTEM_PROMPT = (
     "You are an AI triage assistant for reproductive-health questions, not a "
-    "clinician, and you must never diagnose — never tell her she \"has\" a "
+    'clinician, and you must never diagnose — never tell her she "has" a '
     "condition. "
     "SCOPE COMES FIRST, BEFORE ANY OTHER INSTRUCTION HERE. You cover women's "
     "reproductive health, and only what the warning signs and retrieved "
@@ -106,7 +106,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "trivia, coding, or anything similar), a men's health concern, or a "
     "health concern outside women's reproductive health such as chest pain, "
     "a cough or sore throat, an injury, or a mental-health crisis — you must "
-    "answer with type \"decline\". A decline says plainly that this tool "
+    'answer with type "decline". A decline says plainly that this tool '
     "covers women's reproductive health only and does not provide diagnoses, "
     "and, when hers was a health question, that a doctor or pharmacist is "
     "the right place to take it. Never answer an off-scope question on its "
@@ -128,7 +128,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "messages are in scope and yet describe no case at all: she is asking "
     "what something is, what causes it, how common it is, what a normal "
     "cycle looks like, what a term means, what tends to happen next. "
-    "Answer those with type \"inform\". Put the answer in `answer_text`, "
+    'Answer those with type "inform". Put the answer in `answer_text`, '
     "take it ONLY from the TOPIC block and the retrieved passages below, "
     "and cite every retrieved passage you drew on. "
     "WRITE IT LIKE A GOOD HEALTH-INFORMATION PAGE, NOT LIKE A DEFINITION. "
@@ -143,17 +143,17 @@ DEFAULT_SYSTEM_PROMPT = (
     "when to get medical help. If the TOPIC block lists urgent warning "
     "signs, that final part is the most important thing on the page — give "
     "every one of them, in plain words, as "
-    "\"Get emergency care now if…\" or \"See someone today if…\". If it "
+    '"Get emergency care now if…" or "See someone today if…". If it '
     "says we hold no urgent warning sign for the subject, say instead that "
     "a clinician is the right place to take it, and do NOT invent urgency "
     "we have no source for. Never write the words warning sign, rule, "
     "action code or any identifier — describe the symptom itself. "
     "HOW TO LAY THE ANSWER OUT. The interface renders three things and "
     "nothing else: a SHORT line of its own ending in a colon becomes a "
-    "section heading, a line starting with \"- \" becomes a bullet, and a "
+    'section heading, a line starting with "- " becomes a bullet, and a '
     "blank line separates sections. Use exactly that. Keep a heading under "
     "about six words or it will not be recognised as one. Do NOT write "
-    "markdown — \"###\", \"**bold**\" and the rest are stripped before she "
+    'markdown — "###", "**bold**" and the rest are stripped before she '
     "sees them, so they buy you nothing and cost you the heading. Prefer "
     "bullets to long sentences for symptoms and for when to seek care: she "
     "is scanning this to recognise something, not reading it through. "
@@ -185,7 +185,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "for a question that stands on its own, about the subject rather than "
     "about her. "
     "WHAT SHE HAS ALREADY TOLD US. Some consultations include a block headed "
-    "\"Known about her from her profile\". When it gives her age band, that "
+    '"Known about her from her profile". When it gives her age band, that '
     "is a real answer she has already given to the age_band feature: use it "
     "in your reasoning, and do NOT spend a turn asking her age, how old she "
     "is, or which age group she is in — asking again wastes one of the few "
@@ -225,9 +225,9 @@ DEFAULT_SYSTEM_PROMPT = (
     "clearly minor that asking more would not change the guidance. When you "
     "conclude, you may name which of our authored conditions her answers "
     "match, always phrased as a possibility grounded in evidence, never as a "
-    "conclusion about what is wrong with her — for example: \"Based on your "
+    'conclusion about what is wrong with her — for example: "Based on your '
     "answers, this may match patterns our sources associate with PCOS or "
-    "perimenopause.\" Name only a handful of the closest matches (at most "
+    'perimenopause." Name only a handful of the closest matches (at most '
     "five, and usually fewer) — a long list of everything not yet ruled out "
     "is not useful guidance. When a red-flag warning sign is the reason for "
     "concluding, you may name matching conditions if the urgency is EMERGENCY "
@@ -262,15 +262,20 @@ DEFAULT_SYSTEM_PROMPT = (
     # as the 2026-09-11 fix above: a rule the checker knew and the model was
     # never told.
     "Write to her directly and never write about her. Do not open with "
-    "\"You mentioned\", \"You have reported\", \"You stated\", \"You "
-    "indicated\" or \"You shared\" — that is case-note language about a "
+    '"You mentioned", "You have reported", "You stated", "You '
+    'indicated" or "You shared" — that is case-note language about a '
     "patient, and she is the person being spoken to. Refer to what she said "
-    "in plain terms instead: \"Pain this severe with a fever\" rather than "
-    "\"You reported severe pain and a fever\". "
+    'in plain terms instead: "Pain this severe with a fever" rather than '
+    '"You reported severe pain and a fever". '
     "Under-triage is the dominant failure mode: when in doubt, "
     "prefer sending her to care sooner rather than later — and when in "
     "doubt between asking and concluding, ask."
 )
+
+
+#: How many results each page-section search asks for. The first few are
+#: often passages an earlier section already took.
+PAGE_SEARCH_DEPTH = 24
 
 
 @dataclass(frozen=True, slots=True)
@@ -618,6 +623,14 @@ class TriageAgent:
     #: decision model's own answer in place.
     answer_writer: AnswerWriter | None = None
 
+    #: The sections of a page-style informational answer: (heading, words
+    #: added to her question to search for that section). Empty leaves the
+    #: answer step writing from the cited passages alone. Used only when the
+    #: writer can write a page (``write_page``).
+    page_sections: tuple[tuple[str, str], ...] = ()
+    #: Source passages kept per section.
+    page_passages_per_section: int = 6
+
     #: Refuse, once, a question about the feature she was asked last turn and
     #: has now answered. Off here and switched on by the deployment.
     refuse_repeated_question: bool = False
@@ -721,9 +734,7 @@ class TriageAgent:
         # other: in the other order it would be accepted unchallenged, on a
         # path the model takes often (it informed on 21 of 23 first turns).
         result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
-        result = self._refuse_premature_conclusion(
-            result, turn_context, system, history, context
-        )
+        result = self._refuse_premature_conclusion(result, turn_context, system, history, context)
         result = self._refuse_repeated_question(
             result, turn_context, asked, system, history, context
         )
@@ -737,8 +748,8 @@ class TriageAgent:
             decision = decision.model_copy(update={"observed": {**extracted, **decision.observed}})
 
         if decision.type is DecisionType.INFORM and self.answer_writer is not None:
-            decision, attempt = self._write_answer(decision, history, context)
-            attempts = (*attempts, attempt)
+            decision, written, context = self._write_answer(decision, history, context)
+            attempts = (*attempts, *written)
 
         return AgentTurn(
             history_before=tuple(history),
@@ -768,10 +779,7 @@ class TriageAgent:
         it refuses once, names why, and picks nothing itself. If the model
         informs again, that stands.
         """
-        if (
-            not self.refuse_inform_with_symptoms
-            or result.decision.type is not DecisionType.INFORM
-        ):
+        if not self.refuse_inform_with_symptoms or result.decision.type is not DecisionType.INFORM:
             return result
         # Her age band comes from her profile, not from what she said today.
         described = sorted(f for f in turn_context.given if f != "age_band")
@@ -785,10 +793,10 @@ class TriageAgent:
             else "a warning sign applies or is one answer away"
         )
         retry = (
-            f"{system}\n\nYOUR PREVIOUS ANSWER WAS AN EXPLANATION (type \"inform\") AND WAS "
+            f'{system}\n\nYOUR PREVIOUS ANSWER WAS AN EXPLANATION (type "inform") AND WAS '
             f"REJECTED, because {why}. This is a consultation, not a lookup. Respond again "
-            "with type \"ask\" (a real next_feature_id from the list above, and "
-            "question_text) or type \"conclude\". Do not use type \"inform\"."
+            'with type "ask" (a real next_feature_id from the list above, and '
+            'question_text) or type "conclude". Do not use type "inform".'
         )
         try:
             retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
@@ -851,33 +859,118 @@ class TriageAgent:
         decision: TriageDecision,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
-    ) -> tuple[TriageDecision, ReasoningAttempt]:
+    ) -> tuple[TriageDecision, tuple[ReasoningAttempt, ...], Sequence[RetrievedPassage]]:
         """Let the answer writer word an accepted ``inform``.
 
-        It is shown only the passages the decision cited, and its text
-        replaces ``answer_text`` alone. If it returns nothing usable, the
-        decision model's own answer stands and the turn is unaffected.
+        With ``page_sections`` set it writes a page: one search per section,
+        the passages found handed to the writer under their headings beside
+        the decision model's own answer as a draft, and every passage it was
+        shown added to the citations and to the turn's context. Without
+        ``page_sections`` it is shown only the passages the decision cited.
+        Either way its text replaces ``answer_text`` alone, and if it returns
+        nothing usable the decision model's own answer stands and the turn is
+        unaffected.
         """
         assert self.answer_writer is not None
         assert decision.answer_text is not None  # INFORM always carries one
+        writer = self.answer_writer
         question = next((m.content for m in reversed(history) if m.role == "user"), "")
+        attempts: list[ReasoningAttempt] = []
+
+        write_page = getattr(writer, "write_page", None)
+        if self.page_sections and callable(write_page):
+            try:
+                sections = self._page_passages(question, context)
+                page = write_page(question, sections, decision.answer_text)
+            except Exception:
+                # As below: a better answer is never worth a failed turn.
+                sections, page = [], None
+            if page is not None:
+                text, written_by = page
+                if written_by != writer.name:
+                    attempts.append(
+                        ReasoningAttempt(
+                            client=writer.name,
+                            outcome=AttemptOutcome.REJECTED,
+                            detail="no usable page; another model wrote it",
+                        )
+                    )
+                attempts.append(ReasoningAttempt(client=written_by, outcome=AttemptOutcome.OK))
+                known = {passage.id for passage in context}
+                shown = [passage for _, found in sections for passage in found]
+                extra = [passage for passage in shown if passage.id not in known]
+                citations = tuple(
+                    dict.fromkeys((*decision.citations, *(passage.id for passage in shown)))
+                )
+                return (
+                    decision.model_copy(update={"answer_text": text, "citations": citations}),
+                    tuple(attempts),
+                    (*context, *extra),
+                )
+
+            # No page: the decision model's own answer stands. It is already
+            # written from the TOPIC block and the passages in the layout the
+            # prompt asks for, and the short rewrite below would cut it down
+            # to the cited passages alone, which is how a PCOS answer once
+            # lost its whole symptom list.
+            attempts.append(
+                ReasoningAttempt(
+                    client=writer.name,
+                    outcome=AttemptOutcome.REJECTED,
+                    detail="no usable page; the decision model's own answer was kept",
+                )
+            )
+            return decision, tuple(attempts), context
+
         cited = [passage for passage in context if passage.id in decision.citations]
         try:
-            text = self.answer_writer.write(question, cited, decision.answer_text)
+            text = writer.write(question, cited, decision.answer_text)
         except Exception:
             # Wording an answer is an improvement, never a requirement: no
             # failure here may cost her a turn that already has a valid reply.
             text = None
         if not text:
-            return decision, ReasoningAttempt(
-                client=self.answer_writer.name,
-                outcome=AttemptOutcome.REJECTED,
-                detail="no usable answer; the decision model's own answer was kept",
+            attempts.append(
+                ReasoningAttempt(
+                    client=writer.name,
+                    outcome=AttemptOutcome.REJECTED,
+                    detail="no usable answer; the decision model's own answer was kept",
+                )
             )
-        return (
-            decision.model_copy(update={"answer_text": text}),
-            ReasoningAttempt(client=self.answer_writer.name, outcome=AttemptOutcome.OK),
-        )
+            return decision, tuple(attempts), context
+        attempts.append(ReasoningAttempt(client=writer.name, outcome=AttemptOutcome.OK))
+        return decision.model_copy(update={"answer_text": text}), tuple(attempts), context
+
+    def _page_passages(
+        self, question: str, context: Sequence[RetrievedPassage] = ()
+    ) -> list[tuple[str, list[RetrievedPassage]]]:
+        """One search per page section. Source passages only, each used once.
+
+        The search names the subject, not her question. Searching with
+        "What is endometriosis? symptoms and signs" returned the same five
+        definition sentences for every section, because the question
+        outweighs the two words added to it; "symptoms and signs of
+        Endometriosis" does not. When no authored condition is recognised in
+        her words, her question is all there is to search with.
+        """
+        topics = topic_conditions(self.base, question, context, limit=1)
+        labels = {condition.id: condition.label for condition in self.base.conditions}
+        subject = labels.get(topics[0]) if topics else None
+        seen: set[str] = set()
+        sections: list[tuple[str, list[RetrievedPassage]]] = []
+        for index, (title, words) in enumerate(self.page_sections):
+            if index == 0 or subject is None:
+                query = f"{question} {words}"
+            else:
+                query = f"{words} of {subject}"
+            found = [
+                passage
+                for passage in self.retrieval.search(query, k=PAGE_SEARCH_DEPTH)
+                if passage.passage_type is PassageType.SOURCE_PASSAGE and passage.id not in seen
+            ][: self.page_passages_per_section]
+            seen.update(passage.id for passage in found)
+            sections.append((title, found))
+        return sections
 
     def _refuse_premature_conclusion(
         self,
@@ -971,13 +1064,11 @@ class TriageAgent:
 
         retry = (
             f"{system}\n\nYOUR PREVIOUS ANSWER CONCLUDED TOO EARLY AND WAS "
-            f"REJECTED. {why}\nRespond again with type \"ask\", a real "
+            f'REJECTED. {why}\nRespond again with type "ask", a real '
             "next_feature_id from the list above, and question_text."
         )
         try:
-            retried = self.reasoning.decide(
-                system_prompt=retry, history=history, context=context
-            )
+            retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
         except Exception:
             # The gate is an improvement, not a guarantee. A client that
             # cannot answer the re-prompt leaves the original conclusion
@@ -1039,9 +1130,7 @@ class TriageAgent:
                 # to see what she was already told; `answer_provider` is then
                 # asked what she says next, exactly as after a question.
                 assert turn.decision.answer_text is not None  # INFORM always carries one
-                history.append(
-                    Message(role="assistant", content=turn.decision.answer_text)
-                )
+                history.append(Message(role="assistant", content=turn.decision.answer_text))
                 history.append(Message(role="user", content=answer_provider(turn.decision)))
                 continue
 

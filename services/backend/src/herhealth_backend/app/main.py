@@ -53,6 +53,7 @@ from herhealth_backend.app.config import google_client_id as configured_google_c
 from herhealth_backend.app.config import knowledge_dir as configured_knowledge_dir
 from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
 from herhealth_backend.app.config import openrouter_model as configured_openrouter_model
+from herhealth_backend.app.config import page_model as configured_page_model
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.config import triage_mode as configured_triage_mode
 from herhealth_backend.app.config import vllm_api_key as configured_vllm_api_key
@@ -63,9 +64,11 @@ from herhealth_backend.app.db import Database
 from herhealth_backend.app.triage.routes import router as triage_router
 from herhealth_backend.triage.agent import RetrievalClient, TriageAgent
 from herhealth_backend.triage.chain import (
-    ANSWER_MAX_TOKENS,
     DECIDE_MAX_TOKENS,
     EXTRACT_MAX_TOKENS,
+    PAGE_MAX_TOKENS,
+    PAGE_SECTIONS,
+    PAGE_TIMEOUT_SECONDS,
     LangChainAnswerWriter,
     LangChainFeatureExtractor,
     LangChainReasoningClient,
@@ -144,11 +147,13 @@ def _build_retrieval() -> RetrievalClient | None:
 
 
 #: How many of her answers a real deployment wants recorded before it accepts
-#: a conclusion without challenge. Three is deliberately low — enough to stop a
-#: verdict from one sentence, not enough to make a consultation feel like a
-#: form. See ``TriageAgent._refuse_premature_conclusion``: the model still
-#: decides, this only sends an early conclusion back once with the reason.
-MIN_ANSWERS_BEFORE_CONCLUDING = 3
+#: a conclusion without challenge. Raised from three to five on 2026-10-13:
+#: with three, live consultations concluded after two questions, and the repo
+#: owner asked for a longer series that narrows things down the way the
+#: retired controller's six questions did. See
+#: ``TriageAgent._refuse_premature_conclusion``: the model still decides, this
+#: only sends an early conclusion back once with the reason.
+MIN_ANSWERS_BEFORE_CONCLUDING = 5
 
 
 def _build_triage_agent() -> TriageAgent | None:
@@ -157,9 +162,10 @@ def _build_triage_agent() -> TriageAgent | None:
     ``off`` disables triage. ``demo`` wires offline scripted clients — no
     network, no GPU, no index. ``vllm`` is the real path (ADR 0018): the
     retriever over the index on disk, then the local models through LangChain
-    — the base model extracts what she said and decides, and the fine-tuned
-    adapter words informational answers. There is no second provider behind
-    them.
+    — the base model extracts what she said, decides, and writes an
+    informational answer out as a page (``HERHEALTH_PAGE_MODEL`` names another
+    writer, such as the fine-tuned adapter). There is no second provider
+    behind them.
 
     ``None`` also when ``vllm`` is asked for but there is no usable index:
     the turn route then answers 503 "not configured".
@@ -190,8 +196,17 @@ def _build_triage_agent() -> TriageAgent | None:
             max_tokens=max_tokens,
         )
 
+    def page_chat(model: str) -> Any:
+        return build_chat_model(
+            url=configured_vllm_url(),
+            model=model,
+            api_key=configured_vllm_api_key(),
+            timeout=PAGE_TIMEOUT_SECONDS,
+            max_tokens=PAGE_MAX_TOKENS,
+        )
+
     deciding = configured_decision_model()
-    answering = configured_answer_model()
+    writing = configured_page_model()
     return TriageAgent(
         base=base,
         retrieval=retrieval,
@@ -203,11 +218,15 @@ def _build_triage_agent() -> TriageAgent | None:
             repair=lambda decision: drop_unknown_observed(decision, base),
         ),
         extractor=LangChainFeatureExtractor(chat(deciding, EXTRACT_MAX_TOKENS), base),
-        answer_writer=(
-            LangChainAnswerWriter(chat(answering, ANSWER_MAX_TOKENS), name=answering)
-            if answering
-            else None
+        answer_writer=LangChainAnswerWriter(
+            page_chat(writing),
+            name=writing,
+            # Only when another model was chosen to write: a reply from it
+            # that is not a page is rewritten by the deciding model.
+            fallback_chat=page_chat(deciding) if writing != deciding else None,
+            fallback_name=deciding,
         ),
+        page_sections=PAGE_SECTIONS,
         min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
         refuse_inform_with_symptoms=True,
         refuse_repeated_question=True,
