@@ -11,11 +11,13 @@ testable. One function per verb, each returning a process exit code:
 from __future__ import annotations
 
 import argparse
+import os
 from collections import Counter
 from pathlib import Path
 
 from herhealth_contracts.scoring import plausibility
 
+from herhealth_data import paths
 from herhealth_data.ingest import (
     FetchOutcome,
     FetchRecord,
@@ -167,40 +169,79 @@ def run_validate(args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------
 
 
-def _load_embedder(name: str | None):  # type: ignore[no-untyped-def]
-    """The hashing stand-in when asked for it, otherwise the real model.
+def _serve_conf() -> dict[str, str]:
+    """``infra/model/serve.conf`` as a dict; empty if the file is absent."""
+    values: dict[str, str] = {}
+    if not paths.SERVE_CONF.is_file():
+        return values
+    for line in paths.SERVE_CONF.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        values[key.strip()] = value.strip()
+    return values
 
-    Named explicitly rather than falling back silently: a run that quietly used
-    a bag-of-words embedder instead of bge-m3 would produce plausible-looking
-    proposals with no semantic matching behind them at all.
 
-    ``None`` means the caller expressed no preference, so the default model is
-    resolved here — inside the lazy import — rather than in the CLI, which must
-    stay importable without the retrieval extra.
+def _load_embeddings(model: str | None, url: str | None):  # type: ignore[no-untyped-def]
+    """``(embeddings, model id, revision, query formatter)``.
+
+    The hashing stand-in when asked for it by name, otherwise the embedding
+    model served by vLLM. Named explicitly rather than falling back silently: a
+    run that quietly used a bag-of-words embedder would produce plausible-looking
+    results with no semantic matching behind them at all.
     """
-    from herhealth_data.retrieval import (
-        DEFAULT_MODEL,
-        HashingEmbedder,
-        SentenceTransformerEmbedder,
+    from herhealth_contracts.retrieval import format_query
+
+    from herhealth_data.retrieval import HASHING_MODEL, HashingEmbeddings, endpoint_embeddings
+
+    if model == HASHING_MODEL:
+        print("using the hashing stand-in — lexical overlap only, NOT semantic")
+        stand_in = HashingEmbeddings()
+        return stand_in, stand_in.name, None, (lambda query: query)
+
+    conf = _serve_conf()
+    endpoint = (
+        url
+        or os.environ.get("HERHEALTH_EMBEDDING_URL")
+        or f"http://127.0.0.1:{conf.get('EMBED_PORT', '8003')}"
+    )
+    served_name = conf.get("EMBED_SERVED_NAME", "herhealth-embed")
+    embeddings = endpoint_embeddings(
+        url=endpoint, model=served_name, api_key=os.environ.get("HERHEALTH_MODELS_API_KEY")
+    )
+    print(f"embedding endpoint: {endpoint} ({served_name})")
+    return (
+        embeddings,
+        conf.get("EMBED_MODEL", "Qwen/Qwen3-Embedding-4B"),
+        conf.get("EMBED_REVISION"),
+        format_query,
     )
 
-    if name is None:
-        name = DEFAULT_MODEL
-    if name == "hashing":
-        print("using the hashing stand-in — lexical overlap only, NOT semantic")
-        return HashingEmbedder()
-    return SentenceTransformerEmbedder(name)
+
+def _load_store(index_dir: Path, url: str | None):  # type: ignore[no-untyped-def]
+    """An existing index, opened with whatever embedder built it."""
+    from herhealth_data.retrieval import HASHING_MODEL, PassageStore, read_manifest
+
+    manifest = read_manifest(index_dir)
+    model = HASHING_MODEL if manifest.embedding_model.startswith("hashing") else None
+    embeddings, _, _, formatter = _load_embeddings(model, url)
+    return PassageStore.load(index_dir, embeddings, query_formatter=formatter)
 
 
 def run_index(args: argparse.Namespace) -> int:
-    """Build the passage index from build/clean/.
+    """Build a retrieval index from build/clean/ and knowledge/.
 
-    Downloads model weights on first run unless --model hashing.
+    The default is the SERVED index: no quote-only text, safe to copy to a
+    server. ``--authoring`` builds the second, local-only index that keeps
+    quote-only passages for the evidence-proposal tool.
     """
     from herhealth_data.retrieval import (
-        build_index,
+        PassageStore,
         evidence_statement_passages,
         load_passages,
+        load_source_urls,
+        to_indexed,
     )
 
     if not args.clean_dir.is_dir():
@@ -213,8 +254,6 @@ def run_index(args: argparse.Namespace) -> int:
             print(problem)
         return 2
 
-    # Quote-only sources are indexed — we may read and quote them. The flag
-    # travels with each passage so the SERVED corpus can exclude them later.
     ingestable = {s.id: s.may_be_ingested for s in base.sources}
     source_passages = load_passages(args.clean_dir, ingestable)
     evidence_passages = evidence_statement_passages(
@@ -232,45 +271,52 @@ def run_index(args: argparse.Namespace) -> int:
         f"evidence statement(s) = {len(passages)} total, from {len(by_source)} source(s)"
     )
     for source_id, count in sorted(by_source.items()):
-        ingestable_here = any(
-            p.may_be_ingested for p in passages if p.source_id == source_id
-        )
+        ingestable_here = any(p.may_be_ingested for p in passages if p.source_id == source_id)
         mark = "" if ingestable_here else "  (quote-only)"
         print(f"  {source_id:<14} {count:>5}{mark}")
-    print(f"\n{quote_only} passage(s) are quote-only and must never enter the served corpus.")
 
-    # The deployed index is built with this flag: the runtime filter already
-    # hides quote-only passages from search, but without it their TEXT is still
-    # in the index files, and those files go to S3 and into the retrieval image.
-    # Dropping them before embedding keeps NHS text out of both
-    # (docs/runbooks/aws-deploy.md, "The NHS decision").
-    if args.exclude_quote_only:
+    if args.authoring:
+        index_dir = args.index_dir or paths.AUTHORING_INDEX_DIR
+        print(f"\nauthoring index: keeping {quote_only} quote-only passage(s). Never serve it.")
+    else:
+        index_dir = args.index_dir or paths.INDEX_DIR
         passages = [p for p in passages if p.may_be_ingested]
-        print(f"--exclude-quote-only: dropped {quote_only}, {len(passages)} remain.")
+        print(
+            f"\nserved index: dropped {quote_only} quote-only passage(s), "
+            f"{len(passages)} remain."
+        )
         if not passages:
             print("error: nothing left to index once quote-only passages are dropped")
             return 1
 
-    embedder = _load_embedder(args.model)
-    print(f"\nembedding with {embedder.name} ({embedder.dimensions}d)...")
-    index = build_index(passages, embedder)
-    index.save(args.index_dir)
-    print(f"index written to {args.index_dir}")
+    urls = load_source_urls(paths.INGEST_LOCK_FILE)
+    indexed = [to_indexed(p, urls) for p in passages]
+
+    embeddings, model_id, revision, formatter = _load_embeddings(args.model, args.embedding_url)
+    print(f"embedding {len(indexed)} passage(s) with {model_id}...")
+    store = PassageStore.build(
+        indexed,
+        embeddings,
+        embedding_model=model_id,
+        embedding_revision=revision,
+        query_formatter=formatter,
+    )
+    if not args.authoring and store.manifest.contains_quote_only:
+        print("error: a quote-only passage reached the served index; nothing was written")
+        return 1
+    store.save(index_dir)
+    print(f"index written to {index_dir} ({store.manifest.dimensions}d)")
     return 0
 
 
 def run_search(args: argparse.Namespace) -> int:
-    """Query the index by hand. The quickest way to see whether it works."""
-    from herhealth_data.retrieval import PassageIndex
-
+    """Query an index by hand. The quickest way to see whether it works."""
     if not (args.index_dir / "manifest.json").is_file():
         print(f"error: no index at {args.index_dir} — run `make index` first")
         return 2
 
-    index = PassageIndex.load(args.index_dir)
-    embedder = _load_embedder(args.model or index.model_name)
-
-    hits = index.search(args.query, embedder, k=args.k)
+    store = _load_store(args.index_dir, args.embedding_url)
+    hits = store.search(args.query, k=args.k)
     if not hits:
         print("no hits")
         return 1
@@ -288,10 +334,10 @@ def run_propose(args: argparse.Namespace) -> int:
     Writes `approved: false` and a placeholder strength, so nothing can reach
     evidence.csv without a person reading it.
     """
-    from herhealth_data.retrieval import PassageIndex, propose_rows, write_batch
+    from herhealth_data.retrieval import propose_rows, write_batch
 
     if not (args.index_dir / "manifest.json").is_file():
-        print(f"error: no index at {args.index_dir} — run `make index` first")
+        print(f"error: no index at {args.index_dir} — run `make index-authoring` first")
         return 2
 
     base, problems = load_knowledge_base(args.knowledge)
@@ -300,13 +346,10 @@ def run_propose(args: argparse.Namespace) -> int:
             print(problem)
         return 2
 
-    index = PassageIndex.load(args.index_dir)
-    embedder = _load_embedder(args.model or index.model_name)
-
+    store = _load_store(args.index_dir, args.embedding_url)
     proposals = propose_rows(
         base,
-        index,
-        embedder,
+        store,
         condition_ids=args.condition or None,
         per_gap=args.per_gap,
         min_score=args.min_score,
@@ -323,7 +366,7 @@ def run_propose(args: argparse.Namespace) -> int:
         print("no candidates cleared the score threshold")
         return 1
 
-    write_batch(proposals, args.out, model_name=embedder.name)
+    write_batch(proposals, args.out, model_name=store.manifest.embedding_model)
     print(f"\n{len(proposals)} proposal(s) written to {args.out}")
     print("DRAFT — approved: false, every strength is a placeholder.")
     print("Review each row, set a real strength, then re-run `make evidence`.")

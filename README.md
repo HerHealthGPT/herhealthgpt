@@ -142,24 +142,26 @@ Monorepo. Four independently deployable services, one contracts package.
 |---|---|---|---|
 | `services/frontend` | Next.js, responsive web app | yes | Different runtime and build pipeline |
 | `services/backend` | FastAPI (Python 3.12) | yes | Triage, tracker, directory, visit prep, retrieval, safety, orchestration |
-| `services/model` | vLLM — Qwen3.5-9B, embeddings, reranker | yes | GPU-bound; scales on a different axis |
 | `services/data` | Python 3.12 | no — offline | Ingestion, validation, evaluation; runs in CI and by hand |
 
 **The frontend is a normal responsive web app.** No service worker, no manifest,
 no offline shell, no install prompt, no web push. Mobile-first layout with RTL
 support for Arabic. Do not add PWA scaffolding.
 
-**No model weights load inside the backend process.** Embeddings are an HTTP
-call to local `services/model` (bge-m3 on `:8001`). Reasoning is either
-OpenRouter (Base tab) or campus vLLM with our LoRA (Fine-tuned tab).
+**No model weights load inside the backend process.** The retriever runs in
+the backend over a FAISS index; embedding and reranking are HTTP calls to vLLM
+on the campus GPU box (ADR 0017). Reasoning runs on the same box through
+LangChain (ADR 0018): the base model decides, and our LoRA adapter words
+informational answers. There is no OpenRouter and no model selector.
 
 ### Models this project uses
 
 | Role | Model | Where |
 |---|---|---|
-| Base reasoning | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | OpenRouter in local chat; also the vLLM base on campus |
-| Fine-tuned LoRA (experimental) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
-| Retrieval embeddings | [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3) | Local `services/model` over `build/index` |
+| Decisions (extract and decide) | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | vLLM on the campus box, port 8002 |
+| Informational answers (fine-tuned LoRA) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
+| Retrieval embeddings | [`Qwen/Qwen3-Embedding-4B`](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | vLLM on the campus box, port 8003; index built by `make index` |
+| Retrieval reranker (off by default) | [`Qwen/Qwen3-Reranker-4B`](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | vLLM on the campus box, port 8004; used only when `HERHEALTH_RERANK=on` (ADR 0017: no measured gain) |
 
 **`Qwen/Qwen3.5-9B` is a multimodal hybrid, not a plain text model.** It loads
 as `Qwen3_5ForConditionalGeneration`: a vision tower plus a mixed attention
@@ -421,27 +423,36 @@ cp infra/envs/backend.env.example infra/envs/backend.env
 **`uv.lock` is committed and is the source of truth.** CI runs `uv sync
 --locked`.
 
-You also need a built retrieval index at `build/index/` (bge-m3). If that
-directory is missing, run the data pipeline / index step documented in
-[`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md) before starting `services/model`.
+You also need a built retrieval index at `build/index/`. It is built with
+`make fetch && make clean && make index`, which needs the embedding endpoint
+(`scripts/serve-models.sh`). Without an index, triage reports "not configured".
 
 ---
 
 ## Run the full app (local laptop)
 
-Four processes on the laptop. The campus GPU is **optional** and only needed
+> **Changed on 2026-10-12 (ADR 0017, ADR 0018).** The steps below were written
+> for the earlier stack and still mention OpenRouter, the Base / Fine-tuned
+> tabs, `HERHEALTH_TRIAGE_MODE=openrouter` and a retrieval service on `:8001`.
+> None of those exist now. The backend needs `HERHEALTH_TRIAGE_MODE=vllm`, a
+> retrieval index (`make index`), and the three model endpoints from
+> `scripts/serve-models.sh`. See `infra/envs/backend.env.example` for the
+> current settings. This section has not been rewritten yet.
+
+Three processes on the laptop, plus the model endpoints the retriever calls. The campus GPU is **optional** and only needed
 for the Fine-tuned tab (next section).
 
 | Process | Port | Role |
 |---|---|---|
 | PostgreSQL (`infra/compose.yml`) | 5432 | Accounts + triage sessions |
-| `services/model` (retrieval) | **8001** | bge-m3 RAG over `build/index` |
 | `services/backend` (FastAPI) | **8000** | Triage API, auth, orchestration |
 | `services/frontend` (Next.js) | **3000** | Chat UI |
 
-**Order matters.** A turn always calls retrieval on `:8001` *before* the
-reasoning model. If `:8001` is down you get `502` / `WinError 10061` even when
-campus vLLM is healthy.
+**Retrieval needs the embedding endpoint.** A turn embeds the query through
+`HERHEALTH_EMBEDDING_URL` *before* the reasoning model; if that endpoint is
+unreachable you get `502`. Reranking through `HERHEALTH_RERANKER_URL` happens
+only when `HERHEALTH_RERANK=on`, and falls back to embedding order if the
+reranker is unreachable.
 
 ### 1. Configure `infra/envs/backend.env`
 
@@ -453,7 +464,9 @@ HERHEALTH_SESSION_SECRET=<openssl rand -hex 32>
 HERHEALTH_EMAIL_SENDER=console
 HERHEALTH_TRIAGE_MODE=openrouter
 OPENROUTER_API_KEY=sk-or-...
-HERHEALTH_MODEL_SERVICE_URL=http://127.0.0.1:8001
+HERHEALTH_INDEX_DIR=build/index
+HERHEALTH_EMBEDDING_URL=http://127.0.0.1:8003
+HERHEALTH_RERANKER_URL=http://127.0.0.1:8004
 HERHEALTH_COOKIE_SECURE=false
 HERHEALTH_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
@@ -462,7 +475,7 @@ Add these only when testing Fine-tuned (after campus + Lobot proxy work):
 
 ```env
 HERHEALTH_MODEL_SELECTOR=on
-HERHEALTH_VLLM_URL=https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000
+HERHEALTH_VLLM_URL=https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8002
 HERHEALTH_VLLM_MODEL=herhealth
 HERHEALTH_VLLM_API_KEY=<JUPYTERHUB_API_TOKEN from the pod — rotates on cull>
 ```
@@ -502,22 +515,16 @@ uv run --extra api --package herhealth-backend python -c "import asyncio; from a
 # Prefer: cd services/backend; uv run --extra api alembic upgrade head
 ```
 
-### 3. Start retrieval (`:8001`) — required for every real turn
+### 3. Retrieval — nothing to start
 
-First load of `BAAI/bge-m3` can take **1–3 minutes**. Wait until `/health` is
-ok before opening chat.
-
-```powershell
-# Terminal A — repo root
-$env:HERHEALTH_INDEX_DIR = (Resolve-Path .\build\index).Path
-uv run --package herhealth-model python -m herhealth_model
-```
-
-Check:
+There is no retrieval service any more (ADR 0017). The backend loads
+`build/index/` itself and calls the embedding and reranker endpoints. Check
+that the index exists and the endpoints answer:
 
 ```powershell
-curl.exe http://127.0.0.1:8001/health
-# {"status":"ok"}
+Get-Content .\build\index\manifest.json
+curl.exe http://127.0.0.1:8003/health
+curl.exe http://127.0.0.1:8004/health
 ```
 
 ### 4. Start the backend (`:8000`)
@@ -570,8 +577,8 @@ triage dependency HTTP failure: [WinError 10061] No connection could be made...
 POST /triage/turn → 502
 ```
 
-That is almost always **`:8001` not listening**, not campus vLLM. Confirm
-`curl http://127.0.0.1:8001/health`, then retry. Campus can be up
+That is almost always **the embedding endpoint not reachable**, not the chat
+model. Confirm `curl <HERHEALTH_EMBEDDING_URL>/health`, then retry. Campus can be up
 (`/v1/models` 200 on Lobot) while this laptop still 502s.
 
 ---
@@ -626,50 +633,23 @@ Keep a Lab tab open while testing.
 | Base | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) |
 | Fine-tune (HF) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) |
 | Adapter id (vLLM / env) | `herhealth` |
-| Adapter path on VM | `/home/jovyan/models/herhealth-lora-v2` |
-| Venv | `~/herhealthgpt-venv` (fallback `~/vllm-env`) |
-| Port **inside the pod** | **8000** |
+| Adapter path on VM | `herhealth-lora-v2/` in the repo root (gitignored) |
+| Venv | `~/herhealthgpt-venv` |
+| Ports **inside the pod** | chat **8002**, embeddings 8003, reranker 8004 |
 | Pod IP `10.244.x.x` | **Not reachable from the laptop** |
 
-**1. Clean** (JupyterLab → Terminal):
+**1. Start** the chat, embedding and reranker processes (verified
+**2026-10-11**, vLLM 0.28.0, all three answering about two and a half minutes
+after the command):
 
 ```bash
-pkill -9 -f 'vllm serve' || true
-pkill -9 -f 'VLLM::' || true
-sleep 3
-nvidia-smi --query-gpu=index,memory.used --format=csv
-# expect ~0 MiB on both GPUs
+bash scripts/serve-models.sh clean        # stop everything, free the GPUs
+bash scripts/serve-models.sh start all
+bash scripts/serve-models.sh check
 ```
 
-**2. Start** (verified **2026-09-09**, vLLM 0.28.0 — engine init 15.98 s):
-
-```bash
-source ~/herhealthgpt-venv/bin/activate
-# if that fails: source ~/vllm-env/bin/activate
-
-rm -rf ~/.cache/vllm          # stale GPU P2P probe — see the runbook §0.1
-
-nohup env \
-  NCCL_P2P_DISABLE=1 \
-  NCCL_IB_DISABLE=1 \
-  VLLM_USE_FLASHINFER_SAMPLER=0 \
-  NCCL_DEBUG=INFO \
-  TRITON_CACHE_DIR=/home/jovyan/.cache/triton \
-  HF_HOME=/home/jovyan/.cache/huggingface \
-  vllm serve Qwen/Qwen3.5-9B \
-  --enable-lora \
-  --lora-modules herhealth=/home/jovyan/models/herhealth-lora-v2 \
-  --max-lora-rank 16 \
-  --max-model-len 8192 \
-  --tensor-parallel-size 2 \
-  --disable-custom-all-reduce \
-  --enforce-eager \
-  --limit-mm-per-prompt '{"image":0,"video":0}' \
-  --host 127.0.0.1 --port 8000 \
-  > /home/jovyan/vllm.log 2>&1 &
-echo $! > /home/jovyan/vllm.pid
-tail -f /home/jovyan/vllm.log
-```
+Every model id, revision, port and GPU is in `infra/model/serve.conf`. Logs are
+in `/home/jovyan/herhealth-serve/`. The chat process runs with these settings:
 
 | Flag / env | Why |
 |---|---|
@@ -679,28 +659,24 @@ tail -f /home/jovyan/vllm.log
 | `--enforce-eager` | Avoids CUDA-graph / Inductor spin at empty VRAM |
 | `--limit-mm-per-prompt '{"image":0,"video":0}'` | **Both** keys — the base is a multimodal hybrid, not a text model (runbook §0.2) |
 | `--tensor-parallel-size 2` | 17.98 GiB of bf16 weights do not fit one 14.6 GiB A16 |
-| `--max-model-len 8192` | The triage prompt is ~3,200–3,600 tokens before retrieval; 4096 leaves no room to generate (runbook §0.3) |
+| `--max-model-len 32768` | Set in `infra/model/serve.conf`. The token cache holds 234,599 tokens with `--enforce-eager`, so 7.16 full-length requests fit (runbook §0.3) |
 | `TRITON_CACHE_DIR` under `/home/jovyan` | Survives culls |
 
 Wait for **`Application startup complete.`** (~30 s). Hundreds of `no matching
 PunicaWrapper ... will be ignored` warnings on the way are expected — that is
 vLLM skipping LoRA on the vision tower. Ctrl+C stops `tail` only.
 
-First-time install after a wipe:
+After a wipe, restore vLLM and the models first: `docs/runbooks/uni-server-vllm.md`.
+
+**2. Smoke-test on the VM:**
 
 ```bash
-bash scripts/setup-uni-vllm.sh --clean
-bash scripts/setup-uni-vllm.sh
-bash scripts/setup-uni-vllm.sh --check
-```
+uv run python scripts/smoke_models.py --skip-structured   # all three processes
 
-**3. Smoke-test on the VM:**
-
-```bash
-curl -s http://127.0.0.1:8000/v1/models
+curl -s http://127.0.0.1:8002/v1/models
 # must list Qwen/Qwen3.5-9B and herhealth
 
-curl http://127.0.0.1:8000/v1/chat/completions \
+curl http://127.0.0.1:8002/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "herhealth",
@@ -721,7 +697,7 @@ cluster (`api.trycloudflare.com` timeout) — use the Jupyter proxy below.
 ```bash
 echo "len=${#JUPYTERHUB_API_TOKEN}"
 curl -sS -H "Authorization: token ${JUPYTERHUB_API_TOKEN}" \
-  "https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000/v1/models"
+  "https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8002/v1/models"
 ```
 
 Expect JSON listing `herhealth`. Copy the token:
@@ -746,7 +722,7 @@ Both `Bearer` and `token` schemes work against Lobot.
 
 ### C. Wire the laptop and test the Fine-tuned tab
 
-1. Confirm local `:8001`, `:8000`, `:3000` are up ([above](#run-the-full-app-local-laptop)).
+1. Confirm local `:8000` and `:3000` are up ([above](#run-the-full-app-local-laptop)).
 2. Set `HERHEALTH_MODEL_SELECTOR=on` and the three `HERHEALTH_VLLM_*` values.
 3. Restart the backend so it rebuilds the model list.
 4. Open [http://localhost:3000/chat](http://localhost:3000/chat) → **new** chat.
@@ -756,10 +732,10 @@ Both `Bearer` and `token` schemes work against Lobot.
    turn that still used local RAG + age band, with reasoning from campus.
 
 If Fine-tuned stays greyed out: hard-refresh so `GET /triage/models` reloads.
-If you get `502` / `10061`: fix `:8001` first.
+If you get `502`: check the embedding endpoint first.
 
 **If RAG succeeds but chat returns `504 Gateway Time-out` on the Lobot proxy**
-(backend log shows `POST …/proxy/8000/v1/chat/completions` → 504, UI says
+(backend log shows `POST …/proxy/8002/v1/chat/completions` → 504, UI says
 *"A service we rely on is temporarily unavailable"*): local retrieval is fine;
 the Hub/nginx proxy cut the request at ~60s while campus vLLM was still
 generating (often first LoRA Triton JIT). Warm inside the pod first (below).

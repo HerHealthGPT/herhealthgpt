@@ -20,6 +20,7 @@ import { friendlyTriageError } from "@/lib/api/errors";
 import {
   deleteTriageSession,
   getTriageSession,
+  listTriageModels,
   listTriageSessions,
   sendTriageTurn,
 } from "@/lib/api/triage";
@@ -27,6 +28,7 @@ import type {
   CitedPassage,
   DecisionReasoningModel,
   TriageDecision,
+  TriageModelOption,
   TriageSessionMessage,
   TriageSessionSummary,
 } from "@/lib/api/types";
@@ -188,6 +190,11 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastFailedMessage, setLastFailedMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Evaluation versions. Empty on an ordinary deployment, and then nothing
+  // below changes: no selector, and no version is named on a turn.
+  const [models, setModels] = useState<TriageModelOption[]>([]);
+  const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   const isConcluded =
@@ -203,6 +210,8 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     !isConcluded &&
     userTurnCount === 0 &&
     entries.length === 1;
+
+  const activeModelId = selectedModelId ?? defaultModelId;
 
   const thinkingTurnLabel =
     userTurnCount === 0
@@ -250,6 +259,29 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadModels() {
+      try {
+        const offered = await listTriageModels();
+        if (!cancelled) {
+          setModels(offered.models);
+          setDefaultModelId(offered.default);
+        }
+      } catch {
+        // No selector is the ordinary state, so a failure here is silent:
+        // the chat works on the server's own path.
+      }
+    }
+
+    void loadModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!requestedSessionId) {
       return;
     }
@@ -274,10 +306,12 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         setSessionId(detail.id);
         setSessionStatus(detail.status);
         setEntries(transcriptToEntries(detail.messages));
-        // Reopening a chat no longer restores which model produced it: the
-        // app runs one reasoning path and the selector is gone. Stored turns
-        // still carry `reasoning_model`, so an evaluation run can tell which
-        // model answered — it just does not steer the UI any more.
+        // A reopened chat carries on with the version that answered it. A
+        // turn from the product's own path names none, which is the default.
+        const lastAnswer = [...detail.messages]
+          .reverse()
+          .find((message) => message.role === "assistant" && message.decision);
+        setSelectedModelId(lastAnswer?.decision?.comparison_mode ?? null);
         setLastFailedMessage(null);
       } catch (error) {
         if (!cancelled) {
@@ -321,7 +355,11 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
     setErrorMessage(null);
 
     try {
-      const response = await sendTriageTurn(sessionId, text, null);
+      const response = await sendTriageTurn(
+        sessionId,
+        text,
+        models.length > 1 ? activeModelId : null,
+      );
       setSessionId(response.session_id);
       setSessionStatus(response.decision.type === "conclude" ? "concluded" : "active");
 
@@ -431,6 +469,10 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       onSelectSession={handleSelectSession}
       onNewChat={handleNewChat}
       onDeleteSession={handleDeleteSession}
+      models={models}
+      selectedModelId={activeModelId ?? undefined}
+      onSelectModel={setSelectedModelId}
+      modelLocked={userTurnCount > 0 || isSending || isLoadingSession}
     >
       <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col overflow-hidden">
         <div

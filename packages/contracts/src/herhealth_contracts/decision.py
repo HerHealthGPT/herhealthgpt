@@ -418,7 +418,16 @@ class TriageDecision(BaseModel):
                 "conclude carries rationale"
             )
 
-        if not self.citations and self.red_flag_id is None:
+        # A clarifying question is exempt (ADR 0018, 2026-10-12). It asserts
+        # nothing about her, and its feature must be a real one from
+        # features.yaml, which the closed-vocabulary check enforces. A
+        # conclusion still has to be grounded: it is the reply that tells her
+        # how urgently to seek care.
+        if (
+            self.type is not DecisionType.ASK
+            and not self.citations
+            and self.red_flag_id is None
+        ):
             raise ValueError(
                 "a decision must be grounded in at least one citation or a red_flag_id"
             )

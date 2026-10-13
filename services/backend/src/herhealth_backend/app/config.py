@@ -25,24 +25,28 @@ __all__ = [
     "google_client_id",
     "KNOWLEDGE_DIR_ENV",
     "knowledge_dir",
-    "MODEL_SERVICE_URL_ENV",
-    "model_service_url",
-    "MODEL_SELECTOR_ENV",
-    "model_selector_enabled",
-    "OPENROUTER_API_KEY_ENV",
-    "openrouter_api_key",
+    "ANSWER_MODEL_ENV",
+    "DECISION_MODEL_ENV",
+    "TRIAGE_MODES",
     "TRIAGE_MODE_ENV",
+    "PAGE_MODEL_ENV",
+    "answer_model",
+    "page_model",
+    "decision_model",
     "triage_mode",
     "VLLM_API_KEY_ENV",
-    "VLLM_MODEL_ENV",
     "VLLM_URL_ENV",
     "vllm_api_key",
-    "vllm_configured",
     "reasoning_timeout",
     "vllm_max_attempts",
-    "vllm_model",
     "vllm_timeout",
     "vllm_url",
+    "COMPARISON_MODES_ENV",
+    "OPENROUTER_API_KEY_ENV",
+    "OPENROUTER_MODEL_ENV",
+    "comparison_modes_enabled",
+    "openrouter_api_key",
+    "openrouter_model",
     "COOKIE_SECURE_ENV",
     "cookie_secure",
     "CORS_ORIGINS_ENV",
@@ -138,27 +142,23 @@ def email_sender_kind() -> str:
 #: it set for the API too.
 KNOWLEDGE_DIR_ENV = "HERHEALTH_KNOWLEDGE_DIR"
 
-#: services/model's base URL — see docs/adr/0012. Defaults to that service's
-#: own default port, so a dev box running both processes needs nothing set.
-MODEL_SERVICE_URL_ENV = "HERHEALTH_MODEL_SERVICE_URL"
-
 #: OpenRouterReasoningClient's key (triage/clients.py, ADR 0012). Optional at
 #: the app level, the same way GOOGLE_CLIENT_ID_ENV is: triage is one feature
 #: of this backend, not the whole of it, so its absence degrades one route
 #: to "not configured" rather than stopping the app from booting at all.
-OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
 
 #: How triage is wired at boot. ``demo`` uses offline scripted clients (no
-#: OpenRouter, no services/model) for local MVP testing. ``openrouter`` needs
-#: OPENROUTER_API_KEY and a running services/model. ``vllm`` tries a
+#: OpenRouter, no retrieval index) for local MVP testing. ``openrouter`` needs
+#: OPENROUTER_API_KEY and a retrieval index (see triage/retrieval.py). ``vllm`` tries a
 #: self-hosted vLLM server (HERHEALTH_VLLM_URL) and falls back to OpenRouter
 #: when OPENROUTER_API_KEY is also set. ``off`` disables triage.
 TRIAGE_MODE_ENV = "HERHEALTH_TRIAGE_MODE"
 
 #: Self-hosted vLLM OpenAI-compatible API (see docs/runbooks/dev-vllm-lora-endpoint.md).
-#: Port 8002 by default — services/model retrieval uses 8001.
+#: Port 8002 by default (infra/model/serve.conf).
 VLLM_URL_ENV = "HERHEALTH_VLLM_URL"
-VLLM_MODEL_ENV = "HERHEALTH_VLLM_MODEL"
+DECISION_MODEL_ENV = "HERHEALTH_DECISION_MODEL"
+ANSWER_MODEL_ENV = "HERHEALTH_ANSWER_MODEL"
 
 #: Bearer token for the vLLM server, when it was started with ``--api-key``.
 #: Optional: a server on a trusted LAN or behind an SSH tunnel needs none,
@@ -182,7 +182,6 @@ REASONING_TIMEOUT_ENV = "HERHEALTH_REASONING_TIMEOUT"
 #: fine-tuned adapter is not cleared to make triage decisions (CLAUDE.md, and
 #: docs/runbooks/dev-vllm-lora-endpoint.md §6), so a marker or a supervisor
 #: opening this app must see one model and no switch. See ADR 0016.
-MODEL_SELECTOR_ENV = "HERHEALTH_MODEL_SELECTOR"
 
 #: Auth cookies' ``secure`` flag. Defaults to true; set ``false`` for plain-HTTP
 #: local dev (http://localhost) so browsers store and send session cookies.
@@ -197,35 +196,53 @@ def knowledge_dir() -> Path:
     return Path(os.environ.get(KNOWLEDGE_DIR_ENV, "knowledge"))
 
 
-def model_service_url() -> str:
-    """Base URL for ``services/model`` (see docs/adr/0012). No required-value
-    check like :func:`database_url`'s: an unreachable url fails at the first
-    request, loudly, from ``HttpRetrievalClient`` — there is no silent wrong
-    default to guard against the way a database URL has one.
-    """
-    return os.environ.get(MODEL_SERVICE_URL_ENV, "http://127.0.0.1:8001")
-
-
-def openrouter_api_key() -> str | None:
-    """The OpenRouter API key, or ``None`` if triage is not configured on
-    this deployment. Unlike :func:`database_url` and :func:`session_secret`,
-    absence is not an error — see ``app/triage/routes.py``, which returns a
-    clear 503 instead of failing app start-up.
-    """
-    return os.environ.get(OPENROUTER_API_KEY_ENV) or None
+#: The modes a deployment may run triage in.
+TRIAGE_MODES = ("vllm", "demo", "off")
 
 
 def triage_mode() -> str:
-    """``demo``, ``openrouter``, ``vllm``, or ``off``. Defaults to ``openrouter`` when a
-    key is set, otherwise ``off``. Set ``HERHEALTH_TRIAGE_MODE=demo`` explicitly
-    for local MVP testing without OpenRouter or services/model.
+    """``vllm``, ``demo`` or ``off``. Unset means ``off``.
+
+    ``vllm`` is the real path: retrieval from the index, then the local models
+    through ``triage/chain.py``. ``demo`` is scripted, for UI work. An
+    unrecognised value is an error, not a silent ``off``: a host still carrying
+    ``openrouter`` from before ADR 0018 must be told, not quietly left without
+    triage.
     """
     explicit = os.environ.get(TRIAGE_MODE_ENV, "").strip().lower()
-    if explicit in {"demo", "openrouter", "vllm", "off"}:
+    if not explicit:
+        return "off"
+    if explicit in TRIAGE_MODES:
         return explicit
-    if openrouter_api_key():
-        return "openrouter"
-    return "off"
+    raise RuntimeError(
+        f"{TRIAGE_MODE_ENV}={explicit!r} is not recognised. Use one of: "
+        f"{', '.join(TRIAGE_MODES)}. (The openrouter mode was removed; see ADR 0018.)"
+    )
+
+
+def decision_model() -> str:
+    """The model that extracts and decides: the base model. See ADR 0018."""
+    return os.environ.get(DECISION_MODEL_ENV, "").strip() or "Qwen/Qwen3.5-9B"
+
+
+def answer_model() -> str | None:
+    """The model that words informational answers: the fine-tuned adapter.
+    Set the variable to an empty value to skip the answer step."""
+    raw = os.environ.get(ANSWER_MODEL_ENV)
+    if raw is None:
+        return "herhealth"
+    return raw.strip() or None
+
+
+#: The model that writes an informational answer as a page. Unset means the
+#: decision model: measured 2026-10-13, it wrote a complete page in 33 s where
+#: the adapter took 95 s and copied its passages sentence by sentence.
+PAGE_MODEL_ENV = "HERHEALTH_PAGE_MODEL"
+
+
+def page_model() -> str:
+    """The model that writes page-style informational answers."""
+    return os.environ.get(PAGE_MODEL_ENV, "").strip() or decision_model()
 
 
 def vllm_url() -> str:
@@ -233,14 +250,33 @@ def vllm_url() -> str:
     return os.environ.get(VLLM_URL_ENV, "http://127.0.0.1:8002")
 
 
-def vllm_model() -> str:
-    """The ``model`` field sent to vLLM — typically the LoRA module name."""
-    return os.environ.get(VLLM_MODEL_ENV, "herhealth")
-
-
 def vllm_api_key() -> str | None:
     """Bearer token for the vLLM server, or ``None`` when it needs none."""
     return os.environ.get(VLLM_API_KEY_ENV) or None
+
+
+#: ``on`` offers evaluators the comparison modes beside the product's own
+#: path (see triage/comparison.py). Off unless set: an ordinary deployment
+#: has one path and no selector.
+COMPARISON_MODES_ENV = "HERHEALTH_COMPARISON_MODES"
+#: Used by Model A only. The product's own path never calls OpenRouter.
+OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
+OPENROUTER_MODEL_ENV = "HERHEALTH_OPENROUTER_MODEL"
+
+
+def comparison_modes_enabled() -> bool:
+    """Whether evaluators may pick Model A or Model B for a consultation."""
+    return os.environ.get(COMPARISON_MODES_ENV, "").strip().lower() in {"on", "true", "1"}
+
+
+def openrouter_api_key() -> str | None:
+    """The OpenRouter key for Model A, or ``None`` when Model A is not offered."""
+    return os.environ.get(OPENROUTER_API_KEY_ENV, "").strip() or None
+
+
+def openrouter_model() -> str:
+    """The base model's name on OpenRouter."""
+    return os.environ.get(OPENROUTER_MODEL_ENV, "").strip() or "qwen/qwen3.5-9b"
 
 
 def reasoning_timeout() -> float:
@@ -313,23 +349,6 @@ def vllm_max_attempts() -> int:
     except ValueError:
         return 2
     return value if value >= 1 else 2
-
-
-def vllm_configured() -> bool:
-    """Whether a vLLM endpoint has been named at all.
-
-    Keyed on the URL being set explicitly rather than on
-    :func:`vllm_url`, which has a localhost default — the fine-tuned model
-    must not appear as a selectable option just because nothing was
-    configured.
-    """
-    return bool(os.environ.get(VLLM_URL_ENV, "").strip())
-
-
-def model_selector_enabled() -> bool:
-    """Whether per-turn model choice is offered. Off unless asked for."""
-    raw = os.environ.get(MODEL_SELECTOR_ENV, "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
 
 
 def cookie_secure() -> bool:

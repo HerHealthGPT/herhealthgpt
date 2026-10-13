@@ -264,3 +264,25 @@ def test_answer_text_is_only_legal_on_an_inform(decision_type: DecisionType) -> 
             rationale="testing",
             **shape,  # type: ignore[arg-type]
         )
+
+
+def test_a_clarifying_question_needs_no_citation() -> None:
+    # Decided 2026-10-12 (ADR 0018): a question asserts nothing about her, and
+    # its feature must already be a real one. Requiring a passage as well only
+    # failed turns in which the model asked a sensible question.
+    decision = TriageDecision(
+        type=DecisionType.ASK,
+        next_feature_id="cycle_length",
+        question_text="How many days are there between your periods?",
+        rationale="One more detail would help.",
+    )
+    assert decision.citations == ()
+
+
+def test_an_explanation_with_no_citation_is_still_refused() -> None:
+    with pytest.raises(ValidationError):
+        TriageDecision(
+            type=DecisionType.INFORM,
+            answer_text="An explanation.",
+            rationale="A general question.",
+        )

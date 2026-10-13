@@ -19,8 +19,8 @@ infra/envs/*.env
 **/.mypy_cache
 
 # Immutable raw fetches: large, reproducible with `make fetch`, never needed at
-# runtime. build/ is deliberately NOT excluded — services/model/Dockerfile
-# copies build/index, which is the one generated artefact a container needs.
+# runtime. build/index is not excluded: it is the one generated artefact
+# a container may need.
 raw
 build/clean
 build/scratch

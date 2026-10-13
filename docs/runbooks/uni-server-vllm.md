@@ -4,6 +4,132 @@ status: runbook
 
 # Runbook: serving the LoRA adapter on the university VM (JupyterHub)
 
+> **Retrieval changed on 2026-10-12 ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md)).**
+> `services/model`, port 8001, `bge-m3`, `HERHEALTH_MODEL_SERVICE_URL`,
+> `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
+> The retriever runs inside the backend over an index built by `make index`,
+> and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
+> `HERHEALTH_RERANKER_URL`). **OpenRouter and the Base / Fine-tuned selector
+> were removed the same day ([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)):**
+> the mode is `HERHEALTH_TRIAGE_MODE=vllm`, the base model decides and the
+> adapter words informational answers. Passages below that describe the
+> retrieval service, its image, the published index, OpenRouter or the
+> selector are history and have not been rewritten yet.
+
+## Current layout: three processes (since 2026-10-11)
+
+Sections 0 to 5 below describe the single-process serve as it ran before
+2026-10-11. They are kept for their diagnosis notes (0.1 and 0.2 still
+apply in full). The commands in this section replace theirs.
+
+| Process | Model | GPUs | Port |
+|---|---|---|---|
+| chat | `Qwen/Qwen3.5-9B` + `herhealth` adapter | 0, 1 | 8002 |
+| embed | `Qwen/Qwen3-Embedding-4B` | 2 | 8003 |
+| rerank | `Qwen/Qwen3-Reranker-4B` | 3 | 8004 |
+
+Every value comes from `infra/model/serve.conf`. The adapter is read from
+`herhealth-lora-v2/` in the repo root.
+
+```bash
+bash scripts/serve-models.sh clean        # stop everything, free the GPUs
+bash scripts/serve-models.sh start all    # or: start chat | embed | rerank
+bash scripts/serve-models.sh check        # state of all three
+bash scripts/serve-models.sh stop all
+```
+
+Logs and pid files are in `/home/jovyan/herhealth-serve/`. The launcher
+never downloads; if a model is missing it prints the command that fetches it.
+All three were answering about two and a half minutes after `start all`.
+
+Acceptance test, with the three processes up:
+
+```bash
+export UV_PROJECT_ENVIRONMENT=/tmp/herhealth-venv UV_CACHE_DIR=/tmp/uv-cache
+uv run python scripts/smoke_models.py --skip-structured
+```
+
+Last run on this box, 2026-10-11:
+
+```
+ok    health chat  answering
+ok    health embed  answering
+ok    health rerank  answering
+ok    models http://127.0.0.1:8002  Qwen/Qwen3.5-9B, herhealth
+ok    chat en  A calendar is a system of organizing days for social, religious, scientific, com
+ok    chat fr  Un calendrier sert à organiser et à planifier nos activités sur une période donn
+ok    chat ar  يساعدنا التقويم في تنظيم وقتنا وتخطيط أنشطتنا اليومية والشهرية والسنة.
+ok    embeddings  width=2560
+ok    rerank en  relevant=0.9962 irrelevant=2.837e-06
+ok    rerank fr  relevant=0.9986 irrelevant=3.975e-06
+ok    rerank ar  relevant=0.9993 irrelevant=3.44e-06
+11 of 11 checks passed
+```
+
+The embedding width, 2560, is what the retrieval index has to be built at.
+
+**Schema-constrained decoding does not work on this serve.** It crashed the
+engine on 2026-09-08. Retested on 2026-10-11 with vLLM 0.28.0, it no longer
+crashes, and normal chat keeps working afterwards, but both attempts
+returned HTTP 500:
+
+- The full `TriageDecision` schema (`uv run python scripts/smoke_models.py`):
+  `Regex compilation timed out after 5s. The pattern may be too complex`,
+  raised from vLLM's outlines backend.
+- A two-field schema sent by hand: `grammar rejected tokens [248046]`, and
+  the request was terminated.
+
+Until that is investigated, structured output has to come from the prompt,
+with validation and retry in the caller.
+
+**If a GPU refuses to start a process** with `CUDA-capable device(s) is/are
+busy or unavailable` while `nvidia-smi` shows no process on it and
+`nvidia-smi -q -i <n>` says `System is not in ready state`, the card is
+stuck, not misconfigured. On 2026-10-11 this happened to GPU 3 and restarting
+the JupyterHub server cleared it.
+
+On a host with Docker and the NVIDIA container toolkit, the same three
+processes start with:
+
+```bash
+docker compose -f infra/compose.model.yml --env-file infra/model/serve.conf up -d
+```
+
+That file has never been started. It was validated on this box with
+`docker compose config` on 2026-10-11, and
+`scripts/tests/test_compose_parity.py` checks it against the launcher. Both
+need the Docker CLI, which is not part of this pod's image and disappears on
+restart; without it those tests skip.
+
+### Restoring after a wipe
+
+The launcher expects vLLM at `/home/jovyan/herhealthgpt-venv`, the models in
+`/home/jovyan/.cache/huggingface` at the revisions pinned in `serve.conf`, and
+the adapter in `herhealth-lora-v2/` in the repo root. If any is gone:
+
+```bash
+python -m venv /home/jovyan/herhealthgpt-venv
+/home/jovyan/herhealthgpt-venv/bin/pip install vllm==0.28.0 huggingface_hub
+
+export HF_HOME=/home/jovyan/.cache/huggingface
+set -a; . infra/model/serve.conf; set +a
+HF=/home/jovyan/herhealthgpt-venv/bin/hf
+$HF download "$CHAT_MODEL"   --revision "$CHAT_REVISION"     # 19 GB
+$HF download "$EMBED_MODEL"  --revision "$EMBED_REVISION"    # 7.6 GB
+$HF download "$RERANK_MODEL" --revision "$RERANK_REVISION"   # 7.6 GB
+
+# The adapter repo is private: this one needs `$HF auth login` with a READ
+# token for the herhealthgpt org first. Never paste the token into the repo.
+$HF download herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2 --local-dir herhealth-lora-v2
+```
+
+The three models and the vLLM install fill the 49 GB home volume to within
+about 3 GB, so check `df -h /home/jovyan` before downloading anything else.
+
+After a pod restart the processes are gone and nothing restarts them:
+run `start all` again. Keep a JupyterLab tab open while testing, or idle
+culling will stop the pod.
+
 ## 0. Start the server (copy-paste)
 
 Closing the JupyterLab tab (or Hub → Stop My Server) **kills the container**.
@@ -111,8 +237,9 @@ the second is fast. A normal sentence with `"finish_reason": "stop"` means the
 serve is healthy. Then re-run with a real symptom question and `"max_tokens":
 512` to confirm it holds under a longer generation.
 
-**If the venv or adapter directory is missing**, run
-`bash scripts/setup-uni-vllm.sh` from a clone on the VM (§4–§5). Keep the
+**If a model or the adapter is missing**, `bash scripts/serve-models.sh check`
+says which. For a missing model, `start` prints the command that fetches it;
+for the adapter, see "Restoring after a wipe" at the top. Keep the
 JupyterLab tab open — idle culling is what "I closed the machine" usually is.
 
 ### Stop it
@@ -235,15 +362,24 @@ and both differ from [dev-vllm-lora-endpoint.md](dev-vllm-lora-endpoint.md) and
    `jupyter-server-proxy` (§5A, authenticated, nothing extra to install) or a
    Cloudflare quick tunnel (§5B, public URL, so vLLM needs `--api-key`).
 
-`scripts/setup-uni-vllm.sh` in this repo does §2–§4 idempotently — after a
-wipe, re-running it skips whatever survived. The prose below is what it does
-and why, so you can debug it when a step fails.
+`scripts/serve-models.sh` starts and stops the processes. It does not install
+vLLM or download models. The commands for that are under "Restoring after a
+wipe" at the top; §2–§4 below explain why each step is needed, but their
+paths (`vllm-env`, `/home/jovyan/models/`) are the old layout.
 
 Everything in [dev-vllm-lora-endpoint.md §6](dev-vllm-lora-endpoint.md#6-hard-constraints--do-not-design-past-these)
 still binds: the adapter is **phrasing-only**, no weights load inside the
 backend process, and no surfaced output may be framed as a diagnosis.
 
 ---
+
+**Superseded 2026-10-11: the window is now 32,768.** vLLM's log of the
+2026-10-11 serve shows 3.98 GiB per GPU left for the token cache, holding
+234,599 tokens at this window, so 7.16 full-length requests fit at once.
+(At the old 8192 window the same memory held 183,947 tokens.) That depends
+on `--enforce-eager`; with CUDA graphs enabled an earlier run had 1.71 GiB
+and 78,568 tokens. The reasoning above for why 4096 is too small
+still holds.
 
 ## 1. Check what the VM gives you
 
@@ -462,7 +598,7 @@ occasional code-switching, and register variance between identical questions.
 
 | Symptom | Cause |
 |---|---|
-| Everything gone after a break | Server culled, container reset. Re-run `scripts/setup-uni-vllm.sh`; it skips whatever survived. |
+| Everything gone after a break | Server culled, container reset. Run `bash scripts/serve-models.sh check`, restore whatever it reports missing (§2–§4), then `start all`. |
 | Weights re-downloading every session | `HF_HOME` unset in this shell — it went to the ephemeral `~/.cache`. See §3. |
 | `Disk quota exceeded` mid-download | Same cause, or the home volume is genuinely too small (§1). |
 | 401 from Hugging Face | Token lacks read access to the private `herhealthgpt` repo — `huggingface-cli login` again. |

@@ -8,7 +8,7 @@
  */
 import { apiRequest } from "./client";
 import type {
-  ReasoningModelSummary,
+  TriageModelList,
   TriageSessionDetail,
   TriageSessionSummary,
   TriageTurnResponse,
@@ -16,29 +16,27 @@ import type {
 
 /** POST /triage/turn → 200, or 400/404/409/422/502/503 — see errors.ts's
  *  friendlyTriageError, which turns each of those into on-screen copy.
- *
- *  `reasoningModel` is an id from `listReasoningModels`; null uses the
- *  deployment default, which is always a reviewed model. A 400 means the id
- *  is not offered here. */
+ */
 export function sendTriageTurn(
   sessionId: string | null,
   message: string,
-  reasoningModel: string | null = null,
+  modelId: string | null = null,
 ) {
   return apiRequest<TriageTurnResponse>("/triage/turn", {
     method: "POST",
     body: {
       session_id: sessionId,
       message,
-      reasoning_model: reasoningModel,
+      // Omitted unless an evaluator picked a version; the server then runs
+      // its own path.
+      ...(modelId ? { reasoning_model: modelId } : {}),
     },
   });
 }
 
-/** GET /triage/models → 200. Empty unless HERHEALTH_MODEL_SELECTOR is on,
- *  in which case the UI shows no model control at all. */
-export function listReasoningModels() {
-  return apiRequest<ReasoningModelSummary[]>("/triage/models");
+/** GET /triage/models → the versions on offer; an empty list means none. */
+export function listTriageModels() {
+  return apiRequest<TriageModelList>("/triage/models");
 }
 
 export function listTriageSessions() {

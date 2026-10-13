@@ -14,7 +14,6 @@ dependencies = [
     "herhealth-contracts",
     "herhealth-data",
     "herhealth-backend",
-    "herhealth-model",
 ]
 
 # Re-exposed from the data service so `uv sync --extra ingest` works from the
@@ -22,7 +21,7 @@ dependencies = [
 # `--package` drops dev tooling.
 [project.optional-dependencies]
 ingest = ["herhealth-data[ingest]"]
-retrieval = ["herhealth-data[retrieval]"]
+retrieval = ["herhealth-data[retrieval]", "herhealth-backend[retrieval]"]
 # Re-exposed so `uv sync --extra api` from the root installs the backend's web
 # layer (FastAPI, SQLAlchemy, psycopg, Alembic) into the workspace environment.
 api = ["herhealth-backend[api]"]
@@ -35,7 +34,6 @@ members = [
     "packages/contracts",
     "services/data",
     "services/backend",
-    "services/model",
 ]
 
 # The local packages resolve to the working tree, never to an index.
@@ -43,18 +41,6 @@ members = [
 herhealth-contracts = { workspace = true }
 herhealth-data = { workspace = true }
 herhealth-backend = { workspace = true }
-herhealth-model = { workspace = true }
-
-# torch on Linux comes from PyTorch's CPU index (services/data declares the
-# source). PyPI's Linux wheel depends on the CUDA 13 stack (nvidia-*, triton:
-# ~1.5 GB compressed, 10 packages), and none of our hosts has a GPU: that is dead
-# weight in the retrieval image and in every pull. Windows and macOS keep PyPI's
-# wheels, which are CPU builds already. `explicit = true` means only packages
-# that name this index use it; everything else still resolves from PyPI.
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
 
 # Tooling shared by every member. Installed by default; `uv sync --no-dev`
 # gives the runtime-only environment.

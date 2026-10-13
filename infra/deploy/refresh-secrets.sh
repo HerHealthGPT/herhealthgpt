@@ -89,7 +89,6 @@ db_pass="$(jq -r .password <<<"$db_json" | urlencode)"
 # sslmode=require: RDS serves TLS; refuse to fall back to plaintext.
 database_url="postgresql+psycopg://${db_user}:${db_pass}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=require"
 
-openrouter_key="$(get_secret "$SECRET_OPENROUTER")"
 session_secret="$(get_secret "$SECRET_SESSION")"
 google_client_id="$(get_optional_secret "$SECRET_GOOGLE")"
 
@@ -104,10 +103,32 @@ chmod 600 "$tmp"
   echo "HERHEALTH_DATABASE_URL=$database_url"
   echo "HERHEALTH_SESSION_SECRET=$session_secret"
   echo "HERHEALTH_GOOGLE_CLIENT_ID=$google_client_id"
-  echo "OPENROUTER_API_KEY=$openrouter_key"
 } >"$tmp"
 mv "$tmp" "$ENV_FILE"
 echo "$new_hash" >"$RUN_DIR/database-url.sha256"
+
+# Where the model servers are, and the key for them. These travel with each
+# release as deploy/<sha>/models.env, written by the deploy workflow from
+# GitHub variables and secrets, because the campus tunnel's address changes
+# whenever it restarts and a redeploy is how a new one arrives. The file must
+# always exist, since compose names it in env_file; an empty one means triage
+# reports "not configured" and everything else runs.
+#
+# This is weaker than Secrets Manager: the key sits in the deploy bucket
+# (private, encrypted at rest) beside the compose file. It guards the model
+# endpoints only. Moving it to a secret of its own needs a terraform change.
+release_sha="${HERHEALTH_RELEASE_SHA:-}"
+if [ -z "$release_sha" ] && [ -f "$HOME_DIR/release.env" ]; then
+  release_sha="$(sed -n 's/^TAG=//p' "$HOME_DIR/release.env")"
+fi
+models_tmp="$(mktemp -p "$RUN_DIR")"
+chmod 600 "$models_tmp"
+if [ -z "$release_sha" ] \
+  || ! aws s3 cp "s3://${ARTIFACTS_BUCKET}/deploy/${release_sha}/models.env" "$models_tmp" --only-show-errors 2>/dev/null; then
+  : >"$models_tmp"
+  echo "no model endpoint settings for release '${release_sha:-none}'; triage will report not configured"
+fi
+mv "$models_tmp" "$RUN_DIR/models.env"
 chmod 600 "$RUN_DIR/database-url.sha256"
 
 if [ "$RESTART_ON_CHANGE" = 1 ] && [ -n "$old_hash" ] && [ "$old_hash" != "$new_hash" ]; then

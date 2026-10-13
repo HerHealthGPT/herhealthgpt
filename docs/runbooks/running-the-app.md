@@ -4,6 +4,18 @@ status: runbook
 
 # Runbook: running the whole app, on both machines
 
+> **Retrieval changed on 2026-10-12 ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md)).**
+> `services/model`, port 8001, `bge-m3`, `HERHEALTH_MODEL_SERVICE_URL`,
+> `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
+> The retriever runs inside the backend over an index built by `make index`,
+> and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
+> `HERHEALTH_RERANKER_URL`). **OpenRouter and the Base / Fine-tuned selector
+> were removed the same day ([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)):**
+> the mode is `HERHEALTH_TRIAGE_MODE=vllm`, the base model decides and the
+> adapter words informational answers. Passages below that describe the
+> retrieval service, its image, the published index, OpenRouter or the
+> selector are history and have not been rewritten yet.
+
 Everything below was executed end to end on **2026-09-09** and the results are
 what this file records — not what the design intends. Two machines:
 

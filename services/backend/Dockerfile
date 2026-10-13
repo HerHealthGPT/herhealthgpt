@@ -6,11 +6,11 @@
 #
 # The root is the build context because this is a uv workspace: herhealth-backend
 # depends on herhealth-contracts by path (`[tool.uv.sources] workspace = true`),
-# and uv resolves every workspace member from the lockfile, so all four member
+# and uv resolves every workspace member from the lockfile, so all three member
 # manifests must exist even though only two are installed here.
 #
-# No model weights load in this process — embedding is an HTTP call to
-# services/model. That is an architectural rule, and it is why this image is
+# No model weights load in this process — embedding and reranking are HTTP
+# calls to vLLM. That is an architectural rule, and it is why this image is
 # small and needs no GPU.
 
 FROM python:3.12-slim AS builder
@@ -30,12 +30,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/contracts/pyproject.toml packages/contracts/
 COPY services/data/pyproject.toml services/data/
-COPY services/model/pyproject.toml services/model/
 COPY services/backend/pyproject.toml services/backend/
 
 # Workspace members must exist as directories for the lock to resolve, but the
 # two this image never imports contribute nothing beyond their manifest.
-RUN mkdir -p packages/contracts/src services/data/src services/model/src services/backend/src
+RUN mkdir -p packages/contracts/src services/data/src services/backend/src
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --extra api --no-install-workspace
@@ -67,10 +66,17 @@ COPY --from=builder --chown=herhealth:herhealth /app/services/backend services/b
 # they are part of the image rather than a mount: an image and the rules it
 # enforces should not be able to drift apart.
 COPY --chown=herhealth:herhealth knowledge knowledge
+# The retrieval index, built on the campus box with `make index` (it needs the
+# embedding server) and never committed. The deploy workflow downloads it from
+# a GitHub release into build/index before this build; for a local build, run
+# `make index` first. The backend refuses an index that holds quote-only text
+# or was built with a different embedding model.
+COPY --chown=herhealth:herhealth build/index index
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     HERHEALTH_KNOWLEDGE_DIR=/app/knowledge \
+    HERHEALTH_INDEX_DIR=/app/index \
     # 127.0.0.1 is the entry point's default and is correct on a dev box; in a
     # container it would make the port unreachable from anywhere else.
     HERHEALTH_HOST=0.0.0.0 \

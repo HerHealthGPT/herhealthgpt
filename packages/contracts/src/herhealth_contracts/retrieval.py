@@ -9,8 +9,8 @@ retrieval is promoted from "propose evidence rows for a human to review" to
 shape it can hold without importing ``services/data``. This is that shape.
 
 A :class:`RetrievedPassage` is what a search returns; nothing constructs one
-directly from scratch. Whatever runs the search — today ``services/data``,
-later ``services/model`` or the backend's own retrieval client — is
+directly from scratch. Whatever runs the search — the backend's retrieval
+client, or ``services/data`` during authoring — is
 responsible for turning a ``Passage`` plus a similarity score into one of
 these before it crosses the service boundary.
 """
@@ -18,13 +18,46 @@ these before it crosses the service boundary.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from herhealth_contracts.knowledge import Identifier
 
-__all__ = ["PassageId", "PassageType", "RetrievedPassage"]
+__all__ = [
+    "INDEX_FILE",
+    "MANIFEST_FILE",
+    "PASSAGES_FILE",
+    "QUERY_INSTRUCTION",
+    "IndexManifest",
+    "IndexedPassage",
+    "PassageId",
+    "PassageType",
+    "RetrievedPassage",
+    "format_query",
+]
+
+#: The three files that make up a retrieval index on disk. The builder
+#: (services/data) writes them and the backend reads them; neither imports the
+#: other, so these names and the two models below ARE the interface. There is
+#: deliberately no pickle among them: unpickling executes code, and an index is
+#: copied between machines.
+INDEX_FILE = "index.faiss"
+PASSAGES_FILE = "passages.jsonl"
+MANIFEST_FILE = "manifest.json"
+
+#: Qwen3-Embedding is instruction-aware on the QUERY side only: documents are
+#: embedded as plain text, queries as "Instruct: <task>\nQuery:<text>". The
+#: builder and every searcher must agree on this, which is why it lives here.
+QUERY_INSTRUCTION = (
+    "Given a question about women's reproductive health, "
+    "retrieve passages that answer it"
+)
+
+
+def format_query(query: str) -> str:
+    """A query in the form the embedding model was trained to read."""
+    return f"Instruct: {QUERY_INSTRUCTION}\nQuery:{query}"
 
 #: Passage.id is hashlib.sha256(f"{source_id}\\x00{slug}\\x00{text}").hexdigest()[:16]
 #: — lowercase hex, fixed length, and deliberately not an Identifier: it names
@@ -72,9 +105,9 @@ class RetrievedPassage(BaseModel):
     text: str
     citation: str
 
-    #: Cosine similarity against the query. Not a probability and not evidence
-    #: strength — it says how well the text matched the question asked, not
-    #: how strongly it supports a condition.
+    #: How well the text matched the query: the reranker's relevance score
+    #: when it ran, otherwise cosine similarity. Not a probability of anything
+    #: clinical and not evidence strength.
     score: float = Field(ge=-1.0, le=1.0)
 
     #: The page this text was actually fetched from, so a citation shown to a
@@ -93,3 +126,43 @@ class RetrievedPassage(BaseModel):
     feature_id: Identifier | None = None
     value: str | None = None
     strength: str | None = None
+
+
+class IndexedPassage(BaseModel):
+    """One line of ``passages.jsonl``: a passage and everything needed to cite
+    it. Line N describes vector N of ``index.faiss``."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: PassageId
+    passage_type: PassageType
+    source_id: Identifier
+    slug: str
+    heading: str = ""
+    text: str
+    citation: str
+    url: str | None = None
+    #: False for a quote-only source (NHS). Such a passage may sit in the
+    #: authoring index and must never be in a served one.
+    may_be_ingested: bool
+    condition_id: Identifier | None = None
+    feature_id: Identifier | None = None
+    value: str | None = None
+    strength: str | None = None
+
+
+class IndexManifest(BaseModel):
+    """``manifest.json``: what built this index, so a reader can refuse one it
+    cannot use before answering a single query from it."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    format_version: Literal[1] = 1
+    #: The embedding model's real id, not the name it is served under.
+    embedding_model: str = Field(min_length=1)
+    embedding_revision: str | None = None
+    dimensions: int = Field(gt=0)
+    passages: int = Field(ge=0)
+    evidence_statements: int = Field(ge=0)
+    contains_quote_only: bool
+    built_at: str

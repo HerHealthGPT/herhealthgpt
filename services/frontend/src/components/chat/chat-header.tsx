@@ -3,13 +3,20 @@
 import Link from "next/link";
 import { ArrowLeft, Menu, X } from "lucide-react";
 
+import { ModelSelector } from "@/components/chat/model-selector";
 import { Button } from "@/components/ui/button";
+import type { TriageModelOption } from "@/lib/api/types";
 
 import { routes } from "@/lib/routes";
 
 type ChatHeaderProps = {
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
+  /** Evaluation versions on offer; empty on an ordinary deployment. */
+  models?: TriageModelOption[];
+  selectedModelId?: string;
+  onSelectModel?: (modelId: string) => void;
+  modelLocked?: boolean;
 };
 
 /**
@@ -19,11 +26,11 @@ type ChatHeaderProps = {
  * Three controls were removed from here on 2026-09-09, each for its own
  * reason:
  *
- * - **The Base / Fine-tuned selector.** The app now runs a single reasoning
- *   path (`HERHEALTH_TRIAGE_MODE=vllm`, the fine-tuned adapter with the base
- *   model as an automatic fallback), so there was nothing left to choose
- *   between. `ModelSelector` and the `/triage/models` endpoint still exist
- *   for side-by-side evaluation; they are simply not wired into the chat.
+ * - **The Base / Fine-tuned selector.** The app runs a single reasoning path
+ *   (`HERHEALTH_TRIAGE_MODE=vllm`: the base model decides and the fine-tuned
+ *   adapter words informational answers). A version selector is back for
+ *   evaluation sessions only: it renders when the server offers comparison
+ *   versions (`HERHEALTH_COMPARISON_MODES=on`) and not otherwise.
  * - **The Reasoning toggle.** It surfaced the decision's `rationale` a
  *   second time, behind a disclosure, on top of the answer the user is
  *   already reading. Two versions of the same sentence is not transparency.
@@ -32,7 +39,14 @@ type ChatHeaderProps = {
  *   you pointed at. Deletion now belongs to the sidebar row it deletes,
  *   where the thing being destroyed is the thing under the cursor.
  */
-export function ChatHeader({ onToggleSidebar, sidebarOpen }: ChatHeaderProps) {
+export function ChatHeader({
+  onToggleSidebar,
+  sidebarOpen,
+  models = [],
+  selectedModelId,
+  onSelectModel,
+  modelLocked = false,
+}: ChatHeaderProps) {
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background/95 px-3 backdrop-blur sm:px-4">
       <Button
@@ -47,7 +61,16 @@ export function ChatHeader({ onToggleSidebar, sidebarOpen }: ChatHeaderProps) {
 
       {/* Spacer on desktop, where the sidebar toggle is hidden, so the
           dashboard control stays pinned right instead of jumping left. */}
-      <div className="hidden lg:block" aria-hidden />
+      {models.length > 1 && selectedModelId && onSelectModel ? (
+        <ModelSelector
+          models={models}
+          selectedId={selectedModelId}
+          onSelect={onSelectModel}
+          locked={modelLocked}
+        />
+      ) : (
+        <div className="hidden lg:block" aria-hidden />
+      )}
 
       {/* Says where it goes, not what it is. This is the only way out of the
           chat, and as a bare grid glyph nobody read it as one — so it gets a
@@ -57,7 +80,14 @@ export function ChatHeader({ onToggleSidebar, sidebarOpen }: ChatHeaderProps) {
       <Button variant="outline" size="sm" className="shrink-0 gap-2" asChild>
         <Link href={routes.dashboard}>
           <ArrowLeft className="size-4" aria-hidden />
-          Back to dashboard
+          {models.length > 1 ? (
+            <>
+              <span className="sm:hidden">Dashboard</span>
+              <span className="hidden sm:inline">Back to dashboard</span>
+            </>
+          ) : (
+            "Back to dashboard"
+          )}
         </Link>
       </Button>
     </header>

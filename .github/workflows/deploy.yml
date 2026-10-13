@@ -3,9 +3,8 @@ name: deploy
 # Production deploy to the single EC2 host. On a push to main that touches
 # anything that ships:
 #
-#   1. build the three images, tagged with the git SHA (never `latest`);
-#      retrieval is built from a PUBLISHED, versioned, quote-only-free index
-#      pulled from S3, and the pinned bge-m3 revision
+#   1. build the two images (frontend, backend), tagged with the git SHA
+#      (never `latest`)
 #   2. push them to ECR (tags are immutable)
 #   3. upload compose.prod.yml, the Caddyfile and the deploy scripts to
 #      s3://<bucket>/deploy/<sha>/
@@ -24,8 +23,6 @@ name: deploy
 #   AWS_DEPLOY_ROLE_ARN             terraform output deploy_role_arn
 #   EC2_INSTANCE_ID                 terraform output instance_id
 #   ARTIFACTS_BUCKET                terraform output artifacts_bucket
-#   RETRIEVAL_INDEX_VERSION         printed by scripts/publish-index.sh
-#   BGE_M3_REVISION                 40-hex HF commit; must equal the index's build-info.json
 #   NEXT_PUBLIC_GOOGLE_CLIENT_ID    OPTIONAL: the Google OAuth client id (public by
 #                                   design); unset means no Google sign-in
 
@@ -35,7 +32,6 @@ on:
     paths:
       - "services/backend/**"
       - "services/frontend/**"
-      - "services/model/**"
       - "services/data/**"
       - "packages/contracts/**"
       - "knowledge/**"
@@ -73,8 +69,6 @@ jobs:
       SHA: ${{ github.sha }}
       ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET }}
       INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
-      INDEX_VERSION: ${{ vars.RETRIEVAL_INDEX_VERSION }}
-      BGE_M3_REVISION: ${{ vars.BGE_M3_REVISION }}
     steps:
       - uses: actions/checkout@v4
 
@@ -85,7 +79,7 @@ jobs:
         # frontend hides Google sign-in and the backend reports it unconfigured.
         run: |
           missing=0
-          for v in ROLE ARTIFACTS_BUCKET INSTANCE_ID INDEX_VERSION BGE_M3_REVISION; do
+          for v in ROLE ARTIFACTS_BUCKET INSTANCE_ID; do
             if [ -z "${!v}" ]; then echo "::error::repository variable for $v is not set (see the header of .github/workflows/deploy.yml)"; missing=1; fi
           done
           [ "$missing" = 0 ]
@@ -98,46 +92,9 @@ jobs:
       - id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # --- the retrieval index: published, versioned, read-only here ----------
-      - name: Fetch the published index
-        run: |
-          aws s3 sync "s3://${ARTIFACTS_BUCKET}/index/${INDEX_VERSION}/" build/index --only-show-errors
-          test -f build/index/vectors.npy
-
-      # Belt and braces: publish-index.sh already refused to upload any of this,
-      # but an image is the last place quote-only text could slip in.
-      - name: Verify the index (model, revision, no quote-only text)
-        run: |
-          python3 - <<'PY'
-          import json, os, sys
-          d = "build/index"
-          manifest = json.load(open(f"{d}/manifest.json", encoding="utf-8"))
-          info = json.load(open(f"{d}/build-info.json", encoding="utf-8"))
-          problems = []
-          if manifest.get("model_name") != "BAAI/bge-m3":
-              problems.append(f"manifest model_name is {manifest.get('model_name')!r}, not BAAI/bge-m3")
-          if info.get("version") != os.environ["INDEX_VERSION"]:
-              problems.append(f"build-info version {info.get('version')} != RETRIEVAL_INDEX_VERSION {os.environ['INDEX_VERSION']}")
-          if info.get("bge_m3_revision") != os.environ["BGE_M3_REVISION"]:
-              problems.append(
-                  f"the index was built with bge-m3 revision {info.get('bge_m3_revision')}, "
-                  f"but BGE_M3_REVISION is {os.environ['BGE_M3_REVISION']}: weights and vectors would not match"
-              )
-          with open(f"{d}/passages.jsonl", encoding="utf-8") as fh:
-              for n, line in enumerate(fh, 1):
-                  if line.strip():
-                      p = json.loads(line)
-                      if p.get("may_be_ingested") is not True or p.get("source_id") == "nhs":
-                          problems.append(f"passages.jsonl line {n} is quote-only ({p.get('source_id')})")
-                          break
-          for p in problems:
-              print(f"::error::{p}")
-          sys.exit(1 if problems else 0)
-          PY
-
-      # The hosted runner starts with roughly 14 GB free, and the three image
-      # builds (retrieval bakes bge-m3, about 2.3 GB) ran out of it on the first
-      # deploy. These preinstalled toolchains are never used here.
+      # The hosted runner starts with roughly 14 GB free, and the image builds ran
+      # out of it on the first deploy. These preinstalled toolchains are never
+      # used here.
       - name: Free runner disk space
         run: |
           df -h /
@@ -151,13 +108,35 @@ jobs:
       - name: Which images already exist for this commit?
         id: exists
         run: |
-          for repo in frontend backend retrieval; do
+          for repo in frontend backend; do
             if aws ecr describe-images --repository-name "herhealth-$repo" --image-ids "imageTag=${SHA}" >/dev/null 2>&1; then
               echo "$repo=true" >> "$GITHUB_OUTPUT"
             else
               echo "$repo=false" >> "$GITHUB_OUTPUT"
             fi
           done
+
+      # The index is built on the campus box and published as a release file
+      # (scripts/publish-index-release.sh). It is baked into the backend image.
+      - name: Fetch the retrieval index
+        if: steps.exists.outputs.backend != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEX_RELEASE: ${{ vars.INDEX_RELEASE }}
+        run: |
+          if [ -z "$INDEX_RELEASE" ]; then
+            echo "::error::repository variable INDEX_RELEASE is not set (scripts/publish-index-release.sh sets it)"
+            exit 1
+          fi
+          mkdir -p build/index
+          gh release download "$INDEX_RELEASE" --pattern index.tar.gz --dir "$RUNNER_TEMP"
+          tar -xzf "$RUNNER_TEMP/index.tar.gz" -C build/index
+          python3 - <<'PY'
+          import json, sys
+          manifest = json.load(open("build/index/manifest.json"))
+          print({key: manifest[key] for key in ("embedding_model", "passages", "contains_quote_only", "built_at")})
+          sys.exit("the index holds quote-only text and may not be deployed" if manifest["contains_quote_only"] else 0)
+          PY
 
       - name: Build and push backend
         if: steps.exists.outputs.backend != 'true'
@@ -190,22 +169,6 @@ jobs:
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
 
-      - name: Build and push retrieval
-        if: steps.exists.outputs.retrieval != 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: services/model/Dockerfile
-          push: true
-          tags: ${{ steps.ecr.outputs.registry }}/herhealth-retrieval:${{ github.sha }}
-          build-args: |
-            BGE_M3_REVISION=${{ vars.BGE_M3_REVISION }}
-            INDEX_VERSION=${{ vars.RETRIEVAL_INDEX_VERSION }}
-          labels: |
-            org.opencontainers.image.revision=${{ github.sha }}
-          cache-from: type=gha,scope=retrieval
-          cache-to: type=gha,scope=retrieval,mode=max
-
       - name: Upload this release's deploy files
         run: |
           dest="s3://${ARTIFACTS_BUCKET}/deploy/${SHA}"
@@ -214,6 +177,30 @@ jobs:
           aws s3 cp infra/deploy/deploy.sh          "$dest/deploy.sh"           --sse AES256 --only-show-errors
           aws s3 cp infra/deploy/refresh-secrets.sh "$dest/refresh-secrets.sh"  --sse AES256 --only-show-errors
           aws s3 cp infra/deploy/caddy-data.sh      "$dest/caddy-data.sh"       --sse AES256 --only-show-errors
+
+      # Where the model servers are and the key for them. Only settings that
+      # have a value are written, so an unset variable leaves the default.
+      - name: Upload the model endpoint settings
+        env:
+          CHAT_URL: ${{ vars.MODELS_CHAT_URL }}
+          EMBED_URL: ${{ vars.MODELS_EMBED_URL }}
+          MODELS_KEY: ${{ secrets.MODELS_API_KEY }}
+          COMPARISON: ${{ vars.COMPARISON_MODES }}
+          OPENROUTER: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          umask 077
+          file="$RUNNER_TEMP/models.env"
+          : > "$file"
+          put() { if [ -n "$2" ]; then printf '%s=%s\n' "$1" "$2" >> "$file"; fi; }
+          put HERHEALTH_VLLM_URL "$CHAT_URL"
+          put HERHEALTH_EMBEDDING_URL "$EMBED_URL"
+          put HERHEALTH_VLLM_API_KEY "$MODELS_KEY"
+          put HERHEALTH_MODELS_API_KEY "$MODELS_KEY"
+          put HERHEALTH_COMPARISON_MODES "$COMPARISON"
+          put OPENROUTER_API_KEY "$OPENROUTER"
+          echo "settings written: $(cut -d= -f1 "$file" | tr '\n' ' ')"
+          aws s3 cp "$file" "s3://${ARTIFACTS_BUCKET}/deploy/${SHA}/models.env" --sse AES256 --only-show-errors
+          rm -f "$file"
 
       - name: Deploy through SSM and wait
         run: |

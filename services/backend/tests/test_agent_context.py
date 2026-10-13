@@ -16,14 +16,11 @@ from herhealth_contracts.retrieval import PassageType, RetrievedPassage
 from triage_factories import build
 
 from herhealth_backend.triage.agent import (
-    AttemptOutcome,
     Message,
-    ReasoningAttempt,
     ReasoningResult,
     ScriptedReasoningClient,
     TriageAgent,
 )
-from herhealth_backend.triage.clients import FallbackReasoningClient
 
 PASSAGE = RetrievedPassage(
     id="a6bf0793b2a9a509",
@@ -365,72 +362,6 @@ def test_the_gate_is_off_unless_the_deployment_turns_it_on() -> None:
 # ---------------------------------------------------------------------------
 # Attribution: which model actually answered
 # ---------------------------------------------------------------------------
-
-
-class ConcludesThenFails:
-    """Concludes on the first call, then fails on the re-prompt.
-
-    This is the shape that puts **two different models in one turn**, and it
-    is not contrived: the adapter concluding prematurely is the documented
-    behaviour that ``_refuse_premature_conclusion`` exists for, and its
-    failure rate on the re-prompt is what ``FallbackReasoningClient`` exists
-    for. Before the attempt trail, a turn like this was reported as one model.
-    """
-
-    name = "vllm:herhealth"
-
-    def __init__(self, first: TriageDecision) -> None:
-        self._first = first
-        self.calls = 0
-
-    def decide(
-        self,
-        *,
-        system_prompt: str,
-        history: Sequence[Message],
-        context: Sequence[RetrievedPassage],
-    ) -> ReasoningResult:
-        self.calls += 1
-        if self.calls == 1:
-            return ReasoningResult(
-                decision=self._first,
-                attempts=(ReasoningAttempt(client=self.name, outcome=AttemptOutcome.OK),),
-            )
-        raise ValueError("reasoning model returned malformed JSON")
-
-
-def test_a_turn_records_every_backend_it_took_to_answer() -> None:
-    primary = ConcludesThenFails(conclude_decision("ROUTINE_APPOINTMENT"))
-    agent = TriageAgent(
-        base=build(),
-        reasoning=FallbackReasoningClient(
-            primary=primary,
-            fallback=ScriptedReasoningClient(
-                [ask("fever", bleeding="heavy")], name="openrouter:base"
-            ),
-        ),
-        retrieval=StubRetrieval(),
-        min_answers=3,
-    )
-
-    turn = agent.run_turn(
-        [Message(role="user", content="heavy bleeding")],
-        observed={"bleeding": "heavy"},
-        asked=["bleeding"],
-    )
-
-    # The gate refused the thin conclusion, the adapter failed the re-prompt,
-    # and the base model finished the turn.
-    assert turn.decision.type is DecisionType.ASK
-    assert [(a.client, a.outcome) for a in turn.attempts] == [
-        ("vllm:herhealth", AttemptOutcome.OK),
-        ("vllm:herhealth", AttemptOutcome.INVALID_DECISION),
-        ("openrouter:base", AttemptOutcome.OK),
-    ]
-
-    # What the user actually read came from the base model, not the adapter
-    # that was tried first — which is the whole question this answers.
-    assert turn.served_by == "openrouter:base"
 
 
 def test_a_turn_served_without_incident_names_one_backend() -> None:
