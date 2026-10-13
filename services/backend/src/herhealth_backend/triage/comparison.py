@@ -26,6 +26,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from herhealth_backend.triage.agent import Message
 from herhealth_backend.triage.chain import ReasoningUnavailable, _invoke
+from herhealth_backend.triage.language import detect_language
 
 __all__ = [
     "COMPARISON_INSTRUCTION",
@@ -93,7 +94,13 @@ class PlainChatResponder:
     name: str
 
     def reply(self, history: Sequence[Message]) -> str:
-        messages: list[BaseMessage] = [SystemMessage(content=COMPARISON_INSTRUCTION)]
+        # The one addition to the fixed instruction: the language to answer in,
+        # the same line of reasoning the product's own path applies.
+        language = detect_language(m.content for m in history if m.role == "user")
+        instruction = COMPARISON_INSTRUCTION
+        if language is not None:
+            instruction = f"{instruction} She is writing in {language}; answer in {language}."
+        messages: list[BaseMessage] = [SystemMessage(content=instruction)]
         for message in history:
             kind = AIMessage if message.role == "assistant" else HumanMessage
             messages.append(kind(content=message.content))

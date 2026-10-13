@@ -45,6 +45,7 @@ from herhealth_backend.triage.context import (
     render_turn_context,
     topic_conditions,
 )
+from herhealth_backend.triage.language import detect_language, language_instruction
 
 __all__ = [
     "AgentTranscript",
@@ -728,6 +729,10 @@ class TriageAgent:
             # and inventing a user message would put words in her mouth in a
             # transcript that is meant to be replayable and auditable.
             system = f"{system}\n\n{background}"
+        # Last, so it is the nearest thing to her message: reply in her language.
+        language = detect_language(m.content for m in history if m.role == "user")
+        if language is not None:
+            system = f"{system}\n\n{language_instruction(language)}"
         result = self.reasoning.decide(system_prompt=system, history=history, context=context)
         # The inform gate first. Its re-prompt can come back as a conclusion,
         # and that conclusion has to meet the early-conclusion gate like any
@@ -881,7 +886,12 @@ class TriageAgent:
         if self.page_sections and callable(write_page):
             try:
                 sections = self._page_passages(question, context)
-                page = write_page(question, sections, decision.answer_text)
+                page = write_page(
+                    question,
+                    sections,
+                    decision.answer_text,
+                    language=detect_language(m.content for m in history if m.role == "user"),
+                )
             except Exception:
                 # As below: a better answer is never worth a failed turn.
                 sections, page = [], None

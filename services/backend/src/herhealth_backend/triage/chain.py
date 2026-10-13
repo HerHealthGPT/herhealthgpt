@@ -423,6 +423,25 @@ PAGE_SECTIONS: tuple[tuple[str, str], ...] = (
     ("Treatment", "treatment and management"),
 )
 
+#: The page headings in the languages a reply can be written in. English is
+#: the key; a language missing here keeps the English headings.
+PAGE_HEADINGS: dict[str, dict[str, str]] = {
+    "French": {
+        "Overview": "Aperçu",
+        "Symptoms": "Symptômes",
+        "Causes": "Causes",
+        "When to see a doctor": "Quand consulter un médecin",
+        "Treatment": "Traitement",
+    },
+    "Arabic": {
+        "Overview": "نظرة عامة",
+        "Symptoms": "الأعراض",
+        "Causes": "الأسباب",
+        "When to see a doctor": "متى يجب مراجعة الطبيب",
+        "Treatment": "العلاج",
+    },
+}
+
 _PAGE_FORMAT = (
     "You are given a DRAFT answer and PASSAGES from our sources, grouped by "
     "section. Write a short health information page from them. Use ONLY facts "
@@ -547,6 +566,8 @@ class LangChainAnswerWriter:
         question: str,
         sections: Sequence[tuple[str, Sequence[RetrievedPassage]]],
         base_answer: str,
+        *,
+        language: str | None = None,
     ) -> tuple[str, str] | None:
         """A page-style answer and the name of the model that wrote it.
 
@@ -559,7 +580,16 @@ class LangChainAnswerWriter:
         # Every heading is offered, not only those a search filled: the draft
         # can cover a section the search found nothing for, and a heading that
         # is not offered is a part of the draft that gets dropped.
+        translated = PAGE_HEADINGS.get(language or "", {})
+        sections = [(translated.get(title, title), passages) for title, passages in sections]
+        filled = [(title, passages) for title, passages in sections if passages]
         headings = [title for title, _ in sections]
+        in_language = (
+            f" Write the whole page in {language}, in plain everyday {language}; the "
+            f"passages are in English, so put what they say into {language}."
+            if language
+            else ""
+        )
         listed = "\n\n".join(
             f"{title}:\n" + "\n".join(f"- {passage.text}" for passage in passages)
             for title, passages in filled
@@ -568,6 +598,7 @@ class LangChainAnswerWriter:
             SystemMessage(
                 content=f"{ADAPTER_INSTRUCTION} "
                 + _PAGE_FORMAT.format(headings=" ".join(f"{h}:" for h in headings))
+                + in_language
             ),
             HumanMessage(
                 content=f"DRAFT:\n{_without_warning_lines(base_answer)}\n\n"
