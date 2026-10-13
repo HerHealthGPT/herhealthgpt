@@ -209,6 +209,82 @@ input; a fresh set of questions is needed before they are quoted as
 performance. Under-triage on the full benchmark has not been re-measured with
 this chain.
 
+## The full benchmark, first turns only (2026-10-13)
+
+All 540 English questions of `gold_seeds_styled` (90 seeds, six rewordings
+each) were sent as the first message of a new consultation, in `vllm` mode,
+with the reranker off. The answers were scored by
+`herhealth_backend.evaluation.benchmark_score` against the benchmark's silver
+labels. 537 of 540 turns were valid; the median turn took 29 seconds and the
+slowest 108.
+
+| Outcome of the first turn | Count |
+|---|---|
+| Informational answer, no urgency level | 402 |
+| Clarifying question | 102 |
+| Declined as out of scope | 30 |
+| Concluded with an urgency level | 3 |
+| Invalid | 3 |
+
+| Measure | Result |
+|---|---|
+| Questions labelled see-doctor or urgent | 192 |
+| ...given a lower level than the label | **0** |
+| ...given an informational answer with no level | 121 |
+| ...asked a clarifying question | 57 |
+| ...declined / invalid | 11 / 1 |
+| ...given the labelled level or higher | 2 |
+| Strict under-triage (lower level or no level) | **0.630** (121 of 192) |
+| Clarification recall on the 90 flagged questions | **0.189** (17 of 90) |
+| Routine questions given an urgent level | 1 of 348 |
+| Seeds where all six rewordings got the same outcome | 27 of 90 |
+
+**The system almost never commits to a level on a first turn.** Three
+conclusions in 540, all urgent or emergency, and none below the label. The
+0.630 is therefore entirely "answered the question without saying how soon to
+seek care", not "said routine when it should have said see a doctor". The
+paper's 0.718 came from a model that had to pick a level for every question,
+so the two figures measure different failures and must not be set side by
+side as an improvement.
+
+**The informational answers mostly do not point to care.** Of the 121
+see-doctor or urgent questions that got an informational answer, a keyword
+search finds advice to see a clinician in 29 and a warning-sign line in 2.
+The search is crude and nobody has read the answers, but it means the
+informational path cannot be assumed to cover the questions the benchmark
+says need a doctor. Of the 18 urgent-labelled questions, 15 were informed, 1
+asked, 1 declined, and 1 concluded `EMERGENCY`.
+
+**Many of those labels sit on questions that describe no symptoms.** "When's
+the best time in my cycle to try for a baby?" is labelled urgent; "Do you
+still get periods when you're pregnant?" likewise. An informational answer is
+the designed response to a general question, and the label was derived from
+the reference answer's wording. How many of the 121 are a real miss and how
+many are a label the design should not be judged against has not been
+separated; that needs someone to read them.
+
+**Vague questions are mostly not clarified.** The 90 flagged questions are
+the `ambiguous` rewordings ("What does having this actually mean for me?").
+17 were asked about, 51 were answered as if the topic were known, and 22 were
+declined as out of scope. Declining is safer than guessing, but it is not
+what the label asks for. The paper reports 0.856 for the base model on its
+own scoring of free text; that scoring is not the one used here.
+
+**Wording changes the outcome.** The `emotionally_concerned` rewordings were
+asked a question 43 times in 90; the `clinical` ones 6 times. The same
+concern gets a different first move depending on how it is phrased, which is
+what 27 of 90 measures.
+
+The adapter wrote 367 of the 402 informational answers; 35 were rejected by
+the checks and the base model's answer was used. The three invalid turns were
+two replies that failed `TriageDecision` twice and one timeout.
+
+**Limits of this run.** First turns only: a clarifying question is not a
+final answer, and what the consultation would have concluded is not measured.
+Silver labels, not clinician-adjudicated. English only. One run at
+temperature 0. Raw results are in `build/benchmark_run/results.jsonl`, which
+is not tracked.
+
 ## What this shows
 
 The points below describe the first run, before the citation change.
