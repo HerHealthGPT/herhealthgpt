@@ -81,6 +81,10 @@ services:
     # password needs the backend recreated (refresh-secrets.sh does that).
     env_file:
       - /run/herhealth/backend.env
+      # Where the model servers are and the key for them. Written by
+      # refresh-secrets.sh from this release's deploy files; empty when the
+      # release carries none, and triage then reports "not configured".
+      - /run/herhealth/models.env
     environment:
       # The local models (ADR 0018): the base model decides, the adapter words
       # informational answers. Until this host has a retrieval index and a

@@ -139,7 +139,7 @@ aws ecr get-login-password --region "$AWS_REGION" \
 write_release_env "$SHA" release.env.new
 
 say "refreshing secrets"
-./refresh-secrets.sh
+HERHEALTH_RELEASE_SHA="$SHA" ./refresh-secrets.sh
 
 say "pulling images (a failure here leaves the running release untouched)"
 dc "$STAGE/compose.prod.yml" release.env.new pull

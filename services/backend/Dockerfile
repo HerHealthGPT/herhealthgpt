@@ -66,10 +66,17 @@ COPY --from=builder --chown=herhealth:herhealth /app/services/backend services/b
 # they are part of the image rather than a mount: an image and the rules it
 # enforces should not be able to drift apart.
 COPY --chown=herhealth:herhealth knowledge knowledge
+# The retrieval index, built on the campus box with `make index` (it needs the
+# embedding server) and never committed. The deploy workflow downloads it from
+# a GitHub release into build/index before this build; for a local build, run
+# `make index` first. The backend refuses an index that holds quote-only text
+# or was built with a different embedding model.
+COPY --chown=herhealth:herhealth build/index index
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     HERHEALTH_KNOWLEDGE_DIR=/app/knowledge \
+    HERHEALTH_INDEX_DIR=/app/index \
     # 127.0.0.1 is the entry point's default and is correct on a dev box; in a
     # container it would make the port unreachable from anywhere else.
     HERHEALTH_HOST=0.0.0.0 \

@@ -116,6 +116,28 @@ jobs:
             fi
           done
 
+      # The index is built on the campus box and published as a release file
+      # (scripts/publish-index-release.sh). It is baked into the backend image.
+      - name: Fetch the retrieval index
+        if: steps.exists.outputs.backend != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INDEX_RELEASE: ${{ vars.INDEX_RELEASE }}
+        run: |
+          if [ -z "$INDEX_RELEASE" ]; then
+            echo "::error::repository variable INDEX_RELEASE is not set (scripts/publish-index-release.sh sets it)"
+            exit 1
+          fi
+          mkdir -p build/index
+          gh release download "$INDEX_RELEASE" --pattern index.tar.gz --dir "$RUNNER_TEMP"
+          tar -xzf "$RUNNER_TEMP/index.tar.gz" -C build/index
+          python3 - <<'PY'
+          import json, sys
+          manifest = json.load(open("build/index/manifest.json"))
+          print({key: manifest[key] for key in ("embedding_model", "passages", "contains_quote_only", "built_at")})
+          sys.exit("the index holds quote-only text and may not be deployed" if manifest["contains_quote_only"] else 0)
+          PY
+
       - name: Build and push backend
         if: steps.exists.outputs.backend != 'true'
         uses: docker/build-push-action@v6
@@ -155,6 +177,30 @@ jobs:
           aws s3 cp infra/deploy/deploy.sh          "$dest/deploy.sh"           --sse AES256 --only-show-errors
           aws s3 cp infra/deploy/refresh-secrets.sh "$dest/refresh-secrets.sh"  --sse AES256 --only-show-errors
           aws s3 cp infra/deploy/caddy-data.sh      "$dest/caddy-data.sh"       --sse AES256 --only-show-errors
+
+      # Where the model servers are and the key for them. Only settings that
+      # have a value are written, so an unset variable leaves the default.
+      - name: Upload the model endpoint settings
+        env:
+          CHAT_URL: ${{ vars.MODELS_CHAT_URL }}
+          EMBED_URL: ${{ vars.MODELS_EMBED_URL }}
+          MODELS_KEY: ${{ secrets.MODELS_API_KEY }}
+          COMPARISON: ${{ vars.COMPARISON_MODES }}
+          OPENROUTER: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          umask 077
+          file="$RUNNER_TEMP/models.env"
+          : > "$file"
+          put() { if [ -n "$2" ]; then printf '%s=%s\n' "$1" "$2" >> "$file"; fi; }
+          put HERHEALTH_VLLM_URL "$CHAT_URL"
+          put HERHEALTH_EMBEDDING_URL "$EMBED_URL"
+          put HERHEALTH_VLLM_API_KEY "$MODELS_KEY"
+          put HERHEALTH_MODELS_API_KEY "$MODELS_KEY"
+          put HERHEALTH_COMPARISON_MODES "$COMPARISON"
+          put OPENROUTER_API_KEY "$OPENROUTER"
+          echo "settings written: $(cut -d= -f1 "$file" | tr '\n' ' ')"
+          aws s3 cp "$file" "s3://${ARTIFACTS_BUCKET}/deploy/${SHA}/models.env" --sse AES256 --only-show-errors
+          rm -f "$file"
 
       - name: Deploy through SSM and wait
         run: |
