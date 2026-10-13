@@ -2,7 +2,7 @@
 
 import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
 import { ChatHeader } from "@/components/chat/chat-header";
-import type { TriageSessionSummary } from "@/lib/api/types";
+import type { TriageModelOption, TriageSessionSummary } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 type ChatShellProps = {
@@ -17,6 +17,10 @@ type ChatShellProps = {
   onSelectSession: (sessionId: string) => void;
   onNewChat: () => void;
   onDeleteSession: (sessionId: string) => void | Promise<void>;
+  models?: TriageModelOption[];
+  selectedModelId?: string;
+  onSelectModel?: (modelId: string) => void;
+  modelLocked?: boolean;
 };
 
 export function ChatShell({
@@ -31,6 +35,10 @@ export function ChatShell({
   onSelectSession,
   onNewChat,
   onDeleteSession,
+  models = [],
+  selectedModelId,
+  onSelectModel,
+  modelLocked = false,
 }: ChatShellProps) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -68,7 +76,20 @@ export function ChatShell({
         </aside>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <ChatHeader onToggleSidebar={onToggleSidebar} sidebarOpen={sidebarOpen} />
+          <ChatHeader
+            onToggleSidebar={onToggleSidebar}
+            sidebarOpen={sidebarOpen}
+            models={models}
+            selectedModelId={selectedModelId}
+            onSelectModel={onSelectModel}
+            modelLocked={modelLocked}
+          />
+          {models.length > 1 ? (
+            <p className="shrink-0 border-b border-border/60 bg-muted/40 px-4 py-1.5 text-center text-xs text-muted-foreground">
+              You are helping us compare versions. Some answers are not checked against our
+              sources. This is information, not medical advice.
+            </p>
+          ) : null}
           {children}
         </div>
       </div>

@@ -50,6 +50,7 @@ from herhealth_backend.triage.agent import (
     TriageAgent,
     render_known_background,
 )
+from herhealth_backend.triage.comparison import MODEL_C, MODEL_LABELS, PlainChatResponder
 from herhealth_backend.triage.context import join_evidence
 from herhealth_backend.triage.provenance import (
     drop_unknown_conditions,
@@ -88,8 +89,10 @@ class TriageTurnRequest(BaseModel):
     #: see triage_turn's ownership check.
     session_id: uuid.UUID | None = None
     message: str = Field(min_length=1)
-    #: Accepted and ignored. The model selector was removed (ADR 0018); the
-    #: field stays so a client built before that does not get a 422.
+    #: Which comparison mode answers this turn (see triage/comparison.py).
+    #: Honoured only when the deployment offers that mode; anything else,
+    #: including a name from a client built before ADR 0018, gets the
+    #: product's own path and no 422.
     reasoning_model: str | None = None
 
 
@@ -125,6 +128,30 @@ class SessionDetail(BaseModel):
     messages: list[SessionMessage]
 
 
+def _comparison_responders(http_request: Request) -> dict[str, PlainChatResponder]:
+    return getattr(http_request.app.state, "comparison_responders", None) or {}
+
+
+@router.get("/models")
+async def list_models(
+    http_request: Request,
+    user: User = Depends(get_current_user),  # noqa: B008
+) -> dict[str, Any]:
+    """The modes an evaluator may pick from, or an empty list.
+
+    Empty on an ordinary deployment, where there is one path and no selector.
+    The labels say nothing about what each mode is, on purpose.
+    """
+    offered = _comparison_responders(http_request)
+    if not offered:
+        return {"models": [], "default": MODEL_C}
+    ids = [*sorted(offered), MODEL_C]
+    return {
+        "models": [{"id": mode, "label": MODEL_LABELS[mode]} for mode in ids],
+        "default": MODEL_C,
+    }
+
+
 @router.post("/turn")
 async def triage_turn(
     request: TriageTurnRequest,
@@ -142,6 +169,20 @@ async def triage_turn(
     ``app/main.py``'s ``_build_email_sender`` documents for its own blocking
     call inside an async context.
     """
+    mode = request.reasoning_model or ""
+    responder = _comparison_responders(http_request).get(mode)
+    if responder is not None:
+        try:
+            return await _run_comparison_turn(
+                request, user, responder, mode, http_request.app.state.database
+            )
+        except SQLAlchemyError as error:
+            logger.exception("database error in a comparison turn")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="triage storage is unavailable — check database migrations",
+            ) from error
+
     agent: TriageAgent | None = getattr(http_request.app.state, "triage_agent", None)
     if agent is None:
         raise HTTPException(
@@ -171,6 +212,78 @@ async def triage_turn(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=_USER_FACING_ERROR,
         ) from error
+
+
+async def _run_comparison_turn(
+    request: TriageTurnRequest,
+    user: User,
+    responder: PlainChatResponder,
+    mode: str,
+    database: Database,
+) -> dict[str, Any]:
+    """One turn answered by a comparison model: her words in, its words out.
+
+    No retrieval, no knowledge base, no ``TriageDecision`` and no checks, which
+    is the point of the comparison. The reply is stored in the ``inform``
+    shape with no citations so the transcript renders, and both the payload
+    and ``served_by`` name the mode, so a stored row can never be mistaken for
+    one the product's own path produced. A comparison turn never concludes a
+    consultation and never carries an urgency level.
+    """
+    loaded = await _load_session(request, user, database)
+    history = [*loaded.history, Message(role="user", content=request.message)]
+    loop = asyncio.get_running_loop()
+    try:
+        text = await asyncio.wait_for(
+            loop.run_in_executor(None, responder.reply, history),
+            timeout=REASONING_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as error:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="the reasoning model did not respond in time",
+        ) from error
+    except httpx.HTTPError as error:
+        logger.warning("comparison model failure (%s): %s", mode, error)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="A service we rely on is temporarily unavailable. Please try again.",
+        ) from error
+
+    payload: dict[str, Any] = {
+        "type": DecisionType.INFORM.value,
+        "next_feature_id": None,
+        "question_text": None,
+        "action_code": None,
+        "answer_text": text,
+        "matching_conditions": [],
+        "citations": [],
+        "red_flag_id": None,
+        "observed": {},
+        "rationale": "",
+        "cited_passages": [],
+        "comparison_mode": mode,
+    }
+    served_by: dict[str, Any] = {
+        "final": responder.name,
+        "attempts": [
+            {"client": responder.name, "outcome": AttemptOutcome.OK.value, "detail": None}
+        ],
+        "mode": mode,
+    }
+    async with database.session() as session:
+        session.add(MessageRow(session_id=loaded.session_id, role="user", content=request.message))
+        session.add(
+            MessageRow(
+                session_id=loaded.session_id,
+                role="assistant",
+                content=text,
+                decision=payload,
+                served_by=served_by,
+            )
+        )
+        await session.commit()
+    return {"session_id": str(loaded.session_id), "decision": payload, "served_by": served_by}
 
 
 async def _run_turn(
@@ -267,9 +380,7 @@ async def _run_turn(
             # optional and the action code beside it is not. Everything else
             # the validator rejects — an unreal feature, an unreal rule, a
             # citation that was never retrieved — still fails the turn.
-            turn = replace(
-                turn, decision=drop_unknown_conditions(turn.decision, agent.base)
-            )
+            turn = replace(turn, decision=drop_unknown_conditions(turn.decision, agent.base))
             validate_against_knowledge_base(turn.decision, agent.base, turn.retrieved)
             _warn_if_the_pending_answer_was_dropped(turn.decision, pending)
             break
@@ -327,9 +438,7 @@ async def _run_turn(
         )
 
     decision = enforce_provenance_cap(turn.decision, turn.retrieved)
-    payload = _decision_payload(
-        decision, turn.retrieved, base=agent.base, observed=observed
-    )
+    payload = _decision_payload(decision, turn.retrieved, base=agent.base, observed=observed)
     served_by = _served_by_payload((*discarded, *turn.attempts))
     await _persist_turn(session_id, request.message, decision, payload, database, served_by)
 
@@ -384,9 +493,7 @@ def _red_flag_citation(decision: TriageDecision, base: KnowledgeBase) -> dict[st
     }
 
 
-def _warn_if_the_pending_answer_was_dropped(
-    decision: TriageDecision, pending: str | None
-) -> None:
+def _warn_if_the_pending_answer_was_dropped(decision: TriageDecision, pending: str | None) -> None:
     """Log when she answered a question and the answer was not recorded.
 
     The one case where a missing ``observed`` entry is provably wrong rather

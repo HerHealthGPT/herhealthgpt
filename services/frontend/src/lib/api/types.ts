@@ -102,7 +102,8 @@ export type CitedPassage = {
  *
  *  On an `inform` (an in-scope question about the subject rather than about
  *  her — see ADR 0016) the answer she reads is `answer_text`, NOT
- *  `rationale`, and `citations` is guaranteed non-empty. action_code,
+ *  `rationale`, and `citations` is non-empty unless `comparison_mode` is
+ *  set (an evaluation answer from a version that uses no sources). action_code,
  *  matching_conditions and red_flag_id are forbidden there, so there is no
  *  urgency to render and no condition is being attached to her: render the
  *  answer and its sources. */
@@ -129,6 +130,22 @@ export type TriageDecision = {
   red_flag_id: string | null;
   rationale: string;
   reasoning_model?: DecisionReasoningModel;
+  /** Set only on an answer from an evaluation version that runs without
+   *  sources or checks (`model_a`, `model_b`). Absent on the product's own
+   *  path. */
+  comparison_mode?: string;
+};
+
+/** One version an evaluator may pick. The label is all there is to show. */
+export type TriageModelOption = {
+  id: string;
+  label: string;
+};
+
+/** GET /triage/models. `models` is empty on an ordinary deployment. */
+export type TriageModelList = {
+  models: TriageModelOption[];
+  default: string;
 };
 
 export type TriageTurnResponse = {

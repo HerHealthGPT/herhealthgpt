@@ -39,6 +39,12 @@ __all__ = [
     "vllm_max_attempts",
     "vllm_timeout",
     "vllm_url",
+    "COMPARISON_MODES_ENV",
+    "OPENROUTER_API_KEY_ENV",
+    "OPENROUTER_MODEL_ENV",
+    "comparison_modes_enabled",
+    "openrouter_api_key",
+    "openrouter_model",
     "COOKIE_SECURE_ENV",
     "cookie_secure",
     "CORS_ORIGINS_ENV",
@@ -234,6 +240,30 @@ def vllm_url() -> str:
 def vllm_api_key() -> str | None:
     """Bearer token for the vLLM server, or ``None`` when it needs none."""
     return os.environ.get(VLLM_API_KEY_ENV) or None
+
+
+#: ``on`` offers evaluators the comparison modes beside the product's own
+#: path (see triage/comparison.py). Off unless set: an ordinary deployment
+#: has one path and no selector.
+COMPARISON_MODES_ENV = "HERHEALTH_COMPARISON_MODES"
+#: Used by Model A only. The product's own path never calls OpenRouter.
+OPENROUTER_API_KEY_ENV = "OPENROUTER_API_KEY"
+OPENROUTER_MODEL_ENV = "HERHEALTH_OPENROUTER_MODEL"
+
+
+def comparison_modes_enabled() -> bool:
+    """Whether evaluators may pick Model A or Model B for a consultation."""
+    return os.environ.get(COMPARISON_MODES_ENV, "").strip().lower() in {"on", "true", "1"}
+
+
+def openrouter_api_key() -> str | None:
+    """The OpenRouter key for Model A, or ``None`` when Model A is not offered."""
+    return os.environ.get(OPENROUTER_API_KEY_ENV, "").strip() or None
+
+
+def openrouter_model() -> str:
+    """The base model's name on OpenRouter."""
+    return os.environ.get(OPENROUTER_MODEL_ENV, "").strip() or "qwen/qwen3.5-9b"
 
 
 def reasoning_timeout() -> float:

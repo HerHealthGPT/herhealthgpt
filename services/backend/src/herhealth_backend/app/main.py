@@ -43,11 +43,16 @@ from herhealth_backend.app.accounts.google_identity import (
 from herhealth_backend.app.accounts.routes import router as accounts_router
 from herhealth_backend.app.config import EMAIL_SENDER_ENV, database_url
 from herhealth_backend.app.config import answer_model as configured_answer_model
+from herhealth_backend.app.config import (
+    comparison_modes_enabled as configured_comparison_modes_enabled,
+)
 from herhealth_backend.app.config import cors_origins as configured_cors_origins
 from herhealth_backend.app.config import decision_model as configured_decision_model
 from herhealth_backend.app.config import email_sender_kind as configured_email_sender_kind
 from herhealth_backend.app.config import google_client_id as configured_google_client_id
 from herhealth_backend.app.config import knowledge_dir as configured_knowledge_dir
+from herhealth_backend.app.config import openrouter_api_key as configured_openrouter_api_key
+from herhealth_backend.app.config import openrouter_model as configured_openrouter_model
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.config import triage_mode as configured_triage_mode
 from herhealth_backend.app.config import vllm_api_key as configured_vllm_api_key
@@ -67,6 +72,14 @@ from herhealth_backend.triage.chain import (
     build_chat_model,
 )
 from herhealth_backend.triage.clients import DecisionValidator
+from herhealth_backend.triage.comparison import (
+    COMPARISON_MAX_TOKENS,
+    COMPARISON_TIMEOUT_SECONDS,
+    MODEL_A,
+    MODEL_B,
+    PlainChatResponder,
+    build_openrouter_chat_model,
+)
 from herhealth_backend.triage.demo_clients import MvpDemoReasoningClient, StaticRetrievalClient
 from herhealth_backend.triage.provenance import drop_unknown_observed
 from herhealth_backend.triage.retrieval import (
@@ -201,6 +214,42 @@ def _build_triage_agent() -> TriageAgent | None:
     )
 
 
+def _build_comparison_responders() -> dict[str, PlainChatResponder]:
+    """The comparison modes this deployment offers, by mode id.
+
+    Empty unless ``HERHEALTH_COMPARISON_MODES`` is on and triage runs on the
+    local models. Model A needs an OpenRouter key and is left out without
+    one; Model B needs the adapter's name. Neither touches the product's own
+    path, which is built by :func:`_build_triage_agent` as before.
+    """
+    if not configured_comparison_modes_enabled() or configured_triage_mode() != "vllm":
+        return {}
+    responders: dict[str, PlainChatResponder] = {}
+    key = configured_openrouter_api_key()
+    if key:
+        name = f"openrouter:{configured_openrouter_model()}"
+        responders[MODEL_A] = PlainChatResponder(
+            build_openrouter_chat_model(
+                model=configured_openrouter_model(),
+                api_key=key,
+            ),
+            name=name,
+        )
+    adapter = configured_answer_model()
+    if adapter:
+        responders[MODEL_B] = PlainChatResponder(
+            build_chat_model(
+                url=configured_vllm_url(),
+                model=adapter,
+                api_key=configured_vllm_api_key(),
+                timeout=COMPARISON_TIMEOUT_SECONDS,
+                max_tokens=COMPARISON_MAX_TOKENS,
+            ),
+            name=adapter,
+        )
+    return responders
+
+
 def _build_google_verifier() -> GoogleTokenVerifier:
     """Construct the configured GoogleTokenVerifier. Unlike ``_build_email_sender``,
     there is no eagerly-blocking client to build here — ``GoogleOAuthTokenVerifier``
@@ -219,6 +268,7 @@ def create_app(
     email_sender: EmailSender | None = None,
     google_verifier: GoogleTokenVerifier | None = None,
     triage_agent: TriageAgent | None = None,
+    comparison_responders: dict[str, PlainChatResponder] | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -258,6 +308,8 @@ def create_app(
             app.state.google_verifier = _build_google_verifier()
         if getattr(app.state, "triage_agent", None) is None:
             app.state.triage_agent = _build_triage_agent()
+        if getattr(app.state, "comparison_responders", None) is None:
+            app.state.comparison_responders = _build_comparison_responders()
         try:
             yield
         finally:
@@ -289,6 +341,8 @@ def create_app(
         app.state.google_verifier = google_verifier
     if triage_agent is not None:
         app.state.triage_agent = triage_agent
+    if comparison_responders is not None:
+        app.state.comparison_responders = comparison_responders
     register_error_handlers(app)
     app.include_router(accounts_router)
     app.include_router(triage_router)
