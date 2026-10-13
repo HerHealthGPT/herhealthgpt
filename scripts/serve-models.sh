@@ -28,6 +28,17 @@ HF_BIN="${VLLM_BIN%/*}/hf"
 RUN_DIR="${RUN_DIR:-/home/jovyan/herhealth-serve}"   # persistent volume
 HOST="127.0.0.1"   # never the cluster network: reach it via a tunnel or proxy
 ALL_SERVICES=(chat embed rerank)
+
+# An optional bearer key for all three servers, needed as soon as anything
+# outside this machine can reach them. It lives in an untracked file and is
+# handed to vLLM through VLLM_API_KEY, never as an argument, so it appears in
+# neither `print`, the process list nor the logs. No file, or an empty value,
+# means no key is required, which is the local default.
+MODELS_KEY_FILE="${MODELS_KEY_FILE:-$REPO_ROOT/infra/envs/models.env}"
+MODELS_API_KEY=""
+if [ -f "$MODELS_KEY_FILE" ]; then
+  MODELS_API_KEY="$(sed -n 's/^HERHEALTH_MODELS_API_KEY=//p' "$MODELS_KEY_FILE" | tail -1)"
+fi
 TARGETS=()
 
 # The original Qwen3 reranker is a causal LM scored on its "yes"/"no" logits.
@@ -189,6 +200,7 @@ start_one() {
     NCCL_P2P_DISABLE=1 \
     NCCL_IB_DISABLE=1 \
     VLLM_USE_FLASHINFER_SAMPLER=0 \
+    VLLM_API_KEY="$MODELS_API_KEY" \
     TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$HOME/.cache/triton}" \
     "$VLLM_BIN" "${args[@]}" > "$RUN_DIR/$svc.log" 2>&1 < /dev/null &
   echo "$! $(proc_start $!)" > "$(pid_file "$svc")"
@@ -247,7 +259,8 @@ check() {
     else
       state="down"
     fi
-    if curl -sf --max-time 2 "http://$HOST:$port/v1/models" >/dev/null 2>&1; then
+    if curl -sf --max-time 2 -H "Authorization: Bearer ${MODELS_API_KEY:-none}" \
+      "http://$HOST:$port/v1/models" >/dev/null 2>&1; then
       endpoint="answering"
     else
       endpoint="silent"

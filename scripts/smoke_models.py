@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -294,7 +295,10 @@ def main(
     adapter = env["CHAT_ADAPTER_NAME"]
 
     results: list[CheckResult] = []
-    with httpx.Client(timeout=TIMEOUT_SECONDS, transport=transport) as client:
+    # The servers require a bearer key once they are reachable from outside.
+    key = os.environ.get("HERHEALTH_MODELS_API_KEY", "")
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    with httpx.Client(timeout=TIMEOUT_SECONDS, transport=transport, headers=headers) as client:
         for label, url in (("chat", chat), ("embed", embed), ("rerank", rerank)):
             health = check_health(client, url)
             results.append(CheckResult(f"health {label}", health.ok, health.detail))
