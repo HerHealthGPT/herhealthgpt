@@ -64,3 +64,76 @@ def test_a_comparison_model_is_told_the_language() -> None:
     PlainChatResponder(chat, name="m").reply([Message("user", "ما هي أعراض تكيس المبايض؟")])
 
     assert "answer in Arabic" in chat.seen[0].content  # type: ignore[attr-defined]
+
+
+# --- The interface language as a fallback, inside a real turn -------------
+
+from pathlib import Path  # noqa: E402
+
+from herhealth_contracts.decision import DecisionType, TriageDecision  # noqa: E402
+from herhealth_contracts.loading import load_knowledge_base  # noqa: E402
+from herhealth_contracts.retrieval import PassageType, RetrievedPassage  # noqa: E402
+
+from herhealth_backend.triage.agent import (  # noqa: E402
+    AttemptOutcome,
+    ReasoningAttempt,
+    ReasoningResult,
+    TriageAgent,
+)
+
+_PASSAGE = RetrievedPassage(
+    id="0123456789abcdef",
+    passage_type=PassageType.SOURCE_PASSAGE,
+    source_id="womenshealth",
+    text="A placeholder passage.",
+    citation="womenshealth/page",
+    score=0.5,
+)
+
+
+class _Reasoning:
+    name = "decision-model"
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    def decide(self, *, system_prompt, history, context):  # type: ignore[no-untyped-def]
+        self.prompts.append(system_prompt)
+        decision = TriageDecision(
+            type=DecisionType.ASK,
+            rationale="One more detail would help.",
+            next_feature_id="cycle_length",
+            question_text="How many days are there between your periods?",
+        )
+        return ReasoningResult(
+            decision=decision,
+            attempts=(ReasoningAttempt(client=self.name, outcome=AttemptOutcome.OK),),
+        )
+
+
+class _Retrieval:
+    def search(self, query: str, *, k: int = 8) -> list[RetrievedPassage]:
+        return [_PASSAGE]
+
+
+def _prompt_for(message: str, fallback: str | None) -> str:
+    reasoning = _Reasoning()
+    agent = TriageAgent(
+        base=load_knowledge_base(Path(__file__).resolve().parents[3] / "knowledge"),
+        reasoning=reasoning,
+        retrieval=_Retrieval(),
+    )
+    agent.run_turn([Message(role="user", content=message)], fallback_language=fallback)
+    return reasoning.prompts[0]
+
+
+def test_her_own_words_decide_over_the_interface_language() -> None:
+    assert "She is writing in Arabic" not in _prompt_for("My periods are irregular", "Arabic")
+
+
+def test_the_interface_language_is_used_when_her_message_has_no_words() -> None:
+    assert "She is writing in Arabic" in _prompt_for("29", "Arabic")
+
+
+def test_no_language_line_for_english_with_no_fallback() -> None:
+    assert "LANGUAGE." not in _prompt_for("My periods are irregular", None)

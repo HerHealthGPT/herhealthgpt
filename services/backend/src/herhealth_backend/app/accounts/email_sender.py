@@ -31,11 +31,13 @@ from anyio import to_thread
 
 from herhealth_backend.app.accounts.email_preview import write_email_preview
 from herhealth_backend.app.accounts.email_templates import (
+    email_subject,
     password_reset_email,
     verification_email,
 )
 from herhealth_backend.app.accounts.password_reset_policy import CODE_TTL as PASSWORD_RESET_CODE_TTL
 from herhealth_backend.app.accounts.verification_code_policy import CODE_TTL
+from herhealth_backend.app.locale import current_language
 
 __all__ = ["EmailSender", "ConsoleEmailSender", "SesEmailSender"]
 
@@ -57,9 +59,11 @@ class _RenderedEmail:
 
 def _render_verification(code: str) -> _RenderedEmail:
     minutes = int(CODE_TTL.total_seconds() // 60)
-    body_text, body_html = verification_email(code=code, minutes=minutes)
+    # In the language of the screen she asked from (app/locale.py).
+    language = current_language()
+    body_text, body_html = verification_email(code=code, minutes=minutes, language=language)
     return _RenderedEmail(
-        subject="Your HerHealthGPT verification code",
+        subject=email_subject("verify", language),
         body_text=body_text,
         body_html=body_html,
         preview_kind="verification",
@@ -68,9 +72,10 @@ def _render_verification(code: str) -> _RenderedEmail:
 
 def _render_password_reset(code: str) -> _RenderedEmail:
     minutes = int(PASSWORD_RESET_CODE_TTL.total_seconds() // 60)
-    body_text, body_html = password_reset_email(code=code, minutes=minutes)
+    language = current_language()
+    body_text, body_html = password_reset_email(code=code, minutes=minutes, language=language)
     return _RenderedEmail(
-        subject="Reset your HerHealthGPT password",
+        subject=email_subject("reset", language),
         body_text=body_text,
         body_html=body_html,
         preview_kind="password-reset",

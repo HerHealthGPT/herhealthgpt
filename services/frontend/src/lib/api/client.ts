@@ -28,6 +28,11 @@ export async function apiRequest<T>(
       credentials: "include",
       headers: {
         ...(json && body !== undefined ? { "Content-Type": "application/json" } : {}),
+        // The interface language, so the server writes emails in it and can
+        // fall back to it for a chat reply (backend app/locale.py).
+        ...(typeof document !== "undefined" && document.documentElement.lang
+          ? { "Accept-Language": document.documentElement.lang }
+          : {}),
         ...headers,
       },
       body:

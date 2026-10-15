@@ -61,6 +61,7 @@ from herhealth_backend.app.config import vllm_max_attempts as configured_vllm_ma
 from herhealth_backend.app.config import vllm_timeout as configured_vllm_timeout
 from herhealth_backend.app.config import vllm_url as configured_vllm_url
 from herhealth_backend.app.db import Database
+from herhealth_backend.app.locale import language_from_accept_language, set_current_language
 from herhealth_backend.app.triage.routes import router as triage_router
 from herhealth_backend.triage.agent import RetrievalClient, TriageAgent
 from herhealth_backend.triage.chain import (
@@ -336,6 +337,13 @@ def create_app(
                 await app.state.database.dispose()
 
     app = FastAPI(title="HerHealthGPT backend", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def interface_language(request: Request, call_next: Any) -> Any:
+        # The frontend sends its chosen language on every call; see app/locale.py.
+        set_current_language(language_from_accept_language(request.headers.get("accept-language")))
+        return await call_next(request)
+
     origins = configured_cors_origins()
     if origins:
         # Credentialed (cookie-based) cross-origin requests — needed only
