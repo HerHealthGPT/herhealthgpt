@@ -3,5 +3,6 @@ import type { Messages } from "./en";
 import { auth, common, nav } from "./ar/auth";
 import { actions, errorPages, home } from "./ar/site";
 import { conditions, dashboard } from "./ar/dashboard";
+import { account, onboarding } from "./ar/account";
 
-export const ar: Messages = { common, nav, auth, home, actions, errorPages, dashboard, conditions };
+export const ar: Messages = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account };

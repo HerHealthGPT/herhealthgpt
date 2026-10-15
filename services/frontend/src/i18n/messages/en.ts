@@ -8,7 +8,8 @@
 import { auth, common, nav } from "./en/auth";
 import { actions, errorPages, home } from "./en/site";
 import { conditions, dashboard } from "./en/dashboard";
+import { account, onboarding } from "./en/account";
 
-export const en = { common, nav, auth, home, actions, errorPages, dashboard, conditions };
+export const en = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account };
 
 export type Messages = typeof en;
