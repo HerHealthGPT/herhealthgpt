@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { useAuth } from "@/contexts/auth-context";
+import { useI18n } from "@/i18n/locale-provider";
 import { usePostAuthRedirect } from "@/hooks/use-post-auth-redirect";
 import { signIn } from "@/lib/api/accounts";
 import { resolvePostAuthRoute } from "@/lib/post-auth-route";
@@ -26,6 +27,7 @@ function SignInForm() {
   const searchParams = useSearchParams();
   const { refreshUser, setUser } = useAuth();
   const redirectAfterAuth = usePostAuthRedirect();
+  const { m } = useI18n();
   const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<unknown>(null);
@@ -51,16 +53,16 @@ function SignInForm() {
 
   return (
     <AuthShell
-      title="Welcome back"
-      description="Sign in to open your health chat."
+      title={m.auth.signIn.title}
+      description={m.auth.signIn.description}
       footer={
         <>
-          Don&apos;t have an account?{" "}
+          {m.auth.signIn.noAccount}{" "}
           <Link
             href={routes.signUp}
             className="font-medium text-primary hover:underline"
           >
-            Create one
+            {m.auth.signIn.createOne}
           </Link>
         </>
       }
@@ -82,12 +84,12 @@ function SignInForm() {
         <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <FieldLabel htmlFor="email">{m.common.email}</FieldLabel>
               <Input
                 id="email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={m.common.emailPlaceholder}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -96,12 +98,12 @@ function SignInForm() {
 
             <Field>
               <div className="flex items-center justify-between">
-                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <FieldLabel htmlFor="password">{m.common.password}</FieldLabel>
                 <Link
                   href={routes.forgotPassword}
                   className="text-sm font-medium text-primary hover:underline"
                 >
-                  Forgot password?
+                  {m.auth.signIn.forgotPassword}
                 </Link>
               </div>
               <PasswordInput
@@ -120,7 +122,7 @@ function SignInForm() {
             size="lg"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Signing in…" : "Sign in with email"}
+            {isSubmitting ? m.auth.signIn.submitting : m.auth.signIn.submit}
           </Button>
         </form>
       </div>
@@ -132,7 +134,7 @@ export default function SignInPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex flex-1 items-center justify-center p-8">Loading…</div>
+        <div className="flex flex-1 items-center justify-center p-8">…</div>
       }
     >
       <SignInForm />

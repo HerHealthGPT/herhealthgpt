@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { routes } from "@/lib/routes";
 import { PageLoading } from "@/components/ui/page-loading";
+import { useI18n } from "@/i18n/locale-provider";
 
 /**
  * Gates every signed-in page on three things, in order: signed in, email
@@ -26,6 +27,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isLoading } = useAuth();
+  const { m } = useI18n();
 
   const onOnboarding = pathname?.startsWith(routes.onboarding) ?? false;
   const profileIncomplete = Boolean(user?.email_verified) && user?.profile_complete === false;
@@ -57,18 +59,18 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="size-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading your account…</p>
+          <p className="text-sm text-muted-foreground">{m.auth.guard.loadingAccount}</p>
         </div>
       </div>
     );
   }
 
   if (!user || !user.email_verified) {
-    return <PageLoading message="Almost there…" />;
+    return <PageLoading message={m.auth.guard.almostThere} />;
   }
 
   if (profileIncomplete && !onOnboarding) {
-    return <PageLoading message="Just one thing first…" />;
+    return <PageLoading message={m.auth.guard.oneThingFirst} />;
   }
 
   return <>{children}</>;

@@ -19,11 +19,13 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { useAuth } from "@/contexts/auth-context";
 import { resetPassword } from "@/lib/api/accounts";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 function ResetPasswordForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setUser } = useAuth();
+  const { m } = useI18n();
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -36,7 +38,7 @@ function ResetPasswordForm() {
     setError(null);
 
     if (newPassword !== confirmPassword) {
-      setError(new Error("Passwords do not match."));
+      setError(new Error(m.common.passwordsDoNotMatch));
       return;
     }
 
@@ -45,7 +47,7 @@ function ResetPasswordForm() {
     try {
       await resetPassword(email, code, newPassword);
       setUser(null);
-      toast.success("Password updated. Please sign in with your new password.");
+      toast.success(m.auth.reset.updated);
       router.push(`${routes.signIn}?email=${encodeURIComponent(email)}`);
     } catch (submitError) {
       setError(submitError);
@@ -56,16 +58,16 @@ function ResetPasswordForm() {
 
   return (
     <AuthShell
-      title="Set a new password"
-      description="Enter the code from your email and choose a new password."
+      title={m.auth.reset.title}
+      description={m.auth.reset.description}
       footer={
         <>
-          Need a new code?{" "}
+          {m.auth.reset.needCode}{" "}
           <Link
             href={routes.forgotPassword}
             className="font-medium text-primary hover:underline"
           >
-            Request another
+            {m.auth.reset.requestAnother}
           </Link>
         </>
       }
@@ -75,7 +77,7 @@ function ResetPasswordForm() {
 
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <FieldLabel htmlFor="email">{m.common.email}</FieldLabel>
             <Input
               id="email"
               type="email"
@@ -87,7 +89,7 @@ function ResetPasswordForm() {
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="code">Reset code</FieldLabel>
+            <FieldLabel htmlFor="code">{m.auth.reset.code}</FieldLabel>
             <Input
               id="code"
               type="text"
@@ -103,7 +105,7 @@ function ResetPasswordForm() {
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="new-password">New password</FieldLabel>
+            <FieldLabel htmlFor="new-password">{m.auth.reset.newPassword}</FieldLabel>
             <PasswordInput
               id="new-password"
               autoComplete="new-password"
@@ -111,11 +113,11 @@ function ResetPasswordForm() {
               onChange={(event) => setNewPassword(event.target.value)}
               required
             />
-            <FieldDescription>At least 8 characters.</FieldDescription>
+            <FieldDescription>{m.common.passwordHint}</FieldDescription>
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="confirm-password">Confirm new password</FieldLabel>
+            <FieldLabel htmlFor="confirm-password">{m.auth.reset.confirmNewPassword}</FieldLabel>
             <PasswordInput
               id="confirm-password"
               autoComplete="new-password"
@@ -127,7 +129,7 @@ function ResetPasswordForm() {
         </FieldGroup>
 
         <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-          {isSubmitting ? "Updating…" : "Update password"}
+          {isSubmitting ? m.auth.reset.submitting : m.auth.reset.submit}
         </Button>
       </form>
     </AuthShell>
@@ -136,7 +138,7 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<div className="flex flex-1 items-center justify-center p-8">Loading…</div>}>
+    <Suspense fallback={<div className="flex flex-1 items-center justify-center p-8">…</div>}>
       <ResetPasswordForm />
     </Suspense>
   );

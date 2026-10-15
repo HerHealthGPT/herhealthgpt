@@ -5,6 +5,7 @@ import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatApiError } from "@/lib/api/errors";
 import type { ApiErrorDetail } from "@/lib/api/types";
+import { useI18n } from "@/i18n/locale-provider";
 
 type AuthErrorAlertProps = {
   error: unknown;
@@ -22,6 +23,7 @@ function isPasswordWeakDetail(
 }
 
 export function AuthErrorAlert({ error }: AuthErrorAlertProps) {
+  const { m } = useI18n();
   if (!error) {
     return null;
   }
@@ -39,7 +41,7 @@ export function AuthErrorAlert({ error }: AuthErrorAlertProps) {
       <Alert variant="destructive">
         <AlertCircle className="size-4" />
         <AlertDescription>
-          <p className="font-medium">Password requirements not met:</p>
+          <p className="font-medium">{m.auth.errors.passwordRequirements}</p>
           <ul className="mt-2 list-inside list-disc space-y-1">
             {reasons.map((reason) => (
               <li key={reason}>{reason}</li>
