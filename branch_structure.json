@@ -1,7 +1,6 @@
 {
   "default_branch": "main",
   "branches": [
-    "Mazen-Branch",
     "backend",
     "data",
     "deploy/aws-ec2",
@@ -15,14 +14,9 @@
     "fix/retrieval-cpu-torch",
     "frontend",
     "main",
-    "security/clean-backend",
-    "security/clean-data",
-    "security/clean-frontend",
-    "security/remove-payload-again",
     "security/remove-postcss-payload"
   ],
   "parent": {
-    "Mazen-Branch": "main",
     "backend": "main",
     "data": "main",
     "deploy/aws-ec2": "main",
@@ -36,15 +30,10 @@
     "fix/retrieval-cpu-torch": "main",
     "frontend": "main",
     "main": null,
-    "security/clean-backend": "main",
-    "security/clean-data": "main",
-    "security/clean-frontend": "main",
-    "security/remove-payload-again": "main",
     "security/remove-postcss-payload": "main"
   },
   "order": [
     "main",
-    "Mazen-Branch",
     "backend",
     "data",
     "deploy/aws-ec2",
@@ -57,10 +46,6 @@
     "fix/oidc-sub-with-ids",
     "fix/retrieval-cpu-torch",
     "frontend",
-    "security/clean-backend",
-    "security/clean-data",
-    "security/clean-frontend",
-    "security/remove-payload-again",
     "security/remove-postcss-payload"
   ]
 }
