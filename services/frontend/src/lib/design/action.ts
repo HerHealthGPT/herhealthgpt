@@ -23,9 +23,8 @@ import {
 
 export type ActionTone = "calm" | "urgent" | "emergency";
 
+/** Icon and tone only. The words are in i18n/messages (`actions`). */
 export type ActionDisplay = {
-  heading: string;
-  body: string;
   tone: ActionTone;
   /**
    * One icon per action code, and the reason it lives here rather than in a
@@ -47,26 +46,18 @@ export type ActionDisplay = {
 export const actionDisplay: Record<ActionCode, ActionDisplay> = {
   SELF_CARE: {
     icon: House,
-    heading: "Self-care should be enough",
-    body: "Based on what you've shared, this looks like something you can manage yourself for now. If it changes or doesn't settle, it's worth checking in with a doctor.",
     tone: "calm",
   },
   ROUTINE_APPOINTMENT: {
     icon: CalendarDays,
-    heading: "Worth a routine appointment",
-    body: "Nothing here looks urgent, but it's worth arranging a non-urgent appointment with a healthcare professional to look into it.",
     tone: "calm",
   },
   URGENT_SAME_DAY: {
     icon: Clock,
-    heading: "Please get seen today",
-    body: "What you've described should be looked at by a healthcare professional the same day — please arrange to be seen today.",
     tone: "urgent",
   },
   EMERGENCY: {
     icon: Siren,
-    heading: "This needs emergency care now",
-    body: "Please seek emergency care right away — go to the nearest emergency department or call your local emergency number now.",
     tone: "emergency",
   },
 };

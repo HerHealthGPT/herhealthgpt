@@ -1,16 +1,9 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_Arabic } from "next/font/google";
-import { cookies, headers } from "next/headers";
 
 import { Providers } from "@/components/providers";
-import {
-  directionOf,
-  isLocale,
-  LOCALE_COOKIE,
-  localeFromAcceptLanguage,
-  type Locale,
-} from "@/i18n/config";
-import { messagesFor } from "@/i18n/locale-provider";
+import { directionOf } from "@/i18n/config";
+import { requestLocale, requestMessages } from "@/i18n/server";
 import "./globals.css";
 
 const inter = Inter({
@@ -24,17 +17,9 @@ const arabic = Noto_Sans_Arabic({
   subsets: ["arabic"],
 });
 
-/** The cookie the switcher writes, or else the browser's Accept-Language. */
-async function requestLocale(): Promise<Locale> {
-  const chosen = (await cookies()).get(LOCALE_COOKIE)?.value;
-  if (isLocale(chosen)) {
-    return chosen;
-  }
-  return localeFromAcceptLanguage((await headers()).get("accept-language"));
-}
 
 export async function generateMetadata(): Promise<Metadata> {
-  const m = messagesFor(await requestLocale());
+  const m = await requestMessages();
   return {
     title: {
       default: "HerHealthGPT",

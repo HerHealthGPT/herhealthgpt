@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Illustration } from "@/components/ui/illustration";
 import { UrgencyScale } from "@/components/urgency-scale";
 import { routes } from "@/lib/routes";
+import { requestMessages } from "@/i18n/server";
 
 /**
  * The four urgency levels, in severity order — `knowledge/actions.yaml`.
@@ -21,7 +22,8 @@ import { routes } from "@/lib/routes";
  * a marketing page would be both a token violation and bad manners toward
  * someone who is already worried.
  */
-export default function HomePage() {
+export default async function HomePage() {
+  const m = await requestMessages();
   return (
     <>
       <SiteHeader />
@@ -54,30 +56,28 @@ export default function HomePage() {
               </p>
 
               <h1 className="mt-6 max-w-[15ch] text-4xl font-semibold leading-[1.1] tracking-tight text-balance sm:text-5xl">
-                Not sure if this needs a doctor?
+                {m.home.title}
               </h1>
 
               <p className="mt-5 max-w-[46ch] text-lg leading-relaxed text-muted-foreground">
-                Describe what&apos;s going on in your own words. We ask a couple
-                of questions, then tell you how soon to be seen — and show you
-                the source we got that from.
+                {m.home.lead}
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button size="lg" asChild className="min-w-[180px]">
-                  <Link href={routes.signUp}>Start a chat</Link>
+                  <Link href={routes.signUp}>{m.home.startChat}</Link>
                 </Button>
                 <Button size="lg" variant="outline" asChild className="min-w-[160px]">
-                  <Link href={routes.signIn}>Sign in</Link>
+                  <Link href={routes.signIn}>{m.common.signIn}</Link>
                 </Button>
               </div>
 
               <p className="mt-6 text-sm text-muted-foreground">
-                Ask in English, French or Arabic.
+                {m.home.languages}
               </p>
             </div>
 
-            <div className="lg:pl-4">
+            <div className="lg:ps-4">
               <ConversationPreview />
             </div>
           </div>
@@ -88,11 +88,10 @@ export default function HomePage() {
             <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-center lg:gap-16">
               <div>
                 <h2 className="max-w-[24ch] text-2xl font-semibold tracking-tight sm:text-3xl">
-                  Every answer lands somewhere on this line
+                  {m.home.scaleTitle}
                 </h2>
                 <p className="mt-3 max-w-[52ch] text-muted-foreground">
-                  We don&apos;t tell you what you have. We tell you how urgent
-                  it is, and why we think so.
+                  {m.home.scaleLead}
                 </p>
               </div>
               {/* Its own slot rather than reusing `welcome`: someone who
@@ -120,14 +119,13 @@ export default function HomePage() {
             />
             <div>
               <h2 className="max-w-[24ch] text-2xl font-semibold tracking-tight sm:text-3xl">
-                You can check where every answer came from
+                {m.home.sourcesTitle}
               </h2>
               <p className="mt-3 max-w-[52ch] text-muted-foreground">
-                Answers quote the NHS, MedlinePlus, the Office on Women&apos;s
-                Health, NICHD and the CDC — and link straight to the page.
+                {m.home.sourcesLead}
               </p>
               <Button size="lg" asChild className="mt-6 min-w-[180px]">
-                <Link href={routes.signUp}>Start a chat</Link>
+                <Link href={routes.signUp}>{m.home.startChat}</Link>
               </Button>
             </div>
           </div>
@@ -136,10 +134,7 @@ export default function HomePage() {
         <section className="py-12 sm:py-14">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
             <p className="max-w-[62ch] text-sm leading-relaxed text-muted-foreground">
-              HerHealthGPT gives health information and urgency guidance, never
-              a diagnosis, and it can be wrong. It isn&apos;t a doctor. If
-              something feels urgent, contact emergency services or go to
-              hospital.
+              {m.home.disclaimer}
             </p>
           </div>
         </section>

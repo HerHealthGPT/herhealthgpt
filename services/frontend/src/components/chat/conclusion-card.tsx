@@ -1,3 +1,5 @@
+"use client";
+
 import { AlertTriangle } from "lucide-react";
 
 import { CitedSources } from "@/components/chat/cited-sources";
@@ -21,6 +23,7 @@ import {
   surfaceClassesForTone,
 } from "@/lib/design/action";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ConclusionCardProps = {
   decision: TriageDecision;
@@ -28,6 +31,7 @@ type ConclusionCardProps = {
 };
 
 export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps) {
+  const { m } = useI18n();
   if (decision.action_code === null) {
     return null;
   }
@@ -52,10 +56,10 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
           </span>
           <div>
             <CardTitle className={cn("text-lg", headingClassesForTone(display.tone))}>
-              {display.heading}
+              {m.actions[decision.action_code].heading}
             </CardTitle>
             <CardDescription className="mt-1 text-sm leading-relaxed">
-              {display.body}
+              {m.actions[decision.action_code].body}
             </CardDescription>
           </div>
         </div>

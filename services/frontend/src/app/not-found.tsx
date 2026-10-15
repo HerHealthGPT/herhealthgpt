@@ -4,10 +4,11 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { Button } from "@/components/ui/button";
 import { Illustration } from "@/components/ui/illustration";
 import { routes } from "@/lib/routes";
+import { requestMessages } from "@/i18n/server";
 
-export const metadata = {
-  title: "Page not found",
-};
+export async function generateMetadata() {
+  return { title: (await requestMessages()).errorPages.notFoundTitle };
+}
 
 /**
  * The 404. There was no `not-found.tsx` before this, so a mistyped or stale
@@ -17,7 +18,8 @@ export const metadata = {
  * Written as directions rather than an apology: someone who lands here
  * wants the way out, not a paragraph about what went wrong.
  */
-export default function NotFound() {
+export default async function NotFound() {
+  const m = await requestMessages();
   return (
     <>
       <SiteHeader />
@@ -28,18 +30,18 @@ export default function NotFound() {
         />
 
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-          We can&apos;t find that page
+          {m.errorPages.notFoundHeading}
         </h1>
         <p className="mt-3 max-w-[46ch] text-base leading-relaxed text-muted-foreground">
-          The link may be out of date, or the address may have a typo in it.
+          {m.errorPages.notFoundBody}
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button size="lg" asChild className="min-w-[180px]">
-            <Link href={routes.dashboard}>Go to dashboard</Link>
+            <Link href={routes.dashboard}>{m.errorPages.goToDashboard}</Link>
           </Button>
           <Button size="lg" variant="outline" asChild className="min-w-[160px]">
-            <Link href={routes.chat}>Start a chat</Link>
+            <Link href={routes.chat}>{m.errorPages.startChat}</Link>
           </Button>
         </div>
       </main>

@@ -6,7 +6,8 @@
  * order can differ between languages.
  */
 import { auth, common, nav } from "./en/auth";
+import { actions, errorPages, home } from "./en/site";
 
-export const en = { common, nav, auth };
+export const en = { common, nav, auth, home, actions, errorPages };
 
 export type Messages = typeof en;

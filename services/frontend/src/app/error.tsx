@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Illustration } from "@/components/ui/illustration";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 export default function Error({
   error,
@@ -14,6 +15,7 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const { m } = useI18n();
   useEffect(() => {
     console.error(error);
   }, [error]);
@@ -24,15 +26,14 @@ export default function Error({
         name="error"
         className="mb-8 max-h-[220px] w-full max-w-[260px] object-contain"
       />
-      <h1 className="text-2xl font-semibold tracking-tight">Something went wrong</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">{m.errorPages.errorHeading}</h1>
       <p className="mt-3 max-w-[46ch] text-base leading-relaxed text-muted-foreground">
-        An unexpected error occurred. You can try again, or go back to your
-        dashboard.
+        {m.errorPages.errorBody}
       </p>
       <div className="mt-8 flex flex-wrap justify-center gap-3">
-        <Button onClick={reset}>Try again</Button>
+        <Button onClick={reset}>{m.errorPages.tryAgain}</Button>
         <Button variant="outline" asChild>
-          <Link href={routes.dashboard}>Go to dashboard</Link>
+          <Link href={routes.dashboard}>{m.errorPages.goToDashboard}</Link>
         </Button>
       </div>
     </div>

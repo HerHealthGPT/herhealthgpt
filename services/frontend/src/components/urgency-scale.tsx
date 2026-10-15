@@ -1,5 +1,8 @@
+"use client";
+
 import type { ActionCode } from "@/lib/api/types";
 import { actionDisplay } from "@/lib/design/action";
+import { useI18n } from "@/i18n/locale-provider";
 
 /**
  * The four answers a consultation can end with, as an ordered scale.
@@ -21,31 +24,27 @@ import { actionDisplay } from "@/lib/design/action";
 const STEPS = [
   {
     code: "SELF_CARE",
-    detail: "Nothing suggests you need to contact anyone right now.",
     weight: "font-normal text-muted-foreground",
   },
   {
     code: "ROUTINE_APPOINTMENT",
-    detail: "Worth looking into, but it doesn't need attention today.",
     weight: "font-normal text-foreground/80",
   },
   {
     code: "URGENT_SAME_DAY",
-    detail: "This shouldn't wait for a routine appointment.",
     weight: "font-medium text-foreground",
   },
   {
     code: "EMERGENCY",
-    detail: "Seek emergency care immediately.",
     weight: "font-semibold text-primary",
   },
 ] as const satisfies ReadonlyArray<{
   code: ActionCode;
-  detail: string;
   weight: string;
 }>;
 
 export function UrgencyScale({ className }: { className?: string }) {
+  const { m } = useI18n();
   return (
     <ol className={`grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-4 ${className ?? ""}`}>
       {STEPS.map((step, index) => {
@@ -77,9 +76,9 @@ export function UrgencyScale({ className }: { className?: string }) {
               <Icon className="size-4.5" />
             </span>
 
-            <p className={`mt-3 text-sm ${step.weight}`}>{display.heading}</p>
+            <p className={`mt-3 text-sm ${step.weight}`}>{m.actions[step.code].heading}</p>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              {step.detail}
+              {m.actions[step.code].scale}
             </p>
           </li>
         );
