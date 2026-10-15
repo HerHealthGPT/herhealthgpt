@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { usePostAuthRedirect } from "@/hooks/use-post-auth-redirect";
+import { useI18n } from "@/i18n/locale-provider";
 import { register } from "@/lib/api/accounts";
 import { isGoogleAuthConfigured } from "@/lib/google-auth";
 import { routes } from "@/lib/routes";
@@ -27,6 +28,7 @@ import { routes } from "@/lib/routes";
 export default function SignUpPage() {
   const router = useRouter();
   const redirectAfterAuth = usePostAuthRedirect();
+  const { m } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -39,7 +41,7 @@ export default function SignUpPage() {
     setError(null);
 
     if (password !== confirmPassword) {
-      setError(new Error("Passwords do not match."));
+      setError(new Error(m.common.passwordsDoNotMatch));
       return;
     }
 
@@ -59,20 +61,20 @@ export default function SignUpPage() {
 
   return (
     <AuthShell
-      title="Create your account"
+      title={m.auth.signUp.title}
       description={
         showGoogle
-          ? "Continue with Google, or sign up with your email."
-          : "Free to use. We'll send a quick code to confirm your email."
+          ? m.auth.signUp.descriptionWithGoogle
+          : m.auth.signUp.description
       }
       footer={
         <>
-          Already have an account?{" "}
+          {m.auth.signUp.haveAccount}{" "}
           <Link
             href={routes.signIn}
             className="font-medium text-primary hover:underline"
           >
-            Sign in
+            {m.common.signIn}
           </Link>
         </>
       }
@@ -87,19 +89,19 @@ export default function SignUpPage() {
               onSuccess={redirectAfterAuth}
               onError={(message) => setError(new Error(message))}
             />
-            <AuthDivider label="or sign up with email" />
+            <AuthDivider label={m.auth.signUp.divider} />
           </>
         ) : null}
 
         <form onSubmit={(event) => void handleSubmit(event)} className="space-y-5">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <FieldLabel htmlFor="email">{m.common.email}</FieldLabel>
               <Input
                 id="email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={m.common.emailPlaceholder}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -107,7 +109,7 @@ export default function SignUpPage() {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="password">Password</FieldLabel>
+              <FieldLabel htmlFor="password">{m.common.password}</FieldLabel>
               <PasswordInput
                 id="password"
                 autoComplete="new-password"
@@ -115,11 +117,11 @@ export default function SignUpPage() {
                 onChange={(event) => setPassword(event.target.value)}
                 required
               />
-              <FieldDescription>At least 8 characters.</FieldDescription>
+              <FieldDescription>{m.common.passwordHint}</FieldDescription>
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="confirm-password">Confirm password</FieldLabel>
+              <FieldLabel htmlFor="confirm-password">{m.auth.signUp.confirmPassword}</FieldLabel>
               <PasswordInput
                 id="confirm-password"
                 autoComplete="new-password"
@@ -136,14 +138,13 @@ export default function SignUpPage() {
             size="lg"
             disabled={isSubmitting}
           >
-            {isSubmitting ? "Creating account…" : "Create account with email"}
+            {isSubmitting ? m.auth.signUp.submitting : m.auth.signUp.submit}
           </Button>
         </form>
       </div>
 
       <p className="text-center text-xs leading-relaxed text-muted-foreground">
-        This app shares health information. It isn&apos;t a diagnosis and
-        we&apos;re not a doctor. See one if you&apos;re worried.
+        {m.auth.signUp.disclaimer}
       </p>
     </AuthShell>
   );

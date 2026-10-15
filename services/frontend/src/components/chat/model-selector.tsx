@@ -1,6 +1,7 @@
 "use client";
 
 import type { TriageModelOption } from "@/lib/api/types";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ModelSelectorProps = {
   models: TriageModelOption[];
@@ -20,18 +21,19 @@ type ModelSelectorProps = {
  * so it is a real control on a phone and with a keyboard.
  */
 export function ModelSelector({ models, selectedId, onSelect, locked }: ModelSelectorProps) {
+  const { m } = useI18n();
   if (models.length < 2) {
     return null;
   }
 
   return (
     <label className="flex min-w-0 items-center gap-2 text-sm">
-      <span className="sr-only sm:not-sr-only sm:text-muted-foreground">Version</span>
+      <span className="sr-only sm:not-sr-only sm:text-muted-foreground">{m.chat.version}</span>
       <select
         className="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
         value={selectedId}
         disabled={locked}
-        title={locked ? "Start a new chat to try another version" : undefined}
+        title={locked ? m.chat.versionLocked : undefined}
         onChange={(event) => onSelect(event.target.value)}
       >
         {models.map((model) => (

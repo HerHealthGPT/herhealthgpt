@@ -5,14 +5,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Heart, Menu, X } from "lucide-react";
 
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
+import { useI18n } from "@/i18n/locale-provider";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 export function SiteHeader() {
   const { user, isLoading, signOut } = useAuth();
   const pathname = usePathname();
+  const { m } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -36,33 +39,33 @@ export function SiteHeader() {
     <>
       {!isChat ? (
         <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
-          <Link href={routes.chat}>Health chat</Link>
+          <Link href={routes.chat}>{m.nav.healthChat}</Link>
         </Button>
       ) : null}
       {!isDashboard ? (
         <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
-          <Link href={routes.dashboard}>Dashboard</Link>
+          <Link href={routes.dashboard}>{m.nav.dashboard}</Link>
         </Button>
       ) : null}
       {!isSettings ? (
         <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
-          <Link href={routes.settings}>Account</Link>
+          <Link href={routes.settings}>{m.nav.account}</Link>
         </Button>
       ) : null}
       <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
-        <Link href={routes.howItWorks}>How this works</Link>
+        <Link href={routes.howItWorks}>{m.nav.howItWorks}</Link>
       </Button>
       <Button variant="outline" size="sm" onClick={() => void handleSignOut()}>
-        Sign out
+        {m.common.signOut}
       </Button>
     </>
   ) : (
     <>
       <Button variant="ghost" size="sm" asChild onClick={closeMenu}>
-        <Link href={routes.signIn}>Sign in</Link>
+        <Link href={routes.signIn}>{m.common.signIn}</Link>
       </Button>
       <Button size="sm" asChild onClick={closeMenu}>
-        <Link href={routes.signUp}>Sign up</Link>
+        <Link href={routes.signUp}>{m.common.signUp}</Link>
       </Button>
     </>
   );
@@ -88,9 +91,11 @@ export function SiteHeader() {
         ) : (
           <>
             <nav className="hidden min-w-0 items-center gap-1 sm:flex sm:gap-2">
+              <LanguageSwitcher />
               {authLinks}
             </nav>
 
+            <LanguageSwitcher className="ms-auto sm:hidden" />
             <Button
               type="button"
               variant="ghost"
@@ -99,7 +104,7 @@ export function SiteHeader() {
               onClick={() => setMenuOpen((open) => !open)}
               aria-expanded={menuOpen}
               aria-controls="site-header-mobile-menu"
-              aria-label={menuOpen ? "Close menu" : "Open menu"}
+              aria-label={menuOpen ? m.common.closeMenu : m.common.openMenu}
             >
               {menuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
             </Button>
@@ -119,37 +124,37 @@ export function SiteHeader() {
             <>
               {!isChat ? (
                 <Button variant="ghost" className="justify-start" asChild onClick={closeMenu}>
-                  <Link href={routes.chat}>Health chat</Link>
+                  <Link href={routes.chat}>{m.nav.healthChat}</Link>
                 </Button>
               ) : null}
               {!isDashboard ? (
                 <Button variant="ghost" className="justify-start" asChild onClick={closeMenu}>
-                  <Link href={routes.dashboard}>Dashboard</Link>
+                  <Link href={routes.dashboard}>{m.nav.dashboard}</Link>
                 </Button>
               ) : null}
               {!isSettings ? (
                 <Button variant="ghost" className="justify-start" asChild onClick={closeMenu}>
-                  <Link href={routes.settings}>Account</Link>
+                  <Link href={routes.settings}>{m.nav.account}</Link>
                 </Button>
               ) : null}
               <Button variant="ghost" className="justify-start" asChild onClick={closeMenu}>
-                <Link href={routes.howItWorks}>How this works</Link>
+                <Link href={routes.howItWorks}>{m.nav.howItWorks}</Link>
               </Button>
               <Button
                 variant="outline"
                 className="justify-start"
                 onClick={() => void handleSignOut()}
               >
-                Sign out
+                {m.common.signOut}
               </Button>
             </>
           ) : (
             <>
               <Button variant="ghost" className="justify-start" asChild onClick={closeMenu}>
-                <Link href={routes.signIn}>Sign in</Link>
+                <Link href={routes.signIn}>{m.common.signIn}</Link>
               </Button>
               <Button className="justify-start" asChild onClick={closeMenu}>
-                <Link href={routes.signUp}>Sign up</Link>
+                <Link href={routes.signUp}>{m.common.signUp}</Link>
               </Button>
             </>
           )}

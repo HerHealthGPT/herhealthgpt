@@ -285,6 +285,29 @@ Silver labels, not clinician-adjudicated. English only. One run at
 temperature 0. Raw results are in `build/benchmark_run/results.jsonl`, which
 is not tracked.
 
+## Multilingual first turns (2026-10-15)
+
+The same 20 questions in English, Arabic and French (10 seeds in two
+registers, matched by item, from `benchmark_multilingual_v1`), sent as the
+first message of a new consultation, after the reply-language change.
+
+| Measure | English | Arabic | French |
+|---|---|---|---|
+| Valid turns | 20/20 | 20/20 | 20/20 |
+| Reply written in the question's language | 20/20 | 20/20 | 20/20 |
+| Asked / informed / declined | 8 / 9 / 3 | 11 / 6 / 3 | 9 / 9 / 2 |
+
+The same first move (ask, inform or decline) in all three languages for 16
+of 20 items. No item concluded on its first turn in any language, so action
+codes could not be compared; cross-language action agreement is still
+unmeasured. The Arabic turns asked about fever first noticeably more often
+than the English or French ones, and the age question came back twice as
+"ما هو مجموع عمرك؟" ("what is the sum of your age?"), a mistranslation the
+French and English did not have. Reply language was checked by script and
+function words, not by a reader; the wording has not been reviewed by a
+native speaker. The benchmark's gold here is 100% see-doctor, so it says
+nothing about over-triage. Median 40 s per turn.
+
 ## What this shows
 
 The points below describe the first run, before the citation change.

@@ -125,9 +125,9 @@ export function StructuredText({ text }: { text: string }) {
 
         if (block.kind === "list") {
           return (
-            <ul key={index} className="list-disc space-y-1 pl-5">
+            <ul key={index} className="list-disc space-y-1 ps-5">
               {block.items.map((item, itemIndex) => (
-                <li key={itemIndex} className="pl-0.5">
+                <li key={itemIndex} className="ps-0.5">
                   {item}
                 </li>
               ))}

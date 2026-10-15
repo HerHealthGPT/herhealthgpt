@@ -1,5 +1,6 @@
-import { ApiError, NETWORK_ERROR_MESSAGE, parseApiError } from "./errors";
+import { ApiError, networkErrorMessage, parseApiError } from "./errors";
 import { emitSessionExpired } from "./session-events";
+import { currentMessages } from "@/i18n/locale-provider";
 import {
   AUTH_PATHS_WITHOUT_SILENT_REFRESH,
   refreshAccessToken,
@@ -27,6 +28,11 @@ export async function apiRequest<T>(
       credentials: "include",
       headers: {
         ...(json && body !== undefined ? { "Content-Type": "application/json" } : {}),
+        // The interface language, so the server writes emails in it and can
+        // fall back to it for a chat reply (backend app/locale.py).
+        ...(typeof document !== "undefined" && document.documentElement.lang
+          ? { "Accept-Language": document.documentElement.lang }
+          : {}),
         ...headers,
       },
       body:
@@ -37,7 +43,7 @@ export async function apiRequest<T>(
             : (body as BodyInit),
     });
   } catch {
-    throw new ApiError(0, NETWORK_ERROR_MESSAGE);
+    throw new ApiError(0, networkErrorMessage());
   }
 
   if (
@@ -63,6 +69,6 @@ export async function apiRequest<T>(
   try {
     return (await response.json()) as T;
   } catch {
-    throw new ApiError(500, "Something went wrong. Please try again.");
+    throw new ApiError(500, currentMessages().errors.generic);
   }
 }

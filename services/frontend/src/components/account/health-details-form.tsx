@@ -23,6 +23,7 @@ import {
   updateDateOfBirth,
 } from "@/lib/api/accounts";
 import { friendlyApiError } from "@/lib/api/errors";
+import { useI18n } from "@/i18n/locale-provider";
 
 /** Mirrors profile.MAX_HEALTH_NOTE_LENGTH on the backend. */
 const MAX_NOTE_LENGTH = 2000;
@@ -39,9 +40,6 @@ function isoDateYearsAgo(years: number): string {
 
 /** "30_to_39" -> "30 to 39". A reformatting of a real features.yaml value,
  *  never an invented label. */
-function humanizeAgeBand(band: string): string {
-  return band.replace(/_/g, " ").replace("plus", "+");
-}
 
 /**
  * Date of birth and the optional health note, editable after sign-up.
@@ -53,6 +51,8 @@ function humanizeAgeBand(band: string): string {
  */
 export function HealthDetailsForm() {
   const { user, setUser, refreshUser } = useAuth();
+  const { m } = useI18n();
+  const a = m.account;
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [note, setNote] = useState("");
   const [savedNote, setSavedNote] = useState("");
@@ -106,7 +106,7 @@ export function HealthDetailsForm() {
         setSavedNote(trimmedNote);
       }
       await refreshUser();
-      toast.success("Health details updated");
+      toast.success(a.healthUpdated);
     } catch (error) {
       toast.error(friendlyApiError(error));
     } finally {
@@ -117,17 +117,16 @@ export function HealthDetailsForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Your health details</CardTitle>
+        <CardTitle className="text-lg">{a.healthTitle}</CardTitle>
         <CardDescription>
-          Background we use to give better guidance and ask fewer questions.
-          Never a diagnosis.
+          {a.healthLead}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={(event) => void handleSave(event)} className="space-y-6">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="settings-date-of-birth">Date of birth</FieldLabel>
+              <FieldLabel htmlFor="settings-date-of-birth">{m.onboarding.dateOfBirth}</FieldLabel>
               <Input
                 id="settings-date-of-birth"
                 type="date"
@@ -139,15 +138,15 @@ export function HealthDetailsForm() {
               />
               <FieldDescription>
                 {user?.age_band
-                  ? `We use the age range ${humanizeAgeBand(user.age_band)}, not your exact date.`
-                  : "Some conditions are far more likely at one age than another."}
+                  ? a.ageRange(a.ageBand(user.age_band))
+                  : a.ageWhy}
               </FieldDescription>
             </Field>
 
             <Field>
               <FieldLabel htmlFor="settings-health-note">
-                Anything we should know?{" "}
-                <span className="text-muted-foreground">(optional)</span>
+                {m.onboarding.anythingToKnow}{" "}
+                <span className="text-muted-foreground">{m.onboarding.optional}</span>
               </FieldLabel>
               <Textarea
                 id="settings-health-note"
@@ -156,11 +155,10 @@ export function HealthDetailsForm() {
                 maxLength={MAX_NOTE_LENGTH}
                 disabled={loadingNote}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="Conditions you've been told you have, medicines you take, past surgery."
+                placeholder={a.healthNotePlaceholder}
               />
               <FieldDescription>
-                {note.length}/{MAX_NOTE_LENGTH}. Clear the box and save to delete
-                it.
+                {a.noteCount(note.length, MAX_NOTE_LENGTH)}
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -168,14 +166,12 @@ export function HealthDetailsForm() {
           <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
             <Lock className="mt-0.5 size-3.5 shrink-0" />
             <p>
-              Only you see this. We treat it as background, not as symptoms
-              you&apos;re reporting now, and it never replaces what you tell us in
-              a chat.
+              {a.healthPrivacy}
             </p>
           </div>
 
           <Button type="submit" disabled={!isDirty || saving}>
-            {saving ? "Saving…" : "Save changes"}
+            {saving ? m.onboarding.saving : a.save}
           </Button>
         </form>
       </CardContent>

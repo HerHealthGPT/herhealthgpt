@@ -24,6 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # On pull_request events github.sha is the synthetic merge ref, which
+          # can fail this job on unrelated base-branch contamination.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       # No setup-python, no uv, no lockfile: the checker is stdlib-only and
       # ubuntu-latest ships python3. A guard against a supply-chain mistake

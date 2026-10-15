@@ -1,7 +1,10 @@
+"use client";
+
 import { BookOpen, ExternalLink } from "lucide-react";
 
 import type { CitedPassage } from "@/lib/api/types";
 import { sourceLabel } from "@/lib/source-labels";
+import { useI18n } from "@/i18n/locale-provider";
 
 type CitedSourcesProps = {
   passages: CitedPassage[];
@@ -54,7 +57,8 @@ function distinctSources(passages: CitedPassage[]): CitedPassage[] {
 }
 
 function SourceLink({ passage }: { passage: CitedPassage }) {
-  const label = sourceLabel(passage.source_id);
+  const { m } = useI18n();
+  const label = sourceLabel(passage.source_id, m);
   if (!passage.url) {
     return <span className="font-medium text-foreground/70">{label}</span>;
   }
@@ -87,6 +91,7 @@ function SourceLink({ passage }: { passage: CitedPassage }) {
  * so the text is either the source's own words or it is a link.
  */
 export function CitedSources({ passages, variant = "conclusion" }: CitedSourcesProps) {
+  const { m } = useI18n();
   if (passages.length === 0) {
     return null;
   }
@@ -96,7 +101,7 @@ export function CitedSources({ passages, variant = "conclusion" }: CitedSourcesP
   if (variant === "question") {
     return (
       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <span>Based on</span>
+        <span>{m.chat.basedOn}</span>
         {sources.slice(0, MAX_LISTED).map((passage, index) => (
           <span key={passage.id} className="inline-flex items-center gap-2">
             {index > 0 ? <span aria-hidden>·</span> : null}
@@ -117,12 +122,12 @@ export function CitedSources({ passages, variant = "conclusion" }: CitedSourcesP
           opposite signal — people skipped straight past the evidence. */}
       <p className="flex items-center gap-1.5 text-sm font-semibold text-primary">
         <BookOpen className="size-4" aria-hidden />
-        Sources
+        {m.chat.sources}
       </p>
 
       <ul className="space-y-2.5">
         {listed.map((passage) => (
-          <li key={passage.id} className="border-l-2 border-primary/30 pl-3">
+          <li key={passage.id} className="border-s-2 border-primary/30 ps-3">
             <p className="text-xs leading-relaxed text-foreground/80">
               &ldquo;{shortenQuote(passage.text)}&rdquo;
             </p>
@@ -130,7 +135,7 @@ export function CitedSources({ passages, variant = "conclusion" }: CitedSourcesP
               <SourceLink passage={passage} />
               {passage.passage_type === "live_fallback" ? (
                 <span className="text-muted-foreground/80">
-                  · looked up live
+                  · {m.chat.lookedUpLive}
                 </span>
               ) : null}
               {/* Says why this one is here. A warning-sign quote is not
@@ -139,7 +144,7 @@ export function CitedSources({ passages, variant = "conclusion" }: CitedSourcesP
                   to go to hospital should be able to see that. */}
               {passage.passage_type === "red_flag" ? (
                 <span className="text-muted-foreground/80">
-                  · warning sign
+                  · {m.chat.warningSign}
                 </span>
               ) : null}
             </p>
@@ -149,7 +154,7 @@ export function CitedSources({ passages, variant = "conclusion" }: CitedSourcesP
 
       {hidden > 0 ? (
         <p className="text-xs text-muted-foreground">
-          and {hidden} more {hidden === 1 ? "source" : "sources"}
+          {m.chat.moreSources(hidden)}
         </p>
       ) : null}
     </div>

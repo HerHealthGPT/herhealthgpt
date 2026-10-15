@@ -4,6 +4,7 @@ import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
 import { ChatHeader } from "@/components/chat/chat-header";
 import type { TriageModelOption, TriageSessionSummary } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ChatShellProps = {
   children: React.ReactNode;
@@ -40,6 +41,7 @@ export function ChatShell({
   onSelectModel,
   modelLocked = false,
 }: ChatShellProps) {
+  const { m } = useI18n();
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -48,14 +50,14 @@ export function ChatShell({
             type="button"
             className="absolute inset-0 z-20 bg-black/40 lg:hidden"
             onClick={onCloseSidebar}
-            aria-label="Close sidebar"
+            aria-label={m.chat.closeSidebar}
           />
         ) : null}
 
         <aside
           className={cn(
-            "absolute inset-y-0 left-0 z-30 flex h-full w-[min(100%,280px)] flex-col border-r border-border/60 bg-sidebar shadow-xl transition-transform duration-200 ease-out lg:static lg:z-0 lg:h-auto lg:translate-x-0 lg:shadow-none",
-            sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+            "absolute inset-y-0 start-0 z-30 flex h-full w-[min(100%,280px)] flex-col border-e border-border/60 bg-sidebar shadow-xl transition-transform duration-200 ease-out lg:static lg:z-0 lg:h-auto lg:translate-x-0 lg:shadow-none",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full rtl:translate-x-full lg:translate-x-0 rtl:lg:translate-x-0",
           )}
         >
           <ConversationSidebar
@@ -86,8 +88,7 @@ export function ChatShell({
           />
           {models.length > 1 ? (
             <p className="shrink-0 border-b border-border/60 bg-muted/40 px-4 py-1.5 text-center text-xs text-muted-foreground">
-              You are helping us compare versions. Some answers are not checked against our
-              sources. This is information, not medical advice.
+              {m.chat.compareBanner}
             </p>
           ) : null}
           {children}

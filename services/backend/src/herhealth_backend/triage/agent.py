@@ -29,6 +29,7 @@ produces no action code on its own; see :class:`MaxTurnsExceeded`.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -646,6 +647,7 @@ class TriageAgent:
         background: str | None = None,
         observed: Mapping[str, str] | None = None,
         asked: Sequence[str] = (),
+        fallback_language: str | None = None,
     ) -> AgentTurn:
         """One retrieve-then-reason step. Does not mutate ``history``.
 
@@ -730,7 +732,13 @@ class TriageAgent:
             # transcript that is meant to be replayable and auditable.
             system = f"{system}\n\n{background}"
         # Last, so it is the nearest thing to her message: reply in her language.
-        language = detect_language(m.content for m in history if m.role == "user")
+        # Her own words decide. The interface language is used only when none
+        # of her messages has a word in it ("29"), so writing in English with
+        # the interface in Arabic still gets an English reply.
+        her_words = [m.content for m in history if m.role == "user"]
+        language = detect_language(her_words)
+        if language is None and not any(re.search(r"[^\W\d_]", text) for text in her_words):
+            language = fallback_language
         if language is not None:
             system = f"{system}\n\n{language_instruction(language)}"
         result = self.reasoning.decide(system_prompt=system, history=history, context=context)
@@ -753,7 +761,9 @@ class TriageAgent:
             decision = decision.model_copy(update={"observed": {**extracted, **decision.observed}})
 
         if decision.type is DecisionType.INFORM and self.answer_writer is not None:
-            decision, written, context = self._write_answer(decision, history, context)
+            decision, written, context = self._write_answer(
+                decision, history, context, language=language
+            )
             attempts = (*attempts, *written)
 
         return AgentTurn(
@@ -864,6 +874,8 @@ class TriageAgent:
         decision: TriageDecision,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
+        *,
+        language: str | None = None,
     ) -> tuple[TriageDecision, tuple[ReasoningAttempt, ...], Sequence[RetrievedPassage]]:
         """Let the answer writer word an accepted ``inform``.
 
@@ -890,7 +902,7 @@ class TriageAgent:
                     question,
                     sections,
                     decision.answer_text,
-                    language=detect_language(m.content for m in history if m.role == "user"),
+                    language=language,
                 )
             except Exception:
                 # As below: a better answer is never worth a failed turn.

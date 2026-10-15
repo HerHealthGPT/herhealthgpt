@@ -34,6 +34,7 @@ import { conditionLabel } from "@/lib/condition-labels";
 import { userDisplayName } from "@/lib/display-name";
 import { needsFirstTimeOnboarding } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 function DashboardContent() {
   const router = useRouter();
@@ -41,6 +42,8 @@ function DashboardContent() {
   const { data, loading, error, reload } = useDashboardData();
 
   const greetingName = userDisplayName(user);
+  const { m } = useI18n();
+  const d = m.dashboard;
 
   useEffect(() => {
     if (!user || loading) {
@@ -53,16 +56,16 @@ function DashboardContent() {
   }, [user, router, loading, data.hasChats]);
 
   if (user && !loading && needsFirstTimeOnboarding(user.id, data.hasChats)) {
-    return <PageLoading message="One moment…" />;
+    return <PageLoading message={d.oneMoment} />;
   }
 
   const heroSubtitle = data.activeSession
-    ? "You have a chat in progress. Pick up where you left off, or start fresh."
+    ? d.subtitleActive
     : data.hasChats
       ? data.concludedCount > 0
-        ? `You've completed ${data.concludedCount} consultation${data.concludedCount === 1 ? "" : "s"}. Start a new chat anytime.`
-        : "Your chats are saved here. Open one or start something new."
-      : "Tell us how you're feeling — we'll ask a few questions and help you decide what to do next.";
+        ? d.subtitleCompleted(data.concludedCount)
+        : d.subtitleSaved
+      : d.subtitleNew;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -74,9 +77,9 @@ function DashboardContent() {
       <section className="relative overflow-hidden border-b border-border/60 bg-gradient-to-br from-primary/10 via-background to-accent/20">
         <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,15rem)] lg:items-center lg:gap-12">
           <div>
-            <p className="text-sm text-muted-foreground">Your home</p>
+            <p className="text-sm text-muted-foreground">{d.yourHome}</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
-              {greetingName ? `Hi, ${greetingName}` : "Hi there"}
+              {greetingName ? d.greeting(greetingName) : d.greetingAnonymous}
             </h1>
             <p className="mt-3 max-w-2xl text-muted-foreground">{heroSubtitle}</p>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -84,14 +87,14 @@ function DashboardContent() {
                 href={routes.howItWorks}
                 className="font-medium text-primary hover:underline"
               >
-                How this works
+                {m.nav.howItWorks}
               </Link>
               {" · "}
               <Link
                 href={routes.settings}
                 className="font-medium text-primary hover:underline"
               >
-                Account settings
+                {d.accountSettings}
               </Link>
             </p>
           </div>
@@ -112,7 +115,7 @@ function DashboardContent() {
             <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
               <span>{error}</span>
               <Button size="sm" variant="outline" onClick={reload}>
-                Try again
+                {d.tryAgain}
               </Button>
             </AlertDescription>
           </Alert>
@@ -135,22 +138,19 @@ function DashboardContent() {
                 </span>
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-2xl">Health chat</CardTitle>
-                    <StatusBadge variant="ready">Ready</StatusBadge>
+                    <CardTitle className="text-2xl">{d.chatTitle}</CardTitle>
+                    <StatusBadge variant="ready">{d.ready}</StatusBadge>
                   </div>
                   <CardDescription className="mt-1 text-base">
-                    {data.hasChats ? "Continue or start a new conversation" : "Your main way to use HerHealthGPT"}
+                    {data.hasChats ? d.chatContinue : d.chatMain}
                   </CardDescription>
                 </div>
               </div>
               <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Something on your mind? Describe it in your own words. We&apos;ll
-                ask a few follow-up questions if needed, then suggest how soon to
-                see someone — with links to trusted sources. This isn&apos;t a
-                diagnosis.
+                {d.chatPitch}
               </p>
             </CardHeader>
-            <CardContent className="border-t border-border/60 bg-muted/30 px-6 py-5 lg:border-t-0 lg:border-l lg:py-8">
+            <CardContent className="border-t border-border/60 bg-muted/30 px-6 py-5 lg:border-t-0 lg:border-s lg:py-8">
               <Illustration
                 name="conversation"
                 className="mx-auto mb-4 max-h-[130px] w-full max-w-[180px] object-contain"
@@ -159,20 +159,20 @@ function DashboardContent() {
                 <Button size="lg" className="w-full min-w-[200px]" asChild>
                   <Link href={routes.chat}>
                     <Sparkles className="size-4" />
-                    {data.hasChats ? "Open health chat" : "Start a chat"}
+                    {data.hasChats ? d.openChat : d.startChat}
                   </Link>
                 </Button>
                 {data.activeSession ? (
                   <Button variant="outline" size="sm" className="w-full" asChild>
                     <Link href={`${routes.chat}?session=${data.activeSession.id}`}>
-                      Continue your chat
-                      <ArrowRight className="size-4" />
+                      {d.continueChat}
+                      <ArrowRight className="size-4 rtl:rotate-180" />
                     </Link>
                   </Button>
                 ) : null}
               </div>
               <p className="mt-3 text-center text-xs text-muted-foreground">
-                Usually takes a few minutes.
+                {d.takesMinutes}
               </p>
             </CardContent>
           </div>
@@ -184,12 +184,10 @@ function DashboardContent() {
             depend on whether this account has used any of them. */}
         <section>
           <h2 className="text-lg font-semibold tracking-tight">
-            The four answers a chat can end with
+            {d.scaleTitle}
           </h2>
           <p className="mt-1 max-w-[62ch] text-sm text-muted-foreground">
-            We never tell you what you have. Every consultation ends by
-            placing what you described on this scale, with the sources behind
-            it.
+            {d.scaleLead}
           </p>
           <UrgencyScale className="mt-8" />
         </section>
@@ -205,16 +203,15 @@ function DashboardContent() {
         {data.exploredTopics.length > 0 ? (
           <section>
             <h2 className="mb-3 text-lg font-semibold tracking-tight">
-              Topics you&apos;ve explored
+              {d.topicsTitle}
             </h2>
             <p className="mb-4 text-sm text-muted-foreground">
-              Patterns our sources connect to symptoms you&apos;ve discussed — not
-              a diagnosis.
+              {d.topicsLead}
             </p>
             <div className="flex flex-wrap gap-2">
               {data.exploredTopics.map((topic) => (
                 <Badge key={topic} variant="secondary" className="px-3 py-1">
-                  {conditionLabel(topic)}
+                  {conditionLabel(topic, m)}
                 </Badge>
               ))}
             </div>
@@ -227,12 +224,11 @@ function DashboardContent() {
               <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                 <CalendarDays className="size-5" />
               </span>
-              <StatusBadge>Coming later</StatusBadge>
+              <StatusBadge>{d.comingLater}</StatusBadge>
             </div>
-            <CardTitle className="text-base">Health log</CardTitle>
+            <CardTitle className="text-base">{d.healthLog}</CardTitle>
             <CardDescription className="text-sm leading-relaxed">
-              Track your cycle and symptoms over time — we&apos;re building this
-              next.
+              {d.healthLogBody}
             </CardDescription>
           </CardHeader>
         </Card>

@@ -5,6 +5,7 @@ import { ArrowUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useI18n } from "@/i18n/locale-provider";
 
 /** Tallest the composer grows before it starts scrolling instead. Matches
  *  `max-h-40` on the textarea below — the two must agree, or the JS caps the
@@ -25,6 +26,7 @@ export function ChatComposer({
   onSend,
   showWaitHint,
 }: ChatComposerProps) {
+  const { m } = useI18n();
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -78,28 +80,27 @@ export function ChatComposer({
           // the disagreement is what put a scrollbar on an empty composer.
           // One mechanism owns the height, and it is the effect.
           className="field-sizing-fixed max-h-40 min-h-11 resize-none overflow-y-hidden rounded-2xl bg-muted/40 py-3"
-          aria-label="Type what's going on"
+          aria-label={m.chat.composerLabel}
         />
         <Button
           className="mb-0.5 h-10 shrink-0 rounded-full px-4 sm:size-10 sm:px-0"
           disabled={disabled || !value.trim()}
           onClick={handleSend}
-          aria-label="Send message"
+          aria-label={m.chat.sendLabel}
         >
-          <span className="text-sm font-medium sm:hidden">Send</span>
+          <span className="text-sm font-medium sm:hidden">{m.chat.send}</span>
           <ArrowUp className="hidden size-4 sm:block" />
         </Button>
       </div>
       {showWaitHint ? (
         <p className="mt-2 text-center text-xs text-muted-foreground">
-          First reply can take up to a minute — we&apos;ll show progress while you
-          wait.
+          {m.chat.waitHint}
         </p>
       ) : (
         <p className="mt-2 text-center text-[11px] text-muted-foreground/70">
-          <span className="sm:hidden">Tap Send when you&apos;re ready.</span>
+          <span className="sm:hidden">{m.chat.tapSend}</span>
           <span className="hidden sm:inline">
-            Enter to send · Shift+Enter for a new line
+            {m.chat.keyboardHint}
           </span>
         </p>
       )}

@@ -13,6 +13,7 @@ import { ONBOARDING_STEPS } from "@/lib/onboarding-content";
 import { markOnboardingComplete } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
 
 type OnboardingWizardProps = {
   /** First-time intro vs optional review from the menu. */
@@ -22,6 +23,8 @@ type OnboardingWizardProps = {
 export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps) {
   const router = useRouter();
   const { user } = useAuth();
+  const { m } = useI18n();
+  const o = m.onboarding;
   const [step, setStep] = useState(0);
   const isReview = mode === "review";
 
@@ -37,6 +40,7 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
   const current = ONBOARDING_STEPS[step];
   const isLast = step === ONBOARDING_STEPS.length - 1;
   const Icon = current.icon;
+  const words = o.steps[current.id] ?? current;
 
   function finishFirstTime() {
     if (user) markOnboardingComplete(user.id);
@@ -74,11 +78,10 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
         <div className="mx-auto flex w-full max-w-lg flex-1 flex-col px-4 py-10 sm:px-6 sm:py-14">
           <div className="mb-8 text-center">
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              A little about you
+              {o.aboutYou}
             </h1>
             <p className="mt-3 text-base leading-relaxed text-muted-foreground">
-              Two quick things, so we can give you better guidance and ask you
-              fewer questions later.
+              {o.aboutYouLead}
             </p>
           </div>
 
@@ -97,7 +100,7 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
               variant="ghost"
               size="icon"
               onClick={closeReview}
-              aria-label="Close"
+              aria-label={o.close}
             >
               <X className="size-5" />
             </Button>
@@ -126,21 +129,21 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
           </span>
 
           {isReview && step === 0 ? (
-            <p className="mb-2 text-sm font-medium text-primary">About HerHealthGPT</p>
+            <p className="mb-2 text-sm font-medium text-primary">{o.about}</p>
           ) : null}
 
           <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-            {current.title}
+            {words.title}
           </h1>
 
-          {current.body ? (
+          {words.body ? (
             <p className="mt-4 max-w-md text-base leading-relaxed text-muted-foreground">
-              {current.body}
+              {words.body}
             </p>
           ) : null}
 
           {current.bullets ? (
-            <ul className="mt-6 w-full max-w-sm space-y-3 text-left">
+            <ul className="mt-6 w-full max-w-sm space-y-3 text-start">
               {current.bullets.map((bullet, index) => (
                 <li
                   key={bullet}
@@ -175,7 +178,7 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
               className="sm:min-w-[120px]"
               onClick={() => setStep((currentStep) => currentStep - 1)}
             >
-              Back
+              {o.back}
             </Button>
           ) : (
             <div className="hidden sm:block" />
@@ -183,27 +186,27 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
 
           <Button
             size="lg"
-            className="sm:ml-auto sm:min-w-[160px]"
+            className="sm:ms-auto sm:min-w-[160px]"
             onClick={handlePrimaryAction}
           >
             {isReview ? (
               isLast ? (
-                "Got it"
+                o.gotIt
               ) : (
                 <>
-                  Continue
-                  <ArrowRight className="size-4" />
+                  {o.continue}
+                  <ArrowRight className="size-4 rtl:rotate-180" />
                 </>
               )
             ) : isLast ? (
               <>
                 <Sparkles className="size-4" />
-                Go to my dashboard
+                {o.goToDashboard}
               </>
             ) : (
               <>
-                Continue
-                <ArrowRight className="size-4" />
+                {o.continue}
+                <ArrowRight className="size-4 rtl:rotate-180" />
               </>
             )}
           </Button>
@@ -213,20 +216,20 @@ export function OnboardingWizard({ mode = "first-time" }: OnboardingWizardProps)
             her straight back, so offering the escape only produces a loop. */}
         {!isReview && user?.profile_complete ? (
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Ready to go?{" "}
+            {o.readyToGo}{" "}
             <button
               type="button"
               onClick={finishFirstTime}
               className="font-medium text-primary hover:underline"
             >
-              Skip intro — go to dashboard
+              {o.skipIntro}
             </button>
           </p>
         ) : (
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            Ready to chat?{" "}
+            {o.readyToChat}{" "}
             <Link href={routes.chat} className="font-medium text-primary hover:underline">
-              Open health chat
+              {o.openChat}
             </Link>
           </p>
         )}

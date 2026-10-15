@@ -1,3 +1,5 @@
+import { currentMessages } from "@/i18n/locale-provider";
+
 import type { ApiErrorBody, ApiErrorDetail } from "./types";
 
 export class ApiError extends Error {
@@ -12,12 +14,36 @@ export class ApiError extends Error {
   }
 }
 
-export const NETWORK_ERROR_MESSAGE =
-  "We couldn't reach the server. Check your connection and try again.";
+/** Kept for callers that import it; reads the current language each time. */
+export function networkErrorMessage(): string {
+  return currentMessages().errors.network;
+}
+
+/**
+ * The account API answers with fixed English sentences. Translated here by
+ * their exact text, and passed through unchanged when unknown, so a new
+ * sentence on the server shows in English rather than not at all.
+ */
+function translateServerText(text: string): string {
+  return currentMessages().errors.server[text] ?? text;
+}
+
+/** One password rule, from the API's English reason. */
+function translatePasswordReason(reason: string): string {
+  const e = currentMessages().errors;
+  if (reason.startsWith("must be at least")) return e.passwordTooShort;
+  if (reason.startsWith("must be at most")) return e.passwordTooLong;
+  if (reason.startsWith("is too common")) return e.passwordCommon;
+  return reason;
+}
+
+export function translatePasswordReasons(reasons: string[]): string[] {
+  return reasons.map(translatePasswordReason);
+}
 
 export function formatApiError(detail: ApiErrorDetail): string {
   if (typeof detail === "string") {
-    return detail;
+    return translateServerText(detail);
   }
 
   if (Array.isArray(detail)) {
@@ -25,35 +51,35 @@ export function formatApiError(detail: ApiErrorDetail): string {
   }
 
   if ("reasons" in detail && Array.isArray(detail.reasons)) {
-    return detail.reasons.join(" ");
+    return translatePasswordReasons(detail.reasons).join(" ");
   }
 
-  return "Something went wrong. Please try again.";
+  return currentMessages().errors.generic;
 }
 
 /** User-facing message for any API failure (accounts, triage, etc.). */
 export function friendlyApiError(error: unknown): string {
   if (!(error instanceof ApiError)) {
-    return NETWORK_ERROR_MESSAGE;
+    return networkErrorMessage();
   }
 
   if (error.status === 0) {
-    return NETWORK_ERROR_MESSAGE;
+    return networkErrorMessage();
   }
 
   switch (error.status) {
     case 401:
-      return "Your session ended. Please sign in again to continue.";
+      return currentMessages().errors.sessionEnded;
     case 503:
       if (
         typeof error.detail === "string" &&
         error.detail.toLowerCase().includes("google")
       ) {
-        return error.detail;
+        return translateServerText(error.detail);
       }
-      return "Service temporarily unavailable. Try again shortly.";
+      return currentMessages().errors.unavailable;
     case 500:
-      return "Something went wrong. Please try again.";
+      return currentMessages().errors.generic;
     default:
       return formatApiError(error.detail);
   }
@@ -65,36 +91,36 @@ export function friendlyApiError(error: unknown): string {
  */
 export function friendlyTriageError(error: unknown): string {
   if (!(error instanceof ApiError)) {
-    return NETWORK_ERROR_MESSAGE;
+    return networkErrorMessage();
   }
 
   switch (error.status) {
     case 503:
-      return "Chat isn't available right now. Please try again in a little while.";
+      return currentMessages().errors.chatUnavailable;
     case 502:
-      return "That took a wrong turn on our end. Please try again.";
+      return currentMessages().errors.wrongTurn;
     case 504:
-      return "That's taking longer than it should. Please try again.";
+      return currentMessages().errors.tooSlow;
     case 404:
     case 409:
-      return "That conversation isn't available anymore. Start a new chat to continue.";
+      return currentMessages().errors.conversationGone;
     case 422:
-      return "Try adding a few words about what's going on.";
+      return currentMessages().errors.addWords;
     case 401:
-      return "Your session ended. Please sign in again to continue.";
+      return currentMessages().errors.sessionEnded;
     case 405:
-      return "Couldn't delete that chat — the server may need a restart to pick up the latest update.";
+      return currentMessages().errors.deleteFailed;
     case 500:
-      return "Something went wrong. Please try again.";
+      return currentMessages().errors.generic;
     case 0:
-      return NETWORK_ERROR_MESSAGE;
+      return networkErrorMessage();
     default:
       return friendlyApiError(error);
   }
 }
 
 export async function parseApiError(response: Response): Promise<ApiError> {
-  let detail: ApiErrorDetail = "Something went wrong. Please try again.";
+  let detail: ApiErrorDetail = currentMessages().errors.generic;
 
   try {
     const body = (await response.json()) as ApiErrorBody;

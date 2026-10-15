@@ -16,9 +16,12 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/auth-context";
 import { updateProfile } from "@/lib/api/accounts";
 import { friendlyApiError } from "@/lib/api/errors";
+import { useI18n } from "@/i18n/locale-provider";
 
 export function ProfileSettingsForm() {
   const { user, refreshUser, setUser } = useAuth();
+  const { m } = useI18n();
+  const a = m.account;
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -39,7 +42,7 @@ export function ProfileSettingsForm() {
       const updated = await updateProfile(trimmedName || null);
       setUser(updated);
       await refreshUser();
-      toast.success(trimmedName ? "Name updated" : "Name removed");
+      toast.success(trimmedName ? a.nameUpdated : a.nameRemoved);
     } catch (error) {
       toast.error(friendlyApiError(error));
     } finally {
@@ -50,31 +53,31 @@ export function ProfileSettingsForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Your profile</CardTitle>
+        <CardTitle className="text-lg">{a.profileTitle}</CardTitle>
         <CardDescription>
-          This is how we greet you in the app. Your email stays private here.
+          {a.profileLead}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={(event) => void handleSave(event)} className="space-y-6">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="display-name">Name</FieldLabel>
+              <FieldLabel htmlFor="display-name">{a.name}</FieldLabel>
               <Input
                 id="display-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="What should we call you?"
+                placeholder={m.onboarding.namePlaceholder}
                 autoComplete="name"
                 maxLength={80}
               />
               <FieldDescription>
-                Optional. Up to 80 characters.
+                {a.nameHint}
               </FieldDescription>
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="account-email">Sign-in email</FieldLabel>
+              <FieldLabel htmlFor="account-email">{a.signInEmail}</FieldLabel>
               <Input
                 id="account-email"
                 value={user?.email ?? ""}
@@ -83,13 +86,13 @@ export function ProfileSettingsForm() {
                 className="bg-muted/40"
               />
               <FieldDescription>
-                Used to sign in. Contact support if you need to change it.
+                {a.signInEmailHint}
               </FieldDescription>
             </Field>
           </FieldGroup>
 
           <Button type="submit" disabled={!isDirty || saving}>
-            {saving ? "Saving…" : "Save changes"}
+            {saving ? m.onboarding.saving : a.save}
           </Button>
         </form>
       </CardContent>

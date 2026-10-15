@@ -1,3 +1,5 @@
+import type { Messages } from "@/i18n/messages/en";
+
 /** Short display labels for condition ids from knowledge/conditions.yaml. */
 export const CONDITION_LABELS: Record<string, string> = {
   pcos: "PCOS",
@@ -21,6 +23,7 @@ export const CONDITION_LABELS: Record<string, string> = {
   infertility: "Infertility",
 };
 
-export function conditionLabel(id: string): string {
-  return CONDITION_LABELS[id] ?? id.replaceAll("_", " ");
+/** The condition's name, in the interface language when a dictionary is given. */
+export function conditionLabel(id: string, m?: Messages): string {
+  return m?.conditions[id] ?? CONDITION_LABELS[id] ?? id.replaceAll("_", " ");
 }

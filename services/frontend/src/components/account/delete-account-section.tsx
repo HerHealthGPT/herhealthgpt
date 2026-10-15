@@ -18,12 +18,17 @@ import { useAuth } from "@/contexts/auth-context";
 import { deleteAccount } from "@/lib/api/accounts";
 import { friendlyApiError } from "@/lib/api/errors";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
-const CONFIRMATION_WORD = "DELETE";
 
 export function DeleteAccountSection() {
   const router = useRouter();
   const { user, setUser } = useAuth();
+  const { m } = useI18n();
+  const a = m.account;
+  // The word she types, in her language: "DELETE" is no use to someone who
+  // reads Arabic.
+  const CONFIRMATION_WORD = a.deleteWord;
   const [open, setOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -36,7 +41,7 @@ export function DeleteAccountSection() {
     try {
       await deleteAccount();
       setUser(null);
-      toast.success("Your account has been deleted.");
+      toast.success(a.deleted);
       router.replace(routes.home);
     } catch (error) {
       toast.error(friendlyApiError(error));
@@ -55,38 +60,33 @@ export function DeleteAccountSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-destructive">
           <AlertTriangle className="size-4" />
-          Delete account
+          {a.deleteTitle}
         </CardTitle>
         <CardDescription className="text-sm leading-relaxed">
-          Permanently remove your account and every health chat. This cannot be
-          undone.
+          {a.deleteLead}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {!open ? (
           <Button variant="destructive" onClick={() => setOpen(true)}>
-            Delete my account
+            {a.deleteOpen}
           </Button>
         ) : (
           <div className="space-y-4 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
             <p className="text-sm leading-relaxed text-foreground">
-              Your account, credentials, sessions, and all conversations are
-              removed from our live database <strong>immediately</strong>. There
-              is no grace period and no archive.
+              {a.deleteNow}
             </p>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Automated database backups may still hold copies until they roll
-              off. We keep backup retention as short as our infrastructure
-              allows; deleted data is not recoverable through the app.
+              {a.deleteBackups}
             </p>
             {user?.email ? (
               <p className="text-sm text-muted-foreground">
-                Account: <span className="font-medium text-foreground">{user.email}</span>
+                {a.deleteAccountLabel} <span className="font-medium text-foreground">{user.email}</span>
               </p>
             ) : null}
             <div className="space-y-2">
               <label htmlFor="delete-confirm" className="text-sm font-medium">
-                Type {CONFIRMATION_WORD} to confirm
+                {a.deleteConfirm(CONFIRMATION_WORD)}
               </label>
               <Input
                 id="delete-confirm"
@@ -99,14 +99,14 @@ export function DeleteAccountSection() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={handleCancel} disabled={deleting}>
-                Cancel
+                {a.cancel}
               </Button>
               <Button
                 variant="destructive"
                 disabled={!canDelete || deleting}
                 onClick={() => void handleDelete()}
               >
-                {deleting ? "Deleting…" : "Delete permanently"}
+                {deleting ? a.deleting : a.deletePermanently}
               </Button>
             </div>
           </div>

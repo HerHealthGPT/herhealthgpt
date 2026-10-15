@@ -11,8 +11,10 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { requestPasswordReset } from "@/lib/api/accounts";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 export default function ForgotPasswordPage() {
+  const { m } = useI18n();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<unknown>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +28,7 @@ export default function ForgotPasswordPage() {
     try {
       await requestPasswordReset(email);
       setSubmitted(true);
-      toast.success("If that address is registered, a reset code has been sent.");
+      toast.success(m.auth.forgot.sent);
     } catch (submitError) {
       setError(submitError);
     } finally {
@@ -36,17 +38,17 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      title="Reset your password"
+      title={m.auth.forgot.title}
       description={
         submitted
-          ? "Check your inbox for a 6-digit reset code, then continue to set a new password."
-          : "Enter your email and we'll send you a reset code if an account exists."
+          ? m.auth.forgot.descriptionSent
+          : m.auth.forgot.description
       }
       footer={
         <>
-          Remember your password?{" "}
+          {m.auth.forgot.remember}{" "}
           <Link href={routes.signIn} className="font-medium text-primary hover:underline">
-            Sign in
+            {m.common.signIn}
           </Link>
         </>
       }
@@ -54,12 +56,11 @@ export default function ForgotPasswordPage() {
       {submitted ? (
         <div className="space-y-4">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            We won&apos;t tell you whether an email is registered. If you got
-            a code, use the button below to enter it.
+            {m.auth.forgot.privacyNote}
           </p>
           <Button asChild className="w-full" size="lg">
             <Link href={`${routes.resetPassword}?email=${encodeURIComponent(email)}`}>
-              Enter reset code
+              {m.auth.forgot.enterCode}
             </Link>
           </Button>
           <Button
@@ -73,9 +74,7 @@ export default function ForgotPasswordPage() {
                 setIsSubmitting(true);
                 try {
                   await requestPasswordReset(email);
-                  toast.success(
-                    "If that address is registered, a reset code has been sent.",
-                  );
+                  toast.success(m.auth.forgot.sent);
                 } catch (submitError) {
                   setError(submitError);
                 } finally {
@@ -84,7 +83,7 @@ export default function ForgotPasswordPage() {
               })();
             }}
           >
-            {isSubmitting ? "Sending…" : "Resend code"}
+            {isSubmitting ? m.common.sending : m.common.resendCode}
           </Button>
         </div>
       ) : (
@@ -93,12 +92,12 @@ export default function ForgotPasswordPage() {
 
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="email">Email</FieldLabel>
+              <FieldLabel htmlFor="email">{m.common.email}</FieldLabel>
               <Input
                 id="email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@example.com"
+                placeholder={m.common.emailPlaceholder}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
@@ -107,7 +106,7 @@ export default function ForgotPasswordPage() {
           </FieldGroup>
 
           <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-            {isSubmitting ? "Sending…" : "Send reset code"}
+            {isSubmitting ? m.common.sending : m.auth.forgot.submit}
           </Button>
         </form>
       )}

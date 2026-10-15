@@ -13,10 +13,12 @@ import {
   markOnboardingComplete,
 } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 function OnboardingContent() {
   const router = useRouter();
   const { user } = useAuth();
+  const { m } = useI18n();
 
   useEffect(() => {
     if (!user || hasCompletedOnboarding(user.id)) {
@@ -44,7 +46,7 @@ function OnboardingContent() {
   }, [user, router]);
 
   if (user && hasCompletedOnboarding(user.id)) {
-    return <PageLoading message="Taking you to your dashboard…" />;
+    return <PageLoading message={m.dashboard.toDashboard} />;
   }
 
   return <OnboardingWizard mode="first-time" />;

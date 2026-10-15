@@ -1,6 +1,9 @@
+"use client";
+
 import { TriangleAlert } from "lucide-react";
 
 import type { DecisionReasoningModel } from "@/lib/api/types";
+import { useI18n } from "@/i18n/locale-provider";
 
 /**
  * Marks an answer produced by a model that is not cleared to give guidance.
@@ -19,6 +22,7 @@ export function UnreviewedModelNotice({
 }: {
   model?: DecisionReasoningModel;
 }) {
+  const { m } = useI18n();
   if (!model || model.reviewed) {
     return null;
   }
@@ -27,9 +31,7 @@ export function UnreviewedModelNotice({
     <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5 text-xs leading-relaxed text-destructive">
       <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
       <p>
-        <span className="font-medium">{model.label}</span> — for comparison
-        only. This model is not reviewed for triage decisions and tends to
-        conclude before asking enough. Do not act on this answer.
+        {m.chat.unreviewed(model.label)}
       </p>
     </div>
   );

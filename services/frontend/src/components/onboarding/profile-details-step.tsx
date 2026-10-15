@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/auth-context";
 import { completeProfile, saveHealthNote } from "@/lib/api/accounts";
 import { friendlyApiError } from "@/lib/api/errors";
+import { useI18n } from "@/i18n/locale-provider";
 
 /** Mirrors profile.MAX_HEALTH_NOTE_LENGTH on the backend. */
 const MAX_NOTE_LENGTH = 2000;
@@ -58,6 +59,8 @@ type ProfileDetailsStepProps = {
  */
 export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
   const { user, setUser, refreshUser } = useAuth();
+  const { m } = useI18n();
+  const o = m.onboarding;
   const [name, setName] = useState(() => user?.display_name ?? "");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [note, setNote] = useState("");
@@ -93,7 +96,7 @@ export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
   return (
     <form onSubmit={(event) => void handleSubmit(event)} className="w-full space-y-6">
       <Field>
-        <FieldLabel htmlFor="display-name">Your name</FieldLabel>
+        <FieldLabel htmlFor="display-name">{o.yourName}</FieldLabel>
         <Input
           id="display-name"
           type="text"
@@ -101,17 +104,16 @@ export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
           maxLength={80}
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="What should we call you?"
+          placeholder={o.namePlaceholder}
           autoComplete="given-name"
         />
         <FieldDescription>
-          Just so we can address you properly. A first name or a nickname is
-          plenty.
+          {o.nameHint}
         </FieldDescription>
       </Field>
 
       <Field>
-        <FieldLabel htmlFor="date-of-birth">Date of birth</FieldLabel>
+        <FieldLabel htmlFor="date-of-birth">{o.dateOfBirth}</FieldLabel>
         <Input
           id="date-of-birth"
           type="date"
@@ -123,14 +125,13 @@ export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
           autoComplete="bday"
         />
         <FieldDescription>
-          Needed, because age changes our guidance — some conditions are far more
-          likely at one age than another.
+          {o.dobHint}
         </FieldDescription>
       </Field>
 
       <Field>
         <FieldLabel htmlFor="health-note">
-          Anything we should know? <span className="text-muted-foreground">(optional)</span>
+          {o.anythingToKnow} <span className="text-muted-foreground">{o.optional}</span>
         </FieldLabel>
         <Textarea
           id="health-note"
@@ -138,19 +139,17 @@ export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
           value={note}
           maxLength={MAX_NOTE_LENGTH}
           onChange={(event) => setNote(event.target.value)}
-          placeholder="Conditions you've been told you have, medicines you take, past surgery — anything you'd rather not repeat each time."
+          placeholder={o.notePlaceholder}
         />
         <FieldDescription>
-          You can skip this, and change or delete it later in Settings.
+          {o.noteHint}
         </FieldDescription>
       </Field>
 
       <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
         <Lock className="mt-0.5 size-3.5 shrink-0" />
         <p>
-          Only you see this. It gives us background so we ask fewer questions — we
-          never treat it as a diagnosis, and it never replaces what you tell us
-          about how you feel today.
+          {o.privacy}
         </p>
       </div>
 
@@ -162,12 +161,12 @@ export function ProfileDetailsStep({ onComplete }: ProfileDetailsStepProps) {
 
       <Button type="submit" size="lg" className="w-full" disabled={!canSubmit}>
         {saving ? (
-          "Saving…"
+          o.saving
         ) : (
           <>
             <CalendarDays className="size-4" />
-            Continue
-            <ArrowRight className="size-4" />
+            {o.continue}
+            <ArrowRight className="size-4 rtl:rotate-180" />
           </>
         )}
       </Button>

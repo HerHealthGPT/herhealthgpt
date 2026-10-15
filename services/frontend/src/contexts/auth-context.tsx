@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api/errors";
 import { onSessionExpired } from "@/lib/api/session-events";
 import * as accountsApi from "@/lib/api/accounts";
 import type { UserSummary } from "@/lib/api/types";
+import { currentMessages } from "@/i18n/locale-provider";
 
 type AuthContextValue = {
   user: UserSummary | null;
@@ -47,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     return onSessionExpired(() => {
       setUser(null);
-      toast.error("Your session ended. Please sign in again.");
+      toast.error(currentMessages().errors.sessionEnded);
     });
   }, []);
 

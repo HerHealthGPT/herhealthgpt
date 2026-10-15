@@ -18,10 +18,12 @@ import { Input } from "@/components/ui/input";
 import { usePostAuthRedirect } from "@/hooks/use-post-auth-redirect";
 import { resendVerification, verifyEmail } from "@/lib/api/accounts";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 function VerifyEmailForm() {
   const searchParams = useSearchParams();
   const redirectAfterAuth = usePostAuthRedirect();
+  const { m } = useI18n();
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [code, setCode] = useState("");
   const [error, setError] = useState<unknown>(null);
@@ -35,7 +37,7 @@ function VerifyEmailForm() {
 
     try {
       const user = await verifyEmail(email, code);
-      toast.success("Email verified. Welcome!");
+      toast.success(m.auth.verify.verified);
       await redirectAfterAuth(user);
     } catch (submitError) {
       setError(submitError);
@@ -50,7 +52,7 @@ function VerifyEmailForm() {
 
     try {
       await resendVerification(email);
-      toast.success("If that address is registered, a new code has been sent.");
+      toast.success(m.auth.verify.resent);
     } catch (submitError) {
       setError(submitError);
     } finally {
@@ -60,16 +62,16 @@ function VerifyEmailForm() {
 
   return (
     <AuthShell
-      title="Verify your email"
-      description="We sent a 6-digit code to your email. Enter it below."
+      title={m.auth.verify.title}
+      description={m.auth.verify.description}
       footer={
         <>
-          Already verified?{" "}
+          {m.auth.verify.alreadyVerified}{" "}
           <Link
             href={routes.signIn}
             className="font-medium text-primary hover:underline"
           >
-            Sign in
+            {m.common.signIn}
           </Link>
         </>
       }
@@ -79,7 +81,7 @@ function VerifyEmailForm() {
 
         <FieldGroup>
           <Field>
-            <FieldLabel htmlFor="email">Email</FieldLabel>
+            <FieldLabel htmlFor="email">{m.common.email}</FieldLabel>
             <Input
               id="email"
               type="email"
@@ -91,7 +93,7 @@ function VerifyEmailForm() {
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="code">Verification code</FieldLabel>
+            <FieldLabel htmlFor="code">{m.auth.verify.code}</FieldLabel>
             <Input
               id="code"
               type="text"
@@ -105,14 +107,13 @@ function VerifyEmailForm() {
               required
             />
             <FieldDescription>
-              Check your inbox and spam folder. Codes expire after a short time —
-              tap resend below if yours ran out.
+              {m.auth.verify.codeHint}
             </FieldDescription>
           </Field>
         </FieldGroup>
 
         <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-          {isSubmitting ? "Verifying…" : "Verify email"}
+          {isSubmitting ? m.auth.verify.submitting : m.auth.verify.submit}
         </Button>
       </form>
 
@@ -124,7 +125,7 @@ function VerifyEmailForm() {
           disabled={isResending || !email}
           onClick={() => void handleResend()}
         >
-          {isResending ? "Sending…" : "Resend code"}
+          {isResending ? m.common.sending : m.common.resendCode}
         </Button>
       </div>
     </AuthShell>
@@ -135,7 +136,7 @@ export default function VerifyEmailPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex flex-1 items-center justify-center p-8">Loading…</div>
+        <div className="flex flex-1 items-center justify-center p-8">…</div>
       }
     >
       <VerifyEmailForm />

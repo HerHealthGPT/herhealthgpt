@@ -8,6 +8,7 @@ import { signInWithGoogle } from "@/lib/api/accounts";
 import { friendlyApiError } from "@/lib/api/errors";
 import { googleClientId, isGoogleAuthConfigured } from "@/lib/google-auth";
 import type { UserSummary } from "@/lib/api/types";
+import { useI18n } from "@/i18n/locale-provider";
 
 type GoogleSignInButtonProps = {
   onSuccess: (user: UserSummary) => void | Promise<void>;
@@ -21,6 +22,7 @@ function GoogleSignInInner({
   disabled,
 }: GoogleSignInButtonProps) {
   const [loading, setLoading] = useState(false);
+  const { m } = useI18n();
   const clientId = googleClientId();
 
   if (!clientId) {
@@ -53,19 +55,19 @@ function GoogleSignInInner({
               return;
             }
             if (!response.credential) {
-              onError("Google sign-in did not return a credential.");
+              onError(m.auth.google.noCredential);
               return;
             }
             await handleCredential(response.credential);
           }}
           onError={() => {
-            onError("Google sign-in was cancelled or failed.");
+            onError(m.auth.google.cancelled);
           }}
         />
       </div>
       {loading ? (
         <p className="text-center text-xs text-muted-foreground">
-          Signing you in…
+          {m.auth.google.signingIn}
         </p>
       ) : null}
     </div>
@@ -93,14 +95,15 @@ type AuthDividerProps = {
   label?: string;
 };
 
-export function AuthDivider({ label = "or use email" }: AuthDividerProps) {
+export function AuthDivider({ label }: AuthDividerProps) {
+  const { m } = useI18n();
   return (
     <div className="relative">
       <div className="absolute inset-0 flex items-center">
         <Separator />
       </div>
       <div className="relative flex justify-center text-xs uppercase">
-        <span className="bg-card px-2 text-muted-foreground">{label}</span>
+        <span className="bg-card px-2 text-muted-foreground">{label ?? m.auth.google.divider}</span>
       </div>
     </div>
   );

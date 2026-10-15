@@ -1,4 +1,5 @@
 import type { CitedPassage, TriageSessionDetail } from "@/lib/api/types";
+import { currentMessages } from "@/i18n/locale-provider";
 import { conditionLabel } from "@/lib/condition-labels";
 
 export type HealthArticle = {
@@ -164,7 +165,7 @@ function passageToArticle(
 
   return {
     id: `chat-${passage.id}`,
-    title: passage.citation || "From your recent chat",
+    title: passage.citation || currentMessages().articles.fromRecentChat,
     excerpt,
     url: passage.url,
     source_id: passage.source_id,
@@ -214,8 +215,8 @@ export function buildArticleRecommendations(
       const conditions = message.decision.matching_conditions;
       const reason =
         conditions.length > 0
-          ? `Related to ${conditionLabel(conditions[0])} from your chat`
-          : "Cited in your recent chat";
+          ? currentMessages().articles.relatedTo(conditionLabel(conditions[0], currentMessages()))
+          : currentMessages().articles.citedRecently;
 
       for (const passage of message.decision.cited_passages) {
         if (!passage.url || seen.has(passage.url)) continue;
@@ -244,7 +245,7 @@ export function buildArticleRecommendations(
     articles.push({
       ...article,
       reason: personalized
-        ? `Based on topics from your chats`
+        ? currentMessages().articles.basedOnTopics
         : undefined,
     });
     if (articles.length >= limit) break;

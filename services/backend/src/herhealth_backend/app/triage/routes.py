@@ -40,6 +40,7 @@ from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.profile import health_note_for
 from herhealth_backend.app.config import reasoning_timeout as configured_reasoning_timeout
 from herhealth_backend.app.db import Database
+from herhealth_backend.app.locale import LANGUAGE_NAMES, current_language
 from herhealth_backend.app.triage.models import ConsultationSession
 from herhealth_backend.app.triage.models import Message as MessageRow
 from herhealth_backend.triage.age_bands import age_band_for
@@ -371,6 +372,12 @@ async def _run_turn(
                         background=background,
                         observed=observed,
                         asked=loaded.asked,
+                        # Used only when her messages show no language of their own.
+                        fallback_language=(
+                            LANGUAGE_NAMES[current_language()]
+                            if current_language() != "en"
+                            else None
+                        ),
                     ),
                 ),
                 timeout=REASONING_TIMEOUT_SECONDS,

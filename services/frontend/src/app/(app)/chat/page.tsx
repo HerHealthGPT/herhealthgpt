@@ -35,6 +35,7 @@ import type {
 import { useAuth } from "@/contexts/auth-context";
 import { userDisplayName } from "@/lib/display-name";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ChatEntry =
   | {
@@ -178,6 +179,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
   const router = useRouter();
   const { user } = useAuth();
   const greetingName = userDisplayName(user);
+  const { m } = useI18n();
 
   const [entries, setEntries] = useState<ChatEntry[]>([GREETING]);
   const [sessionId, setSessionId] = useState<string | null>(requestedSessionId);
@@ -215,8 +217,8 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
 
   const thinkingTurnLabel =
     userTurnCount === 0
-      ? "First question — this usually takes 15–60 seconds"
-      : `Follow-up ${userTurnCount + 1} — still checking sources`;
+      ? m.chat.firstQuestionWait
+      : m.chat.followUpWait(userTurnCount + 1);
 
   const reloadSessions = useCallback(async () => {
     try {
@@ -316,7 +318,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
       } catch (error) {
         if (!cancelled) {
           setErrorMessage(
-            "We couldn't open that chat. Start a new one below — we're still here to help.",
+            m.chat.couldNotOpen,
           );
           setSessionId(null);
           setSessionStatus(null);
@@ -431,7 +433,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
         // Drop it immediately so the row cannot be clicked again while the
         // refetch is in flight...
         setSessions((current) => current.filter((session) => session.id !== sessionIdToDelete));
-        toast.success("Chat deleted");
+        toast.success(m.chat.chatDeleted);
 
         if (sessionId === sessionIdToDelete || requestedSessionId === sessionIdToDelete) {
           // Deleting the chat you are reading. `ChatPageContent` keys this
@@ -480,7 +482,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-6"
         >
           <div className="flex flex-col gap-4">
-            {isLoadingSession ? <ThinkingIndicator label="Loading conversation…" /> : null}
+            {isLoadingSession ? <ThinkingIndicator label={m.chat.loadingConversation} /> : null}
 
             {showStarters ? (
               <ChatStarterPrompts disabled={isSending} onSelect={handleSend} />
@@ -492,7 +494,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
                   <ChatMessage
                     key={entry.id}
                     role={entry.role}
-                    text={entryText(entry, greetingName)}
+                    text={entry.id === "greeting" ? m.chat.greeting(greetingName) : entryText(entry, greetingName)}
                     citedPassages={entry.citedPassages}
                     rationale={entry.rationale}
                     reasoningModel={entry.reasoningModel}
@@ -548,11 +550,11 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
                 className="mx-auto mb-3 w-24"
               />
               <p className="mb-3 text-center text-sm text-muted-foreground">
-                This chat is complete. Start a new one if something else comes up.
+                {m.chat.complete}
               </p>
               <Button size="lg" className="w-full" onClick={handleNewChat}>
                 <MessageSquarePlus className="size-4" />
-                Start a new chat
+                {m.chat.startNewChat}
               </Button>
             </div>
           ) : (
@@ -560,8 +562,8 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
               disabled={isSending || isLoadingSession}
               placeholder={
                 entries.length <= 1
-                  ? "Tell me what's going on…"
-                  : "Type your reply…"
+                  ? m.chat.placeholderFirst
+                  : m.chat.placeholderReply
               }
               showWaitHint={userTurnCount === 0 && !isSending && !isLoadingSession}
               onSend={handleSend}
@@ -573,8 +575,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
               longer this gets the faster it becomes furniture nobody reads,
               and the "not a diagnosis" half is the part that has to land. */}
           <p className="px-4 pb-3 text-center text-xs text-muted-foreground">
-            HerHealthGPT can make mistakes. It gives urgency guidance, not a
-            diagnosis.
+            {m.chat.footer}
           </p>
         </div>
       </div>
