@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { MessageCircle } from "lucide-react";
 
@@ -6,17 +8,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { TriageSessionSummary } from "@/lib/api/types";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
+import type { Locale } from "@/i18n/config";
 
-function formatWhen(iso: string): string {
+function formatWhen(iso: string, locale: Locale): string {
   const date = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (diffDays < 7) {
+    // "today", "yesterday", "3 days ago", in her language and its plurals.
+    return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(-diffDays, "day");
+  }
+  return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 type RecentChatsSectionProps = {
@@ -26,18 +31,19 @@ type RecentChatsSectionProps = {
 
 export function RecentChatsSection({ sessions, loading }: RecentChatsSectionProps) {
   const recent = sessions.slice(0, 5);
+  const { m, locale } = useI18n();
 
   if (!loading && recent.length === 0) return null;
 
   return (
     <section>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Recent chats</h2>
+        <h2 className="text-lg font-semibold tracking-tight">{m.dashboard.recentChats}</h2>
         <Link
           href={routes.chat}
           className="text-sm font-medium text-primary hover:underline"
         >
-          View all
+          {m.dashboard.viewAll}
         </Link>
       </div>
 
@@ -62,18 +68,18 @@ export function RecentChatsSection({ sessions, loading }: RecentChatsSectionProp
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
-                    {session.preview || "Health chat"}
+                    {session.preview || m.dashboard.chatTitle}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {formatWhen(session.created_at)}
+                    {formatWhen(session.created_at, locale)}
                   </p>
                 </div>
                 {session.status === "concluded" ? (
                   <Badge variant="secondary" className="shrink-0 text-[10px]">
-                    Done
+                    {m.dashboard.done}
                   </Badge>
                 ) : (
-                  <Badge className="shrink-0 text-[10px]">In progress</Badge>
+                  <Badge className="shrink-0 text-[10px]">{m.dashboard.inProgress}</Badge>
                 )}
               </Link>
             </li>

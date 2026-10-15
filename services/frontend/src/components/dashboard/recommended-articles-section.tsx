@@ -1,8 +1,11 @@
+"use client";
+
 import { BookOpen } from "lucide-react";
 
 import { ArticleCard } from "@/components/dashboard/article-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { HealthArticle } from "@/lib/health-articles";
+import { useI18n } from "@/i18n/locale-provider";
 
 type RecommendedArticlesSectionProps = {
   articles: HealthArticle[];
@@ -15,6 +18,8 @@ export function RecommendedArticlesSection({
   loading,
   personalized,
 }: RecommendedArticlesSectionProps) {
+  const { m, locale } = useI18n();
+  const d = m.dashboard;
   return (
     <section>
       <div className="mb-4 flex items-end justify-between gap-3">
@@ -22,13 +27,12 @@ export function RecommendedArticlesSection({
           <div className="flex items-center gap-2">
             <BookOpen className="size-5 text-primary" />
             <h2 className="text-lg font-semibold tracking-tight">
-              {personalized ? "Recommended for you" : "Explore trusted topics"}
+              {personalized ? d.recommended : d.explore}
             </h2>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            {personalized
-              ? "Articles from sources we cite in your chats, plus related reading."
-              : "Hand-picked from MedlinePlus, NICHD, and Office on Women's Health."}
+            {personalized ? d.recommendedLead : d.exploreLead}
+            {locale !== "en" ? ` ${d.articlesInEnglish}` : null}
           </p>
         </div>
       </div>
@@ -48,8 +52,7 @@ export function RecommendedArticlesSection({
       )}
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Information only — not medical advice. We never diagnose. Always see a
-        clinician if you&apos;re worried.
+        {d.articlesDisclaimer}
       </p>
     </section>
   );

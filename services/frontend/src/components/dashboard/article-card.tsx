@@ -1,9 +1,12 @@
+"use client";
+
 import Image from "next/image";
 import { ExternalLink } from "lucide-react";
 
 import type { HealthArticle } from "@/lib/health-articles";
 import { sourceLabel } from "@/lib/source-labels";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ArticleCardProps = {
   article: HealthArticle;
@@ -16,6 +19,7 @@ type ArticleCardProps = {
  */
 export function ArticleCard({ article, className }: ArticleCardProps) {
   const hasCover = Boolean(article.cover_image_url);
+  const { m } = useI18n();
 
   return (
     <a
@@ -52,7 +56,7 @@ export function ArticleCard({ article, className }: ArticleCardProps) {
 
         <span
           className={cn(
-            "absolute left-3 top-3 z-10 inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm",
+            "absolute start-3 top-3 z-10 inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium backdrop-blur-sm",
             hasCover
               ? "bg-background/90 text-foreground"
               : "bg-background/80 text-muted-foreground",
@@ -61,8 +65,8 @@ export function ArticleCard({ article, className }: ArticleCardProps) {
           {sourceLabel(article.source_id)}
         </span>
         {article.origin === "chat" ? (
-          <span className="absolute right-3 top-3 z-10 rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
-            From your chat
+          <span className="absolute end-3 top-3 z-10 rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
+            {m.dashboard.fromYourChat}
           </span>
         ) : null}
       </div>
@@ -78,8 +82,8 @@ export function ArticleCard({ article, className }: ArticleCardProps) {
           <p className="text-[10px] text-primary/80">{article.reason}</p>
         ) : null}
         <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary">
-          Read on {sourceLabel(article.source_id)}
-          <ExternalLink className="size-3 transition-transform group-hover:translate-x-0.5" />
+          {m.dashboard.readOn(sourceLabel(article.source_id))}
+          <ExternalLink className="size-3 transition-transform group-hover:translate-x-0.5 rtl:group-hover:-translate-x-0.5" />
         </span>
       </div>
     </a>

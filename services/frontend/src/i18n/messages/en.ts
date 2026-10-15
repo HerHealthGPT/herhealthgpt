@@ -7,7 +7,8 @@
  */
 import { auth, common, nav } from "./en/auth";
 import { actions, errorPages, home } from "./en/site";
+import { conditions, dashboard } from "./en/dashboard";
 
-export const en = { common, nav, auth, home, actions, errorPages };
+export const en = { common, nav, auth, home, actions, errorPages, dashboard, conditions };
 
 export type Messages = typeof en;

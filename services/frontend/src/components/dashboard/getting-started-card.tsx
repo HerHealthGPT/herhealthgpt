@@ -17,6 +17,7 @@ import {
   markGettingStartedDismissed,
 } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 type GettingStartedSectionProps = {
   userId: string;
@@ -37,6 +38,8 @@ export function GettingStartedSection({
   loading,
 }: GettingStartedSectionProps) {
   const [showComplete, setShowComplete] = useState(false);
+  const { m } = useI18n();
+  const d = m.dashboard;
 
   useEffect(() => {
     if (loading || !hasChats || hasDismissedGettingStarted(userId)) {
@@ -60,16 +63,15 @@ export function GettingStartedSection({
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="size-5 text-primary" />
-            <CardTitle className="text-base">You&apos;re all set</CardTitle>
+            <CardTitle className="text-base">{d.allSet}</CardTitle>
           </div>
           <CardDescription className="text-sm leading-relaxed">
-            Your first health chat is saved. This dashboard will show recent
-            conversations and reading from trusted sources as you go.
+            {d.allSetBody}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Button size="sm" onClick={dismissComplete}>
-            Got it
+            {d.gotIt}
           </Button>
         </CardContent>
       </Card>
@@ -83,17 +85,16 @@ export function GettingStartedSection({
   return (
     <Card className="border-dashed border-primary/30 bg-muted/20">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">One step left</CardTitle>
+        <CardTitle className="text-base">{d.oneStepLeft}</CardTitle>
         <CardDescription className="text-sm leading-relaxed">
-          Start a health chat when you&apos;re ready. We&apos;ll ask a few
-          questions and help you decide what to do next.
+          {d.oneStepLeftBody}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Button asChild>
           <Link href={routes.chat}>
             <MessageCircle className="size-4" />
-            Start your first chat
+            {d.startFirstChat}
             <Sparkles className="size-4" />
           </Link>
         </Button>

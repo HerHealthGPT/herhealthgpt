@@ -2,5 +2,6 @@
 import type { Messages } from "./en";
 import { auth, common, nav } from "./ar/auth";
 import { actions, errorPages, home } from "./ar/site";
+import { conditions, dashboard } from "./ar/dashboard";
 
-export const ar: Messages = { common, nav, auth, home, actions, errorPages };
+export const ar: Messages = { common, nav, auth, home, actions, errorPages, dashboard, conditions };
