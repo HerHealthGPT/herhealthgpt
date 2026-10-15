@@ -1,4 +1,4 @@
-import type { AuthMessages, CommonMessages, NavMessages } from "../en/auth";
+import type { AuthMessages, CommonMessages, ErrorMessages, NavMessages } from "../en/auth";
 
 export const common: CommonMessages = {
   appName: "HerHealthGPT",
@@ -110,4 +110,33 @@ export const auth: AuthMessages = {
     almostThere: "Presque fini…",
     oneThingFirst: "Juste une chose d'abord…",
   },
+};
+
+export const errors: ErrorMessages = {
+  generic: "Une erreur s'est produite. Veuillez réessayer.",
+  network: "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+  sessionEnded: "Votre session a expiré. Reconnectez-vous pour continuer.",
+  unavailable: "Service temporairement indisponible. Réessayez dans un instant.",
+  chatUnavailable: "La discussion n'est pas disponible pour le moment. Réessayez un peu plus tard.",
+  wrongTurn: "Un problème est survenu de notre côté. Veuillez réessayer.",
+  tooSlow: "Cela prend plus de temps que prévu. Veuillez réessayer.",
+  conversationGone: "Cette discussion n'est plus disponible. Commencez-en une nouvelle pour continuer.",
+  addWords: "Ajoutez quelques mots sur ce qui se passe.",
+  deleteFailed: "Impossible de supprimer cette discussion — le serveur doit peut-être redémarrer pour appliquer la dernière mise à jour.",
+  passwordTooShort: "doit comporter au moins 8 caractères",
+  passwordTooLong: "dépasse la longueur maximale",
+  passwordCommon: "est trop courant pour être utilisé comme mot de passe",
+  /** The account API's fixed English sentences, by their exact text. */
+  server: {
+    "This email address is already registered.": "Cette adresse e-mail est déjà enregistrée.",
+    "Incorrect email address or password.": "Adresse e-mail ou mot de passe incorrect.",
+    "Too many attempts. Try again later.": "Trop de tentatives. Réessayez plus tard.",
+    "Not signed in.": "Non connectée.",
+    "That code is incorrect.": "Ce code est incorrect.",
+    "This code has expired. Request a new one.": "Ce code a expiré. Demandez-en un nouveau.",
+    "Your Google sign-in could not be verified.": "Votre connexion Google n'a pas pu être vérifiée.",
+    "Signing in with Google is not available yet.": "La connexion avec Google n'est pas encore disponible.",
+    "This account signs in with Google. There is no password to reset.": "Ce compte se connecte avec Google. Il n'y a pas de mot de passe à réinitialiser.",
+    "Name must be between 1 and 80 characters.": "Le prénom doit comporter entre 1 et 80 caractères.",
+  } as Record<string, string>,
 };

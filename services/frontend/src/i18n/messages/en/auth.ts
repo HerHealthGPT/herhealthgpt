@@ -113,3 +113,34 @@ export const auth = {
 export type CommonMessages = typeof common;
 export type NavMessages = typeof nav;
 export type AuthMessages = typeof auth;
+
+export const errors = {
+  generic: "Something went wrong. Please try again.",
+  network: "We couldn't reach the server. Check your connection and try again.",
+  sessionEnded: "Your session ended. Please sign in again to continue.",
+  unavailable: "Service temporarily unavailable. Try again shortly.",
+  chatUnavailable: "Chat isn't available right now. Please try again in a little while.",
+  wrongTurn: "That took a wrong turn on our end. Please try again.",
+  tooSlow: "That's taking longer than it should. Please try again.",
+  conversationGone: "That conversation isn't available anymore. Start a new chat to continue.",
+  addWords: "Try adding a few words about what's going on.",
+  deleteFailed: "Couldn't delete that chat — the server may need a restart to pick up the latest update.",
+  passwordTooShort: "must be at least 8 characters long",
+  passwordTooLong: "must be at most the maximum length",
+  passwordCommon: "is too common to be used as a password",
+  /** The account API's fixed English sentences, by their exact text. */
+  server: {
+    "This email address is already registered.": "This email address is already registered.",
+    "Incorrect email address or password.": "Incorrect email address or password.",
+    "Too many attempts. Try again later.": "Too many attempts. Try again later.",
+    "Not signed in.": "Not signed in.",
+    "That code is incorrect.": "That code is incorrect.",
+    "This code has expired. Request a new one.": "This code has expired. Request a new one.",
+    "Your Google sign-in could not be verified.": "Your Google sign-in could not be verified.",
+    "Signing in with Google is not available yet.": "Signing in with Google is not available yet.",
+    "This account signs in with Google. There is no password to reset.": "This account signs in with Google. There is no password to reset.",
+    "Name must be between 1 and 80 characters.": "Name must be between 1 and 80 characters.",
+  } as Record<string, string>,
+};
+
+export type ErrorMessages = typeof errors;

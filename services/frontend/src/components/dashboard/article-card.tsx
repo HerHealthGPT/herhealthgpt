@@ -73,10 +73,10 @@ export function ArticleCard({ article, className }: ArticleCardProps) {
 
       <div className="flex flex-1 flex-col gap-2 p-4">
         <h3 className="line-clamp-2 text-sm font-semibold leading-snug tracking-tight group-hover:text-primary">
-          {article.title}
+          {m.articles.items[article.id]?.title ?? article.title}
         </h3>
         <p className="line-clamp-3 flex-1 text-xs leading-relaxed text-muted-foreground">
-          {article.excerpt}
+          {m.articles.items[article.id]?.excerpt ?? article.excerpt}
         </p>
         {article.reason ? (
           <p className="text-[10px] text-primary/80">{article.reason}</p>

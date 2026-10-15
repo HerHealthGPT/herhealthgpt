@@ -1,4 +1,4 @@
-import type { DashboardMessages } from "../en/dashboard";
+import type { ArticleMessages, DashboardMessages } from "../en/dashboard";
 
 /** Arabic plurals have more than two forms; these cover the counts shown here. */
 function consultations(count: number): string {
@@ -81,4 +81,22 @@ export const conditions: Record<string, string> = {
   pelvic_organ_prolapse: "هبوط أعضاء الحوض",
   iron_deficiency_anaemia: "نقص الحديد",
   infertility: "صعوبة الإنجاب",
+};
+
+/** Curated article titles and summaries; the pages themselves are in English. */
+export const articles: ArticleMessages = {
+  items: {
+  menstruation: { title: "دورتكِ الشهرية", excerpt: "كيف تبدو الدورة الطبيعية، والتغيّرات الشائعة، ومتى يجب مراجعة طبيب." },
+  endometriosis: { title: "الانتباذ البطاني الرحمي (بطانة الرحم المهاجرة)", excerpt: "الأعراض والأسباب، ومتى يحتاج ألم الحوض أثناء الدورة إلى فحص أدق." },
+  pcos: { title: "متلازمة تكيّس المبايض", excerpt: "عدم انتظام الدورة، والتغيّرات الهرمونية، وما تقوله المصادر عن هذه المتلازمة." },
+  fibroids: { title: "الأورام الليفية في الرحم", excerpt: "النزيف الغزير، والضغط في الحوض، ومتى قد يستحق الأمر النقاش مع مختص." },
+  uti: { title: "التهابات المسالك البولية", excerpt: "الحرقة والإلحاح، ومتى تحتاج أعراض المسالك البولية إلى علاج." },
+  infertility: { title: "صعوبة الإنجاب", excerpt: "محاولة الإنجاب، والأسباب الشائعة، ومتى يجب التحدث إلى مختص." },
+  thyroid: { title: "أمراض الغدة الدرقية", excerpt: "كيف تؤثر مشاكل الغدة الدرقية في الدورة والطاقة والوزن." },
+  sti: { title: "العدوى المنقولة جنسيًا", excerpt: "الأعراض والفحوص، ولماذا قد تحتاج الإفرازات أو ألم الحوض إلى فحص." },
+} as Record<string, { title: string; excerpt: string }>,
+  relatedTo: (label: string) => `مرتبط بـ${label} من محادثتكِ`,
+  citedRecently: "ورد في محادثتكِ الأخيرة",
+  basedOnTopics: "بناءً على موضوعات من محادثاتكِ",
+  fromRecentChat: "من محادثتكِ الأخيرة",
 };

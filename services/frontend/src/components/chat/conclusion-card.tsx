@@ -72,12 +72,12 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
         {decision.matching_conditions.length > 0 ? (
           <div>
             <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Possible patterns from our sources (not a diagnosis)
+              {m.chat.patterns}
             </p>
             <div className="flex flex-wrap gap-1.5">
               {decision.matching_conditions.map((conditionId) => (
                 <Badge key={conditionId} variant="secondary">
-                  {humanizeConditionId(conditionId)}
+                  {m.conditions[conditionId] ?? humanizeConditionId(conditionId)}
                 </Badge>
               ))}
             </div>
@@ -88,8 +88,7 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
 
         {decision.red_flag_id !== null ? (
           <p className="text-xs leading-relaxed text-muted-foreground">
-            This is a symptom pattern doctors check promptly, because it has
-            several possible causes and some need ruling out quickly.
+            {m.chat.redFlagNote}
           </p>
         ) : null}
 
@@ -106,12 +105,10 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
           />
           <div className="text-xs leading-relaxed">
             <p className="font-bold tracking-wide text-amber-700 dark:text-amber-400">
-              DISCLAIMER
+              {m.chat.disclaimerTitle}
             </p>
             <p className="mt-1 text-foreground/90">
-              This is urgency guidance from cited sources, not a diagnosis.
-              We&apos;re an AI tool, not a clinician, and we can be wrong — if
-              you&apos;re ever unsure, please see a doctor.
+              {m.chat.disclaimer}
             </p>
           </div>
         </div>
@@ -122,7 +119,7 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
           onClick={onStartNewChat}
           className={display.tone !== "calm" ? buttonClassesForTone(display.tone) : undefined}
         >
-          Start a new chat
+          {m.chat.startNewChat}
         </Button>
       </CardFooter>
     </Card>

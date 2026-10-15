@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { TriageModelOption } from "@/lib/api/types";
 
 import { routes } from "@/lib/routes";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ChatHeaderProps = {
   onToggleSidebar: () => void;
@@ -47,6 +48,7 @@ export function ChatHeader({
   onSelectModel,
   modelLocked = false,
 }: ChatHeaderProps) {
+  const { m } = useI18n();
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-background/95 px-3 backdrop-blur sm:px-4">
       <Button
@@ -54,7 +56,7 @@ export function ChatHeader({
         size="icon"
         className="shrink-0 lg:hidden"
         onClick={onToggleSidebar}
-        aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+        aria-label={sidebarOpen ? m.chat.closeSidebar : m.chat.openSidebar}
       >
         {sidebarOpen ? <X className="size-5" /> : <Menu className="size-5" />}
       </Button>
@@ -79,14 +81,14 @@ export function ChatHeader({
           an icon on mobile is exactly the case where it was being missed. */}
       <Button variant="outline" size="sm" className="shrink-0 gap-2" asChild>
         <Link href={routes.dashboard}>
-          <ArrowLeft className="size-4" aria-hidden />
+          <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden />
           {models.length > 1 ? (
             <>
-              <span className="sm:hidden">Dashboard</span>
-              <span className="hidden sm:inline">Back to dashboard</span>
+              <span className="sm:hidden">{m.chat.dashboardShort}</span>
+              <span className="hidden sm:inline">{m.chat.backToDashboard}</span>
             </>
           ) : (
-            "Back to dashboard"
+            m.chat.backToDashboard
           )}
         </Link>
       </Button>

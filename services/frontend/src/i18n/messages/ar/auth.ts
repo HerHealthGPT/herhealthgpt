@@ -1,4 +1,4 @@
-import type { AuthMessages, CommonMessages, NavMessages } from "../en/auth";
+import type { AuthMessages, CommonMessages, ErrorMessages, NavMessages } from "../en/auth";
 
 export const common: CommonMessages = {
   appName: "HerHealthGPT",
@@ -109,4 +109,33 @@ export const auth: AuthMessages = {
     almostThere: "اقتربنا…",
     oneThingFirst: "أمر واحد أولًا…",
   },
+};
+
+export const errors: ErrorMessages = {
+  generic: "حدث خطأ ما. يُرجى المحاولة مرة أخرى.",
+  network: "تعذّر الوصول إلى الخادم. تحقّقي من اتصالكِ وحاولي مرة أخرى.",
+  sessionEnded: "انتهت جلستكِ. يُرجى تسجيل الدخول مرة أخرى للمتابعة.",
+  unavailable: "الخدمة غير متاحة مؤقتًا. حاولي بعد قليل.",
+  chatUnavailable: "المحادثة غير متاحة الآن. يُرجى المحاولة بعد قليل.",
+  wrongTurn: "حدث خطأ من جهتنا. يُرجى المحاولة مرة أخرى.",
+  tooSlow: "يستغرق هذا وقتًا أطول من المعتاد. يُرجى المحاولة مرة أخرى.",
+  conversationGone: "هذه المحادثة لم تعد متاحة. ابدئي محادثة جديدة للمتابعة.",
+  addWords: "جرّبي إضافة بضع كلمات عمّا يحدث معكِ.",
+  deleteFailed: "تعذّر حذف المحادثة، فقد يحتاج الخادم إلى إعادة تشغيل لتطبيق آخر تحديث.",
+  passwordTooShort: "يجب أن تتكوّن من 8 أحرف على الأقل",
+  passwordTooLong: "أطول من الحد المسموح",
+  passwordCommon: "شائعة جدًا ولا يمكن استخدامها ككلمة مرور",
+  /** The account API's fixed English sentences, by their exact text. */
+  server: {
+    "This email address is already registered.": "هذا البريد الإلكتروني مسجّل بالفعل.",
+    "Incorrect email address or password.": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
+    "Too many attempts. Try again later.": "محاولات كثيرة جدًا. حاولي لاحقًا.",
+    "Not signed in.": "لم تسجّلي الدخول.",
+    "That code is incorrect.": "هذا الرمز غير صحيح.",
+    "This code has expired. Request a new one.": "انتهت صلاحية هذا الرمز. اطلبي رمزًا جديدًا.",
+    "Your Google sign-in could not be verified.": "تعذّر التحقق من تسجيل دخولكِ عبر Google.",
+    "Signing in with Google is not available yet.": "تسجيل الدخول عبر Google غير متاح بعد.",
+    "This account signs in with Google. There is no password to reset.": "يسجّل هذا الحساب الدخول عبر Google، فلا توجد كلمة مرور لإعادة تعيينها.",
+    "Name must be between 1 and 80 characters.": "يجب أن يكون الاسم بين حرف واحد و80 حرفًا.",
+  } as Record<string, string>,
 };

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
-import { directionOf, LOCALE_COOKIE, type Locale } from "@/i18n/config";
+import { DEFAULT_LOCALE, directionOf, isLocale, LOCALE_COOKIE, type Locale } from "@/i18n/config";
 import { ar } from "@/i18n/messages/ar";
 import { en, type Messages } from "@/i18n/messages/en";
 import { fr } from "@/i18n/messages/fr";
@@ -53,6 +53,17 @@ export function useI18n(): LocaleContextValue {
     throw new Error("useI18n must be used inside LocaleProvider");
   }
   return value;
+}
+
+/**
+ * The dictionary for the page's current language, for code outside React
+ * (error messages, recommendation reasons). Reads `<html lang>`, which the
+ * server sets and the switcher updates, so there is no second copy of the
+ * choice to keep in step.
+ */
+export function currentMessages(): Messages {
+  const lang = typeof document === "undefined" ? undefined : document.documentElement.lang;
+  return DICTIONARIES[isLocale(lang) ? lang : DEFAULT_LOCALE];
 }
 
 /** The dictionary for a language, for code outside React (error mapping). */

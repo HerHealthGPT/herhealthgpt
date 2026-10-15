@@ -78,3 +78,23 @@ export const conditions: Record<string, string> = {
 };
 
 export type DashboardMessages = typeof dashboard;
+
+/** Curated article titles and summaries; the pages themselves are in English. */
+export const articles = {
+  items: {
+  menstruation: { title: "Your menstrual cycle", excerpt: "What a normal cycle looks like, common changes, and when to see a doctor." },
+  endometriosis: { title: "Endometriosis", excerpt: "Symptoms, causes, and when pelvic pain during your period needs a closer look." },
+  pcos: { title: "Polycystic ovary syndrome", excerpt: "Irregular periods, hormone changes, and what sources say about PCOS." },
+  fibroids: { title: "Uterine fibroids", excerpt: "Heavy bleeding, pelvic pressure, and when fibroids may be worth discussing." },
+  uti: { title: "Urinary tract infections", excerpt: "Burning, urgency, and when urinary symptoms need treatment." },
+  infertility: { title: "Infertility", excerpt: "Trying to conceive, common causes, and when to talk to a clinician." },
+  thyroid: { title: "Thyroid disease", excerpt: "How thyroid problems can affect periods, energy, and weight." },
+  sti: { title: "Sexually transmitted infections", excerpt: "Symptoms, testing, and why discharge or pelvic pain may need a check." },
+} as Record<string, { title: string; excerpt: string }>,
+  relatedTo: (label: string) => `Related to ${label} from your chat`,
+  citedRecently: "Cited in your recent chat",
+  basedOnTopics: "Based on topics from your chats",
+  fromRecentChat: "From your recent chat",
+};
+
+export type ArticleMessages = typeof articles;

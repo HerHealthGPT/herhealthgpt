@@ -1,8 +1,11 @@
+"use client";
+
 import { Info } from "lucide-react";
 
 import { UnreviewedModelNotice } from "@/components/chat/unreviewed-model-notice";
 import { Card, CardContent } from "@/components/ui/card";
 import type { DecisionReasoningModel } from "@/lib/api/types";
+import { useI18n } from "@/i18n/locale-provider";
 
 /**
  * An off-scope message, refused — see ADR 0014.
@@ -25,6 +28,7 @@ export function DeclineCard({
   rationale: string;
   reasoningModel?: DecisionReasoningModel;
 }) {
+  const { m } = useI18n();
   return (
     <Card className="animate-in fade-in slide-in-from-bottom-3 border-border/60 bg-muted/40 shadow-none duration-500">
       <CardContent className="flex items-start gap-3 py-1">
@@ -35,8 +39,7 @@ export function DeclineCard({
           <UnreviewedModelNotice model={reasoningModel} />
           <p className="text-sm leading-relaxed text-foreground/90">{rationale}</p>
           <p className="text-xs leading-relaxed text-muted-foreground">
-            No urgency level and no sources are shown here, because nothing was
-            assessed.
+            {m.chat.declineNote}
           </p>
         </div>
       </CardContent>

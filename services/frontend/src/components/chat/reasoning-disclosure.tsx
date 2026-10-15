@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Brain, ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
 
 /**
  * The model's own reasoning for a turn, collapsed by default.
@@ -21,6 +22,7 @@ import { cn } from "@/lib/utils";
  * The rationale has been through `TriageDecision`; a thinking block has not.
  */
 export function ReasoningDisclosure({ rationale }: { rationale: string }) {
+  const { m } = useI18n();
   const [open, setOpen] = useState(false);
 
   return (
@@ -32,7 +34,7 @@ export function ReasoningDisclosure({ rationale }: { rationale: string }) {
         className="flex w-full items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <Brain className="size-3.5 shrink-0" />
-        <span>{open ? "Hide reasoning" : "Show reasoning"}</span>
+        <span>{open ? m.chat.hideReasoning : m.chat.showReasoning}</span>
         <ChevronDown
           className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-180")}
         />

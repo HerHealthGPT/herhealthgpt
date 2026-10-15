@@ -1,4 +1,4 @@
-import type { DashboardMessages } from "../en/dashboard";
+import type { ArticleMessages, DashboardMessages } from "../en/dashboard";
 
 export const dashboard: DashboardMessages = {
   oneMoment: "Un instant…",
@@ -77,4 +77,22 @@ export const conditions: Record<string, string> = {
   pelvic_organ_prolapse: "Prolapsus des organes pelviens",
   iron_deficiency_anaemia: "Carence en fer",
   infertility: "Infertilité",
+};
+
+/** Curated article titles and summaries; the pages themselves are in English. */
+export const articles: ArticleMessages = {
+  items: {
+  menstruation: { title: "Votre cycle menstruel", excerpt: "À quoi ressemble un cycle normal, les changements fréquents, et quand consulter." },
+  endometriosis: { title: "Endométriose", excerpt: "Symptômes, causes, et quand une douleur pelvienne pendant les règles mérite un examen." },
+  pcos: { title: "Syndrome des ovaires polykystiques", excerpt: "Règles irrégulières, changements hormonaux, et ce que disent les sources sur le SOPK." },
+  fibroids: { title: "Fibromes utérins", excerpt: "Saignements abondants, pression pelvienne, et quand en parler à un professionnel." },
+  uti: { title: "Infections urinaires", excerpt: "Brûlures, envies pressantes, et quand les symptômes urinaires nécessitent un traitement." },
+  infertility: { title: "Infertilité", excerpt: "Essayer d'avoir un enfant, les causes fréquentes, et quand en parler à un professionnel." },
+  thyroid: { title: "Maladies de la thyroïde", excerpt: "Comment les problèmes de thyroïde peuvent affecter les règles, l'énergie et le poids." },
+  sti: { title: "Infections sexuellement transmissibles", excerpt: "Symptômes, dépistage, et pourquoi des pertes ou une douleur pelvienne peuvent nécessiter un contrôle." },
+} as Record<string, { title: string; excerpt: string }>,
+  relatedTo: (label: string) => `En lien avec ${label}, d'après votre discussion`,
+  citedRecently: "Cité dans votre discussion récente",
+  basedOnTopics: "D'après les sujets de vos discussions",
+  fromRecentChat: "De votre discussion récente",
 };

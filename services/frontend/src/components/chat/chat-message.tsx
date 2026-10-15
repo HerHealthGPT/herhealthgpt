@@ -77,8 +77,8 @@ export function ChatMessage({
           // narrow ribbon; the extra room is what makes the structure read.
           isAssistant ? "max-w-[92%]" : "max-w-[75%]",
           isAssistant
-            ? "rounded-bl-sm bg-muted text-foreground"
-            : "rounded-br-sm bg-primary text-primary-foreground",
+            ? "rounded-es-sm bg-muted text-foreground"
+            : "rounded-ee-sm bg-primary text-primary-foreground",
         )}
       >
         {/* An assistant turn gets its own structure rendered — headings and

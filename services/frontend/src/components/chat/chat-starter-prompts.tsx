@@ -1,13 +1,9 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n/locale-provider";
 
-const STARTER_PROMPTS = [
-  "My periods have been irregular lately",
-  "I'm having heavier bleeding than usual",
-  "I've been trying to conceive for a while",
-  "I have pelvic pain that won't go away",
-] as const;
+
 
 type ChatStarterPromptsProps = {
   disabled: boolean;
@@ -15,18 +11,20 @@ type ChatStarterPromptsProps = {
 };
 
 export function ChatStarterPrompts({ disabled, onSelect }: ChatStarterPromptsProps) {
+  // In the interface language, so a tap starts the chat in that language.
+  const { m } = useI18n();
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">Not sure where to start? Try one of these:</p>
+      <p className="text-xs text-muted-foreground">{m.chat.starterIntro}</p>
       <div className="flex flex-wrap gap-2">
-        {STARTER_PROMPTS.map((prompt) => (
+        {m.chat.starters.map((prompt) => (
           <Button
             key={prompt}
             type="button"
             variant="outline"
             size="sm"
             disabled={disabled}
-            className="h-auto rounded-full px-3 py-1.5 text-left text-xs font-normal whitespace-normal"
+            className="h-auto rounded-full px-3 py-1.5 text-start text-xs font-normal whitespace-normal"
             onClick={() => onSelect(prompt)}
           >
             {prompt}

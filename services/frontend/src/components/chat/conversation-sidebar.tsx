@@ -23,6 +23,7 @@ import type { TriageSessionSummary, UserSummary } from "@/lib/api/types";
 import { userDisplayName } from "@/lib/display-name";
 import { routes } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ConversationSidebarProps = {
   sessions: TriageSessionSummary[];
@@ -51,22 +52,22 @@ function groupSessions(sessions: TriageSessionSummary[]): SessionGroup[] {
   weekAgo.setDate(weekAgo.getDate() - 7);
 
   const groups: Record<string, TriageSessionSummary[]> = {
-    Today: [],
-    Yesterday: [],
-    "Previous 7 days": [],
-    Older: [],
+    today: [],
+    yesterday: [],
+    week: [],
+    older: [],
   };
 
   for (const session of sessions) {
     const day = startOfDay(new Date(session.created_at));
     if (day.getTime() === now.getTime()) {
-      groups.Today.push(session);
+      groups.today.push(session);
     } else if (day.getTime() === yesterday.getTime()) {
-      groups.Yesterday.push(session);
+      groups.yesterday.push(session);
     } else if (day > weekAgo) {
-      groups["Previous 7 days"].push(session);
+      groups.week.push(session);
     } else {
-      groups.Older.push(session);
+      groups.older.push(session);
     }
   }
 
@@ -88,6 +89,7 @@ function avatarInitial(user: UserSummary | null | undefined): string {
 
 function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
   const { user, signOut } = useAuth();
+  const { m } = useI18n();
   const [menuOpen, setMenuOpen] = useState(false);
 
   function closeMenu() {
@@ -103,9 +105,9 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
             type="button"
             className="fixed inset-0 z-10 lg:absolute"
             onClick={() => setMenuOpen(false)}
-            aria-label="Close account menu"
+            aria-label={m.chat.closeAccountMenu}
           />
-          <div className="absolute bottom-full left-2 right-2 z-20 mb-1 overflow-hidden rounded-xl border border-border/60 bg-popover p-1 shadow-lg">
+          <div className="absolute bottom-full inset-x-2 z-20 mb-1 overflow-hidden rounded-xl border border-border/60 bg-popover p-1 shadow-lg">
             <Button
               variant="ghost"
               className="h-10 w-full justify-start gap-2 px-3"
@@ -114,7 +116,7 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
             >
               <Link href={routes.dashboard}>
                 <LayoutDashboard className="size-4" />
-                Dashboard
+                {m.nav.dashboard}
               </Link>
             </Button>
             <Button
@@ -125,7 +127,7 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
             >
               <Link href={routes.howItWorks}>
                 <Info className="size-4" />
-                How this works
+                {m.nav.howItWorks}
               </Link>
             </Button>
             <Button
@@ -136,7 +138,7 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
             >
               <Link href={routes.settings}>
                 <Settings className="size-4" />
-                Account
+                {m.nav.account}
               </Link>
             </Button>
             <Button
@@ -148,7 +150,7 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
               }}
             >
               <LogOut className="size-4" />
-              Sign out
+              {m.common.signOut}
             </Button>
           </div>
         </>
@@ -158,11 +160,11 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
         type="button"
         onClick={() => setMenuOpen((open) => !open)}
         className={cn(
-          "relative z-30 flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors",
+          "relative z-30 flex w-full items-center gap-3 rounded-xl p-2 text-start transition-colors",
           menuOpen ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/70",
         )}
         aria-expanded={menuOpen}
-        aria-label="Account menu"
+        aria-label={m.chat.accountMenu}
       >
         <Avatar size="sm">
           <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">
@@ -171,9 +173,9 @@ function SidebarProfileFooter({ onNavigate }: { onNavigate?: () => void }) {
         </Avatar>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">
-            {userDisplayName(user) ?? "Your account"}
+            {userDisplayName(user) ?? m.chat.yourAccount}
           </p>
-          <p className="truncate text-xs text-muted-foreground">Manage profile</p>
+          <p className="truncate text-xs text-muted-foreground">{m.chat.manageProfile}</p>
         </div>
         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
       </button>
@@ -191,6 +193,7 @@ export function ConversationSidebar({
   onDeleteSession,
 }: ConversationSidebarProps) {
   const grouped = groupSessions(sessions);
+  const { m } = useI18n();
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -214,7 +217,7 @@ export function ConversationSidebar({
           <p className="truncate text-sm font-semibold">
             HerHealth<span className="text-primary">GPT</span>
           </p>
-          <p className="truncate text-xs text-muted-foreground">Health chat</p>
+          <p className="truncate text-xs text-muted-foreground">{m.nav.healthChat}</p>
         </div>
       </div>
 
@@ -224,7 +227,7 @@ export function ConversationSidebar({
           onClick={onNewChat}
         >
           <MessageSquarePlus className="size-4" />
-          New chat
+          {m.chat.newChat}
         </Button>
       </div>
 
@@ -252,7 +255,7 @@ export function ConversationSidebar({
             grouped.map((group) => (
               <div key={group.label}>
                 <p className="mb-1.5 px-2 text-xs font-medium text-muted-foreground">
-                  {group.label}
+                  {m.chat.groups[group.label as keyof typeof m.chat.groups]}
                 </p>
                 <div className="space-y-0.5">
                   {group.sessions.map((session) => (
@@ -268,7 +271,7 @@ export function ConversationSidebar({
                       {confirmingDeleteId === session.id ? (
                         <div className="flex w-full flex-col gap-2 px-3 py-2.5">
                           <p className="text-xs text-muted-foreground">
-                            Delete this chat permanently?
+                            {m.chat.deleteConfirm}
                           </p>
                           <div className="flex gap-2">
                             <Button
@@ -279,7 +282,7 @@ export function ConversationSidebar({
                               disabled={deletingId === session.id}
                               onClick={() => setConfirmingDeleteId(null)}
                             >
-                              Cancel
+                              {m.chat.cancel}
                             </Button>
                             <Button
                               type="button"
@@ -289,7 +292,7 @@ export function ConversationSidebar({
                               disabled={deletingId === session.id}
                               onClick={() => void handleConfirmDelete(session.id)}
                             >
-                              Delete
+                              {m.chat.delete}
                             </Button>
                           </div>
                         </div>
@@ -298,7 +301,7 @@ export function ConversationSidebar({
                           <button
                             type="button"
                             onClick={() => onSelectSession(session.id)}
-                            className="min-w-0 flex-1 overflow-hidden px-3 py-2.5 pr-3 text-left"
+                            className="min-w-0 flex-1 overflow-hidden px-3 py-2.5 pe-3 text-start"
                           >
                             {/* block + w-full so `truncate` has a definite
                                 width to truncate against: inside a flex row a
@@ -309,7 +312,7 @@ export function ConversationSidebar({
                               {session.preview}
                             </p>
                             {session.status === "concluded" ? (
-                              <p className="mt-0.5 text-xs text-muted-foreground">Completed</p>
+                              <p className="mt-0.5 text-xs text-muted-foreground">{m.chat.completed}</p>
                             ) : null}
                           </button>
                           {/* The "…" affordance. Sits over the end of the
@@ -325,9 +328,9 @@ export function ConversationSidebar({
                               and screen readers are unaffected. */}
                           <div
                             className={cn(
-                              "pointer-events-none absolute inset-y-0 right-0 flex items-center pl-8 pr-1.5",
-                              "bg-gradient-to-l from-sidebar-accent via-sidebar-accent to-transparent",
-                              "rounded-r-xl opacity-0 transition-opacity",
+                              "pointer-events-none absolute inset-y-0 end-0 flex items-center ps-8 pe-1.5",
+                              "bg-gradient-to-l rtl:bg-gradient-to-r from-sidebar-accent via-sidebar-accent to-transparent",
+                              "rounded-e-xl opacity-0 transition-opacity",
                               "group-hover:opacity-100 group-focus-within:opacity-100",
                               activeSessionId === session.id ? "" : "from-sidebar via-sidebar",
                             )}
@@ -343,8 +346,8 @@ export function ConversationSidebar({
                                 "hover:bg-destructive/10 hover:text-destructive",
                                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                               )}
-                              aria-label={`Delete chat: ${session.preview}`}
-                              title="Delete chat"
+                              aria-label={m.chat.deleteChatLabel(session.preview)}
+                              title={m.chat.deleteChat}
                             >
                               <MoreHorizontal className="size-4" aria-hidden />
                             </button>

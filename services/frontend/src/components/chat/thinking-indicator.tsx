@@ -5,6 +5,7 @@ import { Sparkles } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/i18n/locale-provider";
 
 type ThinkingStage = {
   afterSeconds: number;
@@ -52,6 +53,7 @@ export function ThinkingIndicator({
   /** e.g. "Question 2" — shown during an active consultation. */
   turnLabel?: string;
 }) {
+  const { m } = useI18n();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -66,7 +68,8 @@ export function ThinkingIndicator({
   }, [label]);
 
   const stage = stageForElapsed(elapsed);
-  const text = label ?? stage.label;
+  // The stages are fixed; their words come from the dictionary, by position.
+  const text = label ?? m.chat.thinking[TRIAGE_STAGES.indexOf(stage)] ?? stage.label;
 
   return (
     <div className="flex items-end gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -76,7 +79,7 @@ export function ThinkingIndicator({
         </AvatarFallback>
       </Avatar>
 
-      <div className="max-w-[85%] space-y-2 rounded-2xl rounded-bl-sm bg-muted px-4 py-3">
+      <div className="max-w-[85%] space-y-2 rounded-2xl rounded-es-sm bg-muted px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
           <span className="flex gap-1">
             <span className="size-1.5 animate-bounce rounded-full bg-primary/70 [animation-delay:-0.3s]" />
