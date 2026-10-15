@@ -1,3 +1,5 @@
+import type { Messages } from "@/i18n/messages/en";
+
 /** Human names for the five sources in knowledge/sources.yaml. */
 export const SOURCE_LABELS: Record<string, string> = {
   nhs: "NHS",
@@ -7,6 +9,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   cdc: "CDC",
 };
 
-export function sourceLabel(sourceId: string): string {
-  return SOURCE_LABELS[sourceId] ?? sourceId;
+/** The source's name, in the interface language when a dictionary is given. */
+export function sourceLabel(sourceId: string, m?: Messages): string {
+  return m?.sourceNames[sourceId] ?? SOURCE_LABELS[sourceId] ?? sourceId;
 }

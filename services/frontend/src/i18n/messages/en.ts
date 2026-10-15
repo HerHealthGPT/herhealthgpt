@@ -7,10 +7,10 @@
  */
 import { auth, common, errors, nav } from "./en/auth";
 import { actions, errorPages, home } from "./en/site";
-import { articles, conditions, dashboard } from "./en/dashboard";
+import { articles, conditions, dashboard, sourceNames } from "./en/dashboard";
 import { account, onboarding } from "./en/account";
 import { chat } from "./en/chat";
 
-export const en = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account, chat, errors, articles };
+export const en = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account, chat, errors, articles, sourceNames };
 
 export type Messages = typeof en;

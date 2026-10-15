@@ -57,7 +57,8 @@ function distinctSources(passages: CitedPassage[]): CitedPassage[] {
 }
 
 function SourceLink({ passage }: { passage: CitedPassage }) {
-  const label = sourceLabel(passage.source_id);
+  const { m } = useI18n();
+  const label = sourceLabel(passage.source_id, m);
   if (!passage.url) {
     return <span className="font-medium text-foreground/70">{label}</span>;
   }

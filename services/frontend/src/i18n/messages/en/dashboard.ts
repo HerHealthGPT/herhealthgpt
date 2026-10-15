@@ -98,3 +98,7 @@ export const articles = {
 };
 
 export type ArticleMessages = typeof articles;
+
+/** Source names that read differently in this language; the rest are brand names. */
+export const sourceNames: Record<string, string> = {
+};

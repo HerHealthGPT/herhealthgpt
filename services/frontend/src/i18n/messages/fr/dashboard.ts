@@ -96,3 +96,8 @@ export const articles: ArticleMessages = {
   basedOnTopics: "D'après les sujets de vos discussions",
   fromRecentChat: "De votre discussion récente",
 };
+
+/** Source names that read differently in this language; the rest are brand names. */
+export const sourceNames: Record<string, string> = {
+  womenshealth: "Office on Women's Health (États-Unis)",
+};

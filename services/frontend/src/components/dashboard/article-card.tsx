@@ -62,7 +62,7 @@ export function ArticleCard({ article, className }: ArticleCardProps) {
               : "bg-background/80 text-muted-foreground",
           )}
         >
-          {sourceLabel(article.source_id)}
+          {sourceLabel(article.source_id, m)}
         </span>
         {article.origin === "chat" ? (
           <span className="absolute end-3 top-3 z-10 rounded-full bg-primary/90 px-2 py-0.5 text-[10px] font-medium text-primary-foreground">
@@ -82,7 +82,7 @@ export function ArticleCard({ article, className }: ArticleCardProps) {
           <p className="text-[10px] text-primary/80">{article.reason}</p>
         ) : null}
         <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary">
-          {m.dashboard.readOn(sourceLabel(article.source_id))}
+          {m.dashboard.readOn(sourceLabel(article.source_id, m))}
           <ExternalLink className="size-3 transition-transform group-hover:translate-x-0.5 rtl:group-hover:-translate-x-0.5" />
         </span>
       </div>
