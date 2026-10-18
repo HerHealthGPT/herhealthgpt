@@ -189,7 +189,10 @@ condition.
 Do not start these before 12 September:
 
 - Suggested articles on women's health
-- Cycle-data export/import for context
+- ~~Cycle-data export/import for context~~ — built 2026-10-18 on
+  `feat/cycle-data-import`, [ADR 0019](adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md)
+  (proposed). Apple Health and CSV-template converters are not yet checked
+  against a real export.
 - Fine-tuning (a documented contingency, **not** a deliverable)
 - The remaining blocked conditions
 - ICD-11 codes beyond what the WHO API already resolved

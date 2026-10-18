@@ -5,7 +5,13 @@
  * Base path is proxied to the backend via Next.js rewrites (/api → localhost:8000).
  */
 import { apiRequest } from "./client";
-import type { HealthNote, UserSummary } from "./types";
+import type {
+  CycleDataPreview,
+  CycleDataStatus,
+  CycleExtraction,
+  HealthNote,
+  UserSummary,
+} from "./types";
 
 /** POST /accounts/register → 201 */
 export function register(email: string, password: string) {
@@ -125,6 +131,35 @@ export function saveHealthNote(content: string | null) {
 /** DELETE /accounts/health-note → 204. Deletes the note, not the account. */
 export function deleteHealthNote() {
   return apiRequest<void>("/accounts/health-note", { method: "DELETE" });
+}
+
+/** POST /accounts/cycle-data/preview → 200. Reads the export; stores nothing. */
+export function previewCycleData(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<CycleDataPreview>("/accounts/cycle-data/preview", {
+    method: "POST",
+    body: form,
+    json: false,
+  });
+}
+
+/** PUT /accounts/cycle-data → 200. Keeps what she confirmed. */
+export function saveCycleData(extraction: CycleExtraction, confirmedNoPeriodPain: boolean) {
+  return apiRequest<CycleDataStatus>("/accounts/cycle-data", {
+    method: "PUT",
+    body: { extraction, confirmed_no_period_pain: confirmedNoPeriodPain },
+  });
+}
+
+/** GET /accounts/cycle-data → 200 */
+export function getCycleData() {
+  return apiRequest<CycleDataStatus>("/accounts/cycle-data");
+}
+
+/** DELETE /accounts/cycle-data → 204. Deletes the data, not the account. */
+export function deleteCycleData() {
+  return apiRequest<void>("/accounts/cycle-data", { method: "DELETE" });
 }
 
 /** POST /accounts/refresh → 204 */

@@ -4,6 +4,14 @@ Nothing outside this package may be imported across a service boundary. If a
 service needs something from another service, it belongs here instead.
 """
 
+from herhealth_contracts.cycle import (
+    CycleDay,
+    CycleExtraction,
+    FlowLevel,
+    PainIntensity,
+    PregnancyTestResult,
+    TrackerSymptom,
+)
 from herhealth_contracts.decision import DecisionType, TriageDecision
 from herhealth_contracts.evaluation import (
     CanonicalCase,
@@ -55,6 +63,8 @@ __all__ = [
     "ComparisonOp",
     "Condition",
     "ConditionsFile",
+    "CycleDay",
+    "CycleExtraction",
     "DecisionType",
     "EvaluationSet",
     "EvidenceRow",
@@ -62,13 +72,17 @@ __all__ = [
     "Feature",
     "FeatureKind",
     "FeaturesFile",
+    "FlowLevel",
     "KNOWLEDGE_FILENAMES",
     "KnowledgeBase",
     "Language",
+    "PainIntensity",
     "PassageId",
     "PassageType",
+    "PregnancyTestResult",
     "RegisterStyle",
     "RetrievedPassage",
+    "TrackerSymptom",
     "TriageDecision",
     "load_evaluation_set",
     "load_knowledge_base",

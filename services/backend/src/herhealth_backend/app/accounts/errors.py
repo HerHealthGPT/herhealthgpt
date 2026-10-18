@@ -19,6 +19,8 @@ __all__ = [
     "PasswordResetCodeExpired",
     "TooManyPasswordResetRequests",
     "InvalidDisplayName",
+    "CycleImportFailed",
+    "CycleImportUnavailable",
 ]
 
 
@@ -165,3 +167,19 @@ class InvalidHealthNote(Exception):
     Blank input is not an error — it clears the note. See
     ``profile.normalize_health_note``.
     """
+
+
+class CycleImportFailed(Exception):
+    """An uploaded cycle-tracking export could not be read into anything
+    usable. ``reason`` is a short code the frontend turns into a message in
+    her language: ``too_large``, ``unreadable``, ``unsupported_archive``,
+    ``bad_template_row`` or ``nothing_usable``."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class CycleImportUnavailable(Exception):
+    """The file needs the model to read it, and no model is configured — as
+    in production today, where triage reports "not configured" too."""

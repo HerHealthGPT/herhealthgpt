@@ -126,6 +126,17 @@ The reasoning core takes no dependency on a model, a network or a server. It is
 driveable from a CLI with a scripted dialogue, which is what makes the evaluation
 harness possible.
 
+### Cycle data from a tracking app
+
+She can upload an export from her period-tracking app — from Settings, or the
+paperclip in the chat. The file is read and dropped; only dates, flow and a
+closed list of symptoms are kept, after she confirms what was found. Fresh data
+answers questions she would otherwise be asked (cycle length, regularity,
+period length), so consultations are shorter. It can make the system ask about
+a warning sign sooner, but it can never fire one on its own: pain severity is
+always asked about today. See
+[ADR 0019](docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md).
+
 ### Where the model *is* used
 
 Language, not judgement. It interprets free text into feature values, renders

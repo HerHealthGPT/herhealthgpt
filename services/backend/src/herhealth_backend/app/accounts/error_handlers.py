@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from herhealth_backend.app.accounts.errors import (
+    CycleImportFailed,
+    CycleImportUnavailable,
     EmailAlreadyRegistered,
     GoogleEmailNotVerified,
     GoogleSignInNotConfigured,
@@ -210,6 +212,23 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             content={"detail": "Too many attempts. Try again later."},
+        )
+
+    @app.exception_handler(CycleImportFailed)
+    async def _cycle_import_failed(request: Request, exc: CycleImportFailed) -> JSONResponse:
+        # A reason code, not a sentence: the frontend words it in her language.
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": {"reason": exc.reason}},
+        )
+
+    @app.exception_handler(CycleImportUnavailable)
+    async def _cycle_import_unavailable(
+        request: Request, exc: CycleImportUnavailable
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": {"reason": "not_configured"}},
         )
 
     @app.exception_handler(InvalidDisplayName)

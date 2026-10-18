@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Paperclip } from "lucide-react";
+
+import { CycleDataImport } from "@/components/account/cycle-data-import";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +30,7 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const { m } = useI18n();
   const [value, setValue] = useState("");
+  const [showCycleData, setShowCycleData] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -60,7 +63,25 @@ export function ChatComposer({
 
   return (
     <div className="border-t border-border/60 bg-background/95 p-3 backdrop-blur-sm sm:p-4">
+      {showCycleData ? (
+        <div className="mb-3 rounded-2xl border border-border/60 bg-background p-3">
+          <CycleDataImport onSaved={() => setShowCycleData(false)} />
+        </div>
+      ) : null}
       <div className="flex items-end gap-2">
+        {/* Cycle data is saved to her account and used from the next turn on,
+            the same data Settings manages (ADR 0019). */}
+        <Button
+          type="button"
+          variant="ghost"
+          className="mb-0.5 size-10 shrink-0 rounded-full"
+          onClick={() => setShowCycleData((open) => !open)}
+          aria-label={m.account.cycle.attach}
+          aria-expanded={showCycleData}
+          title={m.account.cycle.attach}
+        >
+          <Paperclip className="size-4" />
+        </Button>
         <Textarea
           ref={textareaRef}
           value={value}

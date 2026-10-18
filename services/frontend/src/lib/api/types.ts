@@ -24,6 +24,36 @@ export type HealthNote = {
   content: string | null;
 };
 
+/** What a tracker export was read into. Opaque here on purpose: the client
+ *  only shows the summary and sends this back unchanged when she confirms,
+ *  and the server validates it again (backend ``CycleExtraction``). */
+export type CycleExtraction = Record<string, unknown>;
+
+export type CycleDataSummary = {
+  source_app: string;
+  last_entry: string;
+  days_since_last_entry: number;
+  /** False once the data is too old to skip questions. */
+  fresh: boolean;
+  periods_found: number;
+  cycle_lengths: number[];
+  period_durations: number[];
+  /** Feature ids → values her data answers, so they are not asked again. */
+  will_answer: Record<string, string>;
+};
+
+export type CycleDataPreview = {
+  extraction: CycleExtraction;
+  summary: CycleDataSummary;
+  /** No pain was logged, so ask whether she gets none. */
+  ask_about_period_pain: boolean;
+};
+
+export type CycleDataStatus = {
+  imported_at: string | null;
+  summary: CycleDataSummary | null;
+};
+
 export type PasswordWeakDetail = {
   reasons: string[];
 };

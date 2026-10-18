@@ -29,12 +29,14 @@ from herhealth_contracts.loading import load_knowledge_base
 from herhealth_contracts.retrieval import RetrievedPassage
 from sqlalchemy.exc import SQLAlchemyError
 
+from herhealth_backend.app.accounts.cycle_import import ModelCycleExtractor, model_instructions
 from herhealth_backend.app.accounts.email_sender import (
     ConsoleEmailSender,
     EmailSender,
     SesEmailSender,
 )
 from herhealth_backend.app.accounts.error_handlers import register_error_handlers
+from herhealth_backend.app.accounts.errors import CycleImportUnavailable
 from herhealth_backend.app.accounts.google_identity import (
     GoogleOAuthTokenVerifier,
     GoogleTokenVerifier,
@@ -234,6 +236,43 @@ def _build_triage_agent() -> TriageAgent | None:
     )
 
 
+#: An extraction lists one entry per logged day; a few months of a PDF
+#: report fit in this, and a longer reply is cut off rather than allowed to
+#: fill the window.
+CYCLE_EXTRACT_MAX_TOKENS = 6000
+
+
+def _build_cycle_extractor() -> ModelCycleExtractor | None:
+    """The base model reading an export no converter understands (ADR 0019).
+
+    Only in ``vllm`` mode, like triage: without the model endpoint an upload
+    in an unknown format is answered 503 "not configured", while CSV-template
+    and Apple Health uploads still work.
+    """
+    if configured_triage_mode() != "vllm":
+        return None
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    chat = build_chat_model(
+        url=configured_vllm_url(),
+        model=configured_decision_model(),
+        api_key=configured_vllm_api_key(),
+        timeout=configured_vllm_timeout(),
+        max_tokens=CYCLE_EXTRACT_MAX_TOKENS,
+    )
+    system = SystemMessage(content=model_instructions())
+
+    def extract(text: str) -> str:
+        try:
+            reply = chat.invoke([system, HumanMessage(content=f"EXPORT:\n{text}")])
+        except Exception as error:  # the model endpoint, whatever its failure
+            logger.warning("cycle extraction model unavailable: %s", type(error).__name__)
+            raise CycleImportUnavailable() from error
+        return str(getattr(reply, "content", reply))
+
+    return extract
+
+
 def _build_comparison_responders() -> dict[str, PlainChatResponder]:
     """The comparison modes this deployment offers, by mode id.
 
@@ -289,6 +328,7 @@ def create_app(
     google_verifier: GoogleTokenVerifier | None = None,
     triage_agent: TriageAgent | None = None,
     comparison_responders: dict[str, PlainChatResponder] | None = None,
+    cycle_extractor: ModelCycleExtractor | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -330,6 +370,8 @@ def create_app(
             app.state.triage_agent = _build_triage_agent()
         if getattr(app.state, "comparison_responders", None) is None:
             app.state.comparison_responders = _build_comparison_responders()
+        if getattr(app.state, "cycle_extractor", None) is None:
+            app.state.cycle_extractor = _build_cycle_extractor()
         try:
             yield
         finally:
@@ -370,6 +412,8 @@ def create_app(
         app.state.triage_agent = triage_agent
     if comparison_responders is not None:
         app.state.comparison_responders = comparison_responders
+    if cycle_extractor is not None:
+        app.state.cycle_extractor = cycle_extractor
     register_error_handlers(app)
     app.include_router(accounts_router)
     app.include_router(triage_router)
