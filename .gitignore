@@ -63,4 +63,14 @@ herhealth-lora-v2/
 #Adding graphify generated files to .gitignore
 # Graphify generated files are large and can be regenerated from the source data and scripts.
 graphify-out/cache/
+# Per-machine sidecars: absolute interpreter and scan-root paths, and scratch
+# files from an interrupted run. They differ on every machine, so tracking them
+# makes every graphify run show as a change. The shared outputs (GRAPH_REPORT.md,
+# graph.json, graph.html, manifest.json, cost.json) and the community labels stay
+# tracked.
+graphify-out/.graphify_*
+!graphify-out/.graphify_labels.json
+graphify-out/.needs_update
 
+# graphify's own backup of the previous graph, one folder per day.
+graphify-out/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/
