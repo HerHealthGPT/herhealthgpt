@@ -7,7 +7,6 @@ service needs something from another service, it belongs here instead.
 from herhealth_contracts.cycle import (
     CycleDay,
     CycleExtraction,
-    ExtractionMethod,
     FlowLevel,
     PainIntensity,
     PregnancyTestResult,
@@ -70,7 +69,6 @@ __all__ = [
     "EvaluationSet",
     "EvidenceRow",
     "EvidenceStrength",
-    "ExtractionMethod",
     "Feature",
     "FeatureKind",
     "FeaturesFile",

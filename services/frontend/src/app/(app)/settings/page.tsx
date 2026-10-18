@@ -1,7 +1,7 @@
 "use client";
 
 import { AuthGuard } from "@/components/auth/auth-guard";
-import { CycleDataCard } from "@/components/account/cycle-data-card";
+import { CycleDataCard } from "@/components/account/cycle-data-import";
 import { DeleteAccountSection } from "@/components/account/delete-account-section";
 import { HealthDetailsForm } from "@/components/account/health-details-form";
 import { ProfileSettingsForm } from "@/components/account/profile-settings-form";

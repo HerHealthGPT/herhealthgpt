@@ -32,7 +32,6 @@ from defusedxml.ElementTree import iterparse  # type: ignore[import-untyped]
 from herhealth_contracts.cycle import (
     MAX_DAYS,
     CycleExtraction,
-    ExtractionMethod,
     FlowLevel,
     PainIntensity,
     PregnancyTestResult,
@@ -119,9 +118,7 @@ class _Days:
             for _, day in sorted(self._days.items())
             if day.get("flow") or day["symptoms"] or day.get("pregnancy_test")
         ][-MAX_DAYS:]
-        return _validated(
-            {"source_app": source_app, "method": ExtractionMethod.CONVERTER, "days": days}
-        )
+        return _validated({"source_app": source_app, "days": days})
 
 
 def _validated(raw: object) -> CycleExtraction:
@@ -286,8 +283,6 @@ def _from_model(text: str, extractor: ModelCycleExtractor | None) -> CycleExtrac
     return _validated(
         {
             "source_app": source if isinstance(source, str) and source.strip() else "unknown",
-            # The model does not get to say how it was read.
-            "method": ExtractionMethod.MODEL,
             "days": _one_per_day(days),
         }
     )

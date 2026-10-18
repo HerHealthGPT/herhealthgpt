@@ -50,9 +50,7 @@ def _cycles(
             days[date] = {"date": date, "flow": flow}
     for date, fields in (extra or {}).items():
         days[date] = {**days.get(date, {"date": date}), **fields}
-    return CycleExtraction.model_validate(
-        {"method": "converter", "source_app": "clue", "days": list(days.values())}
-    )
+    return CycleExtraction.model_validate({"source_app": "clue", "days": list(days.values())})
 
 
 def _prefilled(extraction: CycleExtraction, **kwargs: Any) -> dict[str, str]:

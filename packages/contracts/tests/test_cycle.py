@@ -17,7 +17,6 @@ from herhealth_contracts.cycle import (
     MAX_DAYS,
     CycleDay,
     CycleExtraction,
-    ExtractionMethod,
     FlowLevel,
     TrackerSymptom,
 )
@@ -28,7 +27,7 @@ def _day(date: str, **logged: Any) -> dict[str, Any]:
 
 
 def _extraction(*days: dict[str, Any], **fields: Any) -> CycleExtraction:
-    return CycleExtraction.model_validate({"method": "converter", "days": list(days), **fields})
+    return CycleExtraction.model_validate({"days": list(days), **fields})
 
 
 def test_a_normal_extraction_validates() -> None:
@@ -37,7 +36,6 @@ def test_a_normal_extraction_validates() -> None:
         _day("2026-09-02", flow="medium"),
         source_app="apple_health",
     )
-    assert extraction.method is ExtractionMethod.CONVERTER
     assert extraction.days[0].flow is FlowLevel.HEAVY
     assert extraction.days[0].symptoms == frozenset({TrackerSymptom.CRAMPS})
 

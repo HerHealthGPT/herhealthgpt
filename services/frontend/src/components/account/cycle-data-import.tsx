@@ -6,6 +6,13 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   deleteCycleData,
   getCycleData,
   previewCycleData,
@@ -191,6 +198,22 @@ export function CycleDataImport({ onSaved }: { onSaved?: () => void }) {
         <p>{c.privacy}</p>
       </div>
     </div>
+  );
+}
+
+/** Cycle data in Settings: the same flow the chat's attach button opens. */
+export function CycleDataCard() {
+  const { m } = useI18n();
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">{m.account.cycle.title}</CardTitle>
+        <CardDescription>{m.account.cycle.lead}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <CycleDataImport />
+      </CardContent>
+    </Card>
   );
 }
 

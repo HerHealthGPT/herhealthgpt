@@ -43,7 +43,6 @@ from herhealth_contracts.knowledge import Identifier
 __all__ = [
     "CycleDay",
     "CycleExtraction",
-    "ExtractionMethod",
     "FlowLevel",
     "PainIntensity",
     "PregnancyTestResult",
@@ -60,16 +59,6 @@ MAX_DAYS = 1100
 #: file. "Any application" means this cannot be an enum, but it still cannot
 #: carry a sentence.
 SourceApp = Annotated[Identifier, StringConstraints(max_length=40)]
-
-
-class ExtractionMethod(StrEnum):
-    """How the export was read. Recorded because the two routes are not
-    equally trustworthy: a converter is code that was reviewed against a real
-    sample, and model extraction is unmeasured until it is run against real
-    reports (ADR 0019's risk register)."""
-
-    CONVERTER = "converter"
-    MODEL = "model"
 
 
 class FlowLevel(StrEnum):
@@ -163,7 +152,6 @@ class CycleExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     source_app: SourceApp = "unknown"
-    method: ExtractionMethod
     days: tuple[CycleDay, ...] = Field(max_length=MAX_DAYS)
 
     @model_validator(mode="before")
