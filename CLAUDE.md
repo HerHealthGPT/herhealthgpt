@@ -147,6 +147,22 @@ pre-demo checklist: [`docs/runbooks/aws-deploy.md`](docs/runbooks/aws-deploy.md)
 The earlier plan of a self-hosted runner on the GPU server is not the
 production path; the campus GPU box remains the dev vLLM host.
 
+
+**Cycle data she imports may answer features
+([ADR 0019](docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md),
+proposed).** A tracker export is uploaded from Settings or the chat's attach
+button, read by a converter (CSV template, Apple Health) or by the base model,
+and kept only after she confirms the preview — never the file, only
+`CycleExtraction`'s closed vocabulary. `triage/cycle_data.py` pre-fills answers
+from it under four rules that are binding: only when the last entry is within
+45 days and rests on 3+ cycles; "irregular" only by the NHS 21–35 day sentence
+already in `evidence.csv`; never from something she did not log unless she
+confirmed it; and **a feature any red flag reads only in the alarming
+direction** — `pelvic_pain_severity` never, `pregnancy_status` at most
+`possibly_pregnant`. `test_no_red_flag_can_fire_from_tracker_data_alone`
+enforces the last against the real `red_flags.yaml`; do not weaken it to make a
+new rule pass.
+
 ---
 
 ## The knowledge base
