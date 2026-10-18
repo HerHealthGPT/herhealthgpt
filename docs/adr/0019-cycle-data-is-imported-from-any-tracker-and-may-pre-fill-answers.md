@@ -63,11 +63,13 @@ flow, the result saved to her account.
   a guessed format.
 - **Anything else is extracted by the base model** (`Qwen/Qwen3.5-9B`, the
   same vLLM process that decides triage — [ADR 0018](0018-local-models-decide-and-the-adapter-answers.md)),
-  under guided decoding into a schema whose only representable values are
-  `features.yaml` ids and their `allowed_values`, plus dates. This is the same
-  defence `TriageDecision` relies on: the file can contain anything, including
-  text written to look like instructions, and the output can still only be a
-  closed-vocabulary value.
+  asked for JSON in the shape of `CycleExtraction` (below), whose only
+  representable values are closed-vocabulary tokens and dates. Its reply is
+  parsed and validated against that schema exactly as a triage decision is
+  (`triage/chain.py` — vLLM's `response_format` is not used, because it
+  crashed the engine; README, "Fine-tuned model"). The file can contain
+  anything, including text written to look like instructions, and what
+  survives validation can still only be a closed-vocabulary value.
 - **The raw file is never stored.** It is held in a temporary file for the
   length of the request, deleted in a `finally`, and never logged — not its
   content, not its name.
@@ -83,7 +85,7 @@ flow, the result saved to her account.
 
 Extracted: only what maps onto a feature — period days and flow, spotting
 between periods, logged pain and its intensity, discharge as the app labels
-it, bloating, nausea, back pain, fatigue, mood, skin, weight entries, and
+it, bloating, nausea, back pain, fatigue, mood, skin, and
 pregnancy test results.
 
 **Discarded at parse time, even when present:**
@@ -93,7 +95,7 @@ pregnancy test results.
 - **Sexual activity and contraception logs.** Highly sensitive on a service
   whose users may share a device with someone who should not see them, and
   no feature reads them.
-- Location, heart rate, sleep, workouts and every other non-menstrual record.
+- Weight, location, heart rate, sleep, workouts and every other non-menstrual record.
 
 ### 3. Before anything is saved, she confirms what was found
 
@@ -106,45 +108,109 @@ extraction's accuracy, and it is mandatory, not a convenience.
 
 A tracker-derived value enters the case vector as an **answered feature** —
 the same mechanism that seeds `age_band` from her date of birth in
-`app/triage/routes.py` — when all of these hold:
+`app/triage/routes.py` — when every condition below holds. Anything she says
+in the consultation overrides it, as her words already override the profile
+age band.
 
-| Condition | Why |
+**Freshness.** Her last logged entry must fall within **45 days**: the longest
+cycle `features.yaml` treats as within range (`21_to_35_days`) plus a 10-day
+margin. The 35 is the knowledge base's own bucket edge; the 10 is ours. A
+cycle-pattern value must also rest on at least **3 complete cycles** — a
+product parameter, not a sourced figure. Both are configuration, and must
+never be described as clinically derived.
+
+**Mapping onto `allowed_values`, value by value.** Every rule here is either
+mechanical or quoted; none is a threshold the team chose.
+
+| Feature | Pre-filled when | Authority |
+|---|---|---|
+| `cycle_length` | Every logged cycle falls in the same bucket | The buckets carry their thresholds in their names |
+| `cycle_regularity: irregular` | Any logged cycle in the window is under 21 or over 35 days | NHS, already quoted in `evidence.csv` (`normal_variation` / `cycle_length`): *"A woman's periods are irregular if the gap between them is less than 21 days or more than 35 days."* |
+| `cycle_regularity: regular` | Every logged cycle is 21–35 days | The complement of the same sentence, read the way that row's own note already reads it |
+| `cycle_length: varies_widely` | **Never** | No source in `knowledge/` defines it |
+| `period_duration` | Every logged period falls in the same bucket | Mechanical |
+| Symptom features | She logged the symptom, or confirmed its absence (below) | Mechanical |
+
+**Absence is never read as "no".** "No cramps logged" is not
+`pelvic_pain_timing: none` — not logging is not the same as not happening,
+the `argues_against` discipline applied here. Absence becomes usable only when
+she says so herself: the import preview asks about the few features where it
+matters most — *"We didn't find any pain logged in your last 6 cycles. Is that
+because you don't get period pain?"* — and only "Yes, no pain" pre-fills a
+value. That value is her own statement, made at upload, and expires with the
+freshness window like any other.
+
+**Red-flag features: pre-filled in the alarming direction only.** For a
+feature some clause of `red_flags.yaml` reads — computed from the file at
+load time, never listed by hand — the danger runs one way. A pre-filled
+benign value (`bleeding_heaviness: light`, `pregnancy_status: not_pregnant`)
+removes the question that would have escalated; a pre-filled alarming value
+can only make an escalation more likely. CLAUDE.md binding consequence 3
+settles that trade toward false alarms, so:
+
+| The tracker shows, within the window | Pre-filled |
 |---|---|
-| Her last logged entry is within the freshness window (default **45 days**) | One full cycle at the long end of `21_to_35_days`, with margin. Older data may describe a pattern that has since changed. |
-| Cycle-pattern values rest on at least **3 complete cycles** | One cycle is not a pattern. |
-| The value maps onto `allowed_values` mechanically | `cycle_length` only when every logged cycle falls in the **same** bucket; `period_duration` likewise. Values defined only in words (`irregular`, `varies_widely`) are **never** pre-filled until a cited source defines them. |
-| The value comes from something she logged, never from an absence | "No cramps logged" is not `pelvic_pain_timing: none`. Not logging is not the same as not happening — the `argues_against` discipline, applied here. |
-| **The feature appears in no clause of `red_flags.yaml`** | See below. Computed from the file at load time, never listed by hand. |
-| Nothing she has said in this consultation contradicts it | Her own words today always win, as they already do over the profile age band. |
+| Flow at the app's heaviest level | `bleeding_heaviness: heavy` |
+| Bleeding between periods | `bleeding_between_periods: yes` |
+| A positive pregnancy test | `pregnancy_status: possibly_pregnant` — never `pregnant`, which is a stronger claim than a home test |
+| Anything benign — lighter flow, a negative test, no spotting | Nothing. Background only, and the model asks one short confirming question: *"Your tracker shows lighter periods lately — is that still how they are?"* |
 
-**The red-flag exclusion is the one place this ADR declines the request as
-made.** Pre-filling was asked for wherever the data is recent. For features
-that a red-flag clause reads, a pre-filled value either suppresses the
-question that would have escalated (a benign value) or escalates on data
-nobody confirmed today (an alarming one), and ADR 0015 already ruled that
-stored data may not fire a red flag. CLAUDE.md binding consequence 3 settles
-the trade: when false alarms and missed escalations conflict, choose false
-alarms. So for those features the tracker data goes into the prompt as
-background, and the model asks one short confirming question — "Your tracker
-shows heavy flow on your last three periods — is it still like that?" — which
-costs one turn rather than an open-ended exchange.
+**This partly reverses ADR 0015**, which ruled that stored data may never
+fire a red flag. Here a stored value can supply one clause of a rule — and
+no more than one, which holds only because of two rules stated here so they
+cannot be relaxed by accident. Checked against `red_flags.yaml` on
+2026-10-18, four rules read a feature the tracker can pre-fill:
 
-**Safety signals force a question.** A positive pregnancy test logged in the
-freshness window, flow logged as the app's heaviest level, or bleeding
-between periods, each requires the model to put the matching feature to her
-before it may conclude.
+| Rule | Clauses | Why a log alone cannot fire it |
+|---|---|---|
+| `pelvic_pain_with_heavy_bleeding` (EMERGENCY) | pain severity ≠ none, heaviness heavy | needs `pelvic_pain_severity` |
+| `possible_ectopic_pregnancy` | periods stopped < 3 months, bleeding between periods, pain severity ≠ none | needs `pelvic_pain_severity` |
+| `pelvic_pain_in_pregnancy` | pain severity ≠ none, pregnant or possibly pregnant | needs `pelvic_pain_severity` |
+| `bleeding_in_pregnancy` | pregnant, bleeding between periods | needs `pregnancy_status: pregnant`, which is never pre-filled |
 
-Everything else the data shows, and everything that fails a condition above,
-reaches the model as background through `render_known_background`, framed as
-ADR 0015 frames the health note: from her tracking app, unverified, dated by
-its last entry, and unable to fire a warning sign on its own.
+1. **`pelvic_pain_severity` is never pre-filled, in either direction**, even
+   when the app logs a severe intensity. It is how bad the pain is *today*,
+   and it is the clause that keeps three of the four rules above in the
+   consultation.
+2. **`pregnancy_status` is pre-filled as `possibly_pregnant` at most.**
+   Pre-filling `pregnant` would let `bleeding_in_pregnancy` fire on two logs.
+
+A test in checklist item 4 re-derives this table from `red_flags.yaml` and
+fails if any rule becomes satisfiable from pre-fillable values alone, so a
+new red flag cannot silently reopen it. A log can only make the question that
+would escalate more likely to be asked.
+
+Everything else the data shows — the counts behind each pre-fill, and
+values that failed a rule above — reaches the model as
+background through `render_known_background`, framed as ADR 0015 frames the
+health note: from her tracking app, unverified, dated by its last entry, and
+unable to fire a warning sign on its own.
+
+**Stale data is said to be stale.** Settings and the attach button show when
+the data was last updated — *"Cycle data last updated 52 days ago. Upload a
+new export to skip these questions again."* — so the window running out is
+visible to her, not just to the code.
 
 ### 5. Storage
 
-A `cycle_entries` table — `user_id`, `date`, `feature_id`, `value`,
-`source_app`, `imported_at` — holding closed-vocabulary values only, so the
-table can hold nothing the vocabulary cannot express. `user_id` cascades on
-account deletion. `GET` / `PUT` / `DELETE /accounts/cycle-data`, so it can be
+**Daily logs in a tracker vocabulary of our own, not feature values.** A
+tracker records days — heavy flow on the 3rd, cramps on the 2nd — while
+`features.yaml` describes a pattern, `cycle_length: over_35_days`. Storing a
+day as a feature value would make a row mean something its feature does not.
+So extraction produces `CycleExtraction`
+(`packages/contracts/src/herhealth_contracts/cycle.py`): per day a flow level,
+a set of symptoms from a closed list, a pain intensity when the app records
+one, and a pregnancy test result. Every field is an enum, a date or an id-shaped
+token, so the schema has no place for text from the file — the property
+validation of the model's reply relies on. Turning days into feature values is the triage
+code's job, where the knowledge base is (checklist item 4).
+
+A `cycle_data` table with one row per user, edited in place exactly as
+`health_notes` is: the confirmed `CycleExtraction` as JSON, whether she
+confirmed she gets no period pain, and when it was imported. The JSON is
+re-validated against the schema whenever it is read, so the column can hold
+nothing the vocabulary cannot express. `user_id` cascades on account
+deletion. `GET` / `PUT` / `DELETE /accounts/cycle-data`, so it can be
 deleted on its own, as the glossary requires. A re-import replaces the
 previous one rather than merging, so there is never a question of which
 import is current.
@@ -180,7 +246,7 @@ import is current.
   requirement.
 - **Model extraction from PDFs is unmeasured.** Its accuracy is unknown until
   it is run against real reports, and her confirmation is the only check.
-- **`cycle_entries` is stored in plaintext**, inheriting the same unbuilt
+- **`cycle_data` is stored in plaintext**, inheriting the same unbuilt
   application-layer encryption ADR 0015 records for `health_notes.content`
   and `messages.content`. It widens what a leaked snapshot contains.
 - **The freshness window and cycle minimum are product parameters, not
@@ -190,13 +256,18 @@ import is current.
 ## Migration checklist
 
 1. This ADR, and the **Cycle data** glossary entry amended to match.
-2. Contracts: the extraction schema, closed over `features.yaml`.
-3. The tracker field map: per-format field → feature id and value, every
-   target validated against `features.yaml` by a test; shown for review in
-   batches of at most ten rows.
+2. Contracts: `CycleExtraction`, the closed tracker vocabulary every
+   extractor produces and the model's reply is validated against.
+3. No separate field-map file. Each converter maps its app's fields onto the
+   tracker vocabulary, and `triage/cycle_data.py` maps the tracker vocabulary
+   onto `features.yaml` in one table, with the knowledge base re-checked on
+   every call.
 4. Triage: the summary (cycle lengths, period durations, per-cycle symptom
-   counts), the pre-fill rule with its red-flag exclusion derived from
-   `red_flags.yaml`, and the background wording, each pinned by tests.
+   counts), the pre-fill rules of section 4 with the red-flag direction rule
+   derived from `red_flags.yaml`, the test that no red flag is satisfiable
+   from pre-fillable values alone, and the background wording, each pinned
+   by tests. Eval cases carrying cycle data, so `make eval` reports questions
+   saved and any action code a pre-fill made worse.
 5. Backend: migration `0011`, the model, the routes, the CSV and Apple Health
    converters, model extraction, temp-file handling, deletion tests.
 6. Frontend: the attach button, the preview, the Settings section, EN/FR/AR
