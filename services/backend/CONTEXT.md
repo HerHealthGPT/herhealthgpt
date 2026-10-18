@@ -91,6 +91,13 @@ _Avoid_: soft delete, archive, deactivate, disable
 **Cycle data**:
 Menstrual tracking a user may import to give the system context. Hers, optional,
 and deletable independently of her account.
+
+Uploaded as an export file from any tracking app; only values that map onto
+`features.yaml` are kept, and the file itself is never stored. She confirms what
+was found before it is saved. When fresh, it may answer a cycle-pattern feature
+so she is not asked it again — never a feature any red flag reads, and never a
+value inferred from something she did not log. See
+[ADR 0019](../../docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md).
 _Avoid_: health data, records, history
 
 **Health note**:
