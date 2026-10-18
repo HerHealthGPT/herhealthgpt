@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from herhealth_backend.app.accounts.current_user import get_current_user
+from herhealth_backend.app.accounts.cycle_import import cycle_data_for, stored_extraction
 from herhealth_backend.app.accounts.models import User
 from herhealth_backend.app.accounts.profile import health_note_for
 from herhealth_backend.app.config import reasoning_timeout as configured_reasoning_timeout
@@ -53,6 +54,11 @@ from herhealth_backend.triage.agent import (
 )
 from herhealth_backend.triage.comparison import MODEL_C, MODEL_LABELS, PlainChatResponder
 from herhealth_backend.triage.context import join_evidence
+from herhealth_backend.triage.cycle_data import (
+    prefill,
+    render_cycle_background,
+    summarize,
+)
 from herhealth_backend.triage.provenance import (
     drop_unknown_conditions,
     enforce_provenance_cap,
@@ -320,7 +326,7 @@ async def _run_turn(
     loaded = await _load_session(request, user, database)
     session_id, history, carried = loaded.session_id, loaded.history, loaded.carried
     history.append(Message(role="user", content=request.message))
-    background = await _known_background(user, database)
+    background, cycle_answers = await _known_background(user, database, agent.base)
 
     # Her stored age band is an ANSWER, not just prose. Seeding the case
     # vector with it does two things the background block alone cannot:
@@ -338,10 +344,14 @@ async def _run_turn(
     # Profile is the weakest source: anything she has said in this
     # consultation wins, because the band is derived from a date she typed
     # once and her own words are about today.
+    #
+    # Imported cycle data sits between the two, for the same reason: fresher
+    # than a date typed once, weaker than what she says today (ADR 0019).
     observed: dict[str, str] = {}
     profile_band = _profile_age_band(user)
     if profile_band is not None:
         observed["age_band"] = profile_band
+    observed.update(cycle_answers)
     observed.update(loaded.observed)
 
     # The feature she was asked about last turn and has not yet answered. Her
@@ -647,8 +657,11 @@ def _profile_age_band(user: User) -> str | None:
     return age_band_for(user.date_of_birth, today=date.today())
 
 
-async def _known_background(user: User, database: Database) -> str | None:
-    """Her stored age band and health note, rendered for the system prompt.
+async def _known_background(
+    user: User, database: Database, base: KnowledgeBase
+) -> tuple[str | None, dict[str, str]]:
+    """Her stored age band, health note and cycle data, rendered for the
+    system prompt, plus the feature values her cycle data answers.
 
     This is the one place the Accounts and Triage contexts meet over her
     profile, which ``CONTEXT-MAP.md`` permits only at the API layer — hence
@@ -661,10 +674,22 @@ async def _known_background(user: User, database: Database) -> str | None:
     age_band = _profile_age_band(user)
     async with database.session() as session:
         note = await health_note_for(session, user.id)
-    return render_known_background(
+        cycle_row = await cycle_data_for(session, user.id)
+    profile = render_known_background(
         age_band=age_band,
         health_note=note.content if note is not None else None,
     )
+    extraction = stored_extraction(cycle_row) if cycle_row is not None else None
+    if cycle_row is None or extraction is None:
+        return profile, {}
+    summary = summarize(
+        extraction,
+        today=date.today(),
+        confirmed_no_period_pain=cycle_row.confirmed_no_period_pain,
+    )
+    answers = prefill(summary, base)
+    cycle = render_cycle_background(summary, answers)
+    return "\n\n".join(block for block in (profile, cycle) if block), answers
 
 
 def _passage_from_cited(raw: object) -> RetrievedPassage | None:

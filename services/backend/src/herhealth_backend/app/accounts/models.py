@@ -39,6 +39,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -47,6 +48,7 @@ __all__ = [
     "CredentialKind",
     "User",
     "Credential",
+    "CycleData",
     "HealthNote",
     "Session",
     "SignInFailure",
@@ -112,6 +114,9 @@ class User(Base):
     health_note: Mapped[HealthNote | None] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    cycle_data: Mapped[CycleData | None] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class HealthNote(Base):
@@ -162,6 +167,42 @@ class HealthNote(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="health_note")
+
+
+class CycleData(Base):
+    """Cycle data she imported from a tracking app and confirmed. Optional.
+
+    The same shape as ``HealthNote``, for the same reasons: its own table so
+    it can be deleted without closing her account (the **Cycle data** term in
+    ``services/backend/CONTEXT.md``), and one row per user replaced on every
+    import, so there is never a question of which import is current.
+
+    ``extraction`` is a ``herhealth_contracts.cycle.CycleExtraction`` as JSON
+    — closed-vocabulary values and dates only, never the uploaded file, which
+    is not kept. It is re-validated against that schema whenever it is read.
+    Stored in plaintext like ``health_notes.content``; ADR 0019's risk
+    register says so.
+    """
+
+    __tablename__ = "cycle_data"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    extraction: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    #: She answered "Yes, no pain" in the import preview. Her own statement,
+    #: the only way an absence in her logs can answer a feature.
+    confirmed_no_period_pain: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    imported_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+    user: Mapped[User] = relationship(back_populates="cycle_data")
 
 
 class Credential(Base):

@@ -12,9 +12,11 @@ Accounts grows.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from anyio import to_thread
+from fastapi import APIRouter, Depends, Request, Response, UploadFile, status
+from herhealth_contracts.cycle import CycleExtraction
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from herhealth_backend.app.accounts.account_deletion import delete_user_account
@@ -24,13 +26,22 @@ from herhealth_backend.app.accounts.cookies import (
     set_auth_cookies,
 )
 from herhealth_backend.app.accounts.current_user import get_current_user
+from herhealth_backend.app.accounts.cycle_import import (
+    MAX_UPLOAD_BYTES,
+    ModelCycleExtractor,
+    clear_cycle_data,
+    cycle_data_for,
+    extract_cycle_data,
+    save_cycle_data,
+    stored_extraction,
+)
 from herhealth_backend.app.accounts.email_sender import EmailSender
 from herhealth_backend.app.accounts.email_verification import (
     request_verification_resend,
     send_verification_code,
     verify_email,
 )
-from herhealth_backend.app.accounts.errors import InvalidSession
+from herhealth_backend.app.accounts.errors import CycleImportFailed, InvalidSession
 from herhealth_backend.app.accounts.google_identity import GoogleTokenVerifier
 from herhealth_backend.app.accounts.google_sign_in import sign_in_with_google
 from herhealth_backend.app.accounts.models import User
@@ -55,6 +66,7 @@ from herhealth_backend.app.accounts.sign_in import sign_in as sign_in_user
 from herhealth_backend.app.accounts.verification_code_policy import CODE_LENGTH
 from herhealth_backend.app.db import Database
 from herhealth_backend.triage.age_bands import age_band_for
+from herhealth_backend.triage.cycle_data import prefill, summarize
 
 __all__ = ["router"]
 
@@ -388,6 +400,149 @@ async def delete_health_note(
     database: Database = request.app.state.database
     async with database.session() as session:
         await clear_health_note(session, current_user.id)
+
+
+class CycleDataSummary(BaseModel):
+    """What her data adds up to, for the preview and for Settings."""
+
+    source_app: str
+    last_entry: date
+    days_since_last_entry: int
+    #: False once the last entry is older than the freshness window: nothing
+    #: is pre-filled until she uploads a newer export.
+    fresh: bool
+    periods_found: int
+    cycle_lengths: list[int]
+    period_durations: list[int]
+    #: The feature values this data will answer, so the preview can show her.
+    will_answer: dict[str, str]
+
+
+class CycleDataPreview(BaseModel):
+    extraction: CycleExtraction
+    summary: CycleDataSummary
+    #: No pain was logged at all, so the preview asks whether that is because
+    #: she does not get period pain. Only her "yes" can answer a feature.
+    ask_about_period_pain: bool
+
+
+class SaveCycleDataRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    extraction: CycleExtraction
+    confirmed_no_period_pain: bool = False
+
+
+class CycleDataStatus(BaseModel):
+    imported_at: datetime | None = None
+    summary: CycleDataSummary | None = None
+
+
+def _cycle_summary(
+    request: Request, extraction: CycleExtraction, *, confirmed_no_period_pain: bool
+) -> CycleDataSummary:
+    summary = summarize(
+        extraction, today=date.today(), confirmed_no_period_pain=confirmed_no_period_pain
+    )
+    agent = getattr(request.app.state, "triage_agent", None)
+    return CycleDataSummary(
+        source_app=summary.source_app,
+        last_entry=summary.last_entry,
+        days_since_last_entry=summary.days_since_last_entry,
+        fresh=summary.fresh,
+        periods_found=len(summary.periods),
+        cycle_lengths=list(summary.cycle_lengths),
+        period_durations=list(summary.period_durations),
+        will_answer=prefill(summary, agent.base) if agent is not None else {},
+    )
+
+
+@router.post("/cycle-data/preview", response_model=CycleDataPreview)
+async def preview_cycle_data(
+    file: UploadFile,
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> CycleDataPreview:
+    """Read an uploaded export and show what was found. Stores nothing.
+
+    The file is read here and dropped; FastAPI removes its spooled copy when
+    the request ends. She confirms with PUT /accounts/cycle-data, sending the
+    extraction back, and only then is anything kept (ADR 0019).
+    """
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise CycleImportFailed("too_large")
+    extractor: ModelCycleExtractor | None = getattr(request.app.state, "cycle_extractor", None)
+    extraction = await to_thread.run_sync(
+        lambda: extract_cycle_data(file.file, extractor=extractor)
+    )
+    summary = _cycle_summary(request, extraction, confirmed_no_period_pain=False)
+    pain_logged = any(
+        day.pain_intensity is not None or {"cramps", "pelvic_pain"} & set(day.symptoms)
+        for day in extraction.days
+    )
+    return CycleDataPreview(
+        extraction=extraction,
+        summary=summary,
+        ask_about_period_pain=not pain_logged and summary.fresh,
+    )
+
+
+@router.put("/cycle-data", response_model=CycleDataStatus)
+async def put_cycle_data(
+    payload: SaveCycleDataRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> CycleDataStatus:
+    """Keep what she confirmed, replacing any earlier import. The extraction
+    is validated again on the way in, so the server stores only what the
+    schema can express, not whatever a client sends."""
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        row = await save_cycle_data(
+            session,
+            current_user.id,
+            extraction=payload.extraction,
+            confirmed_no_period_pain=payload.confirmed_no_period_pain,
+        )
+    return CycleDataStatus(
+        imported_at=row.imported_at,
+        summary=_cycle_summary(
+            request,
+            payload.extraction,
+            confirmed_no_period_pain=payload.confirmed_no_period_pain,
+        ),
+    )
+
+
+@router.get("/cycle-data", response_model=CycleDataStatus)
+async def get_cycle_data(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> CycleDataStatus:
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        row = await cycle_data_for(session, current_user.id)
+    extraction = stored_extraction(row) if row is not None else None
+    if row is None or extraction is None:
+        return CycleDataStatus()
+    return CycleDataStatus(
+        imported_at=row.imported_at,
+        summary=_cycle_summary(
+            request, extraction, confirmed_no_period_pain=row.confirmed_no_period_pain
+        ),
+    )
+
+
+@router.delete("/cycle-data", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cycle_data(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> None:
+    """Delete it on its own, without closing her account — the **Cycle data**
+    term in ``services/backend/CONTEXT.md``."""
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        await clear_cycle_data(session, current_user.id)
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
