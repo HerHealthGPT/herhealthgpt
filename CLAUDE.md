@@ -399,7 +399,7 @@ If in doubt, omit the row — a missing row is neutral, which is safe.
   exists, the durable, git-tracked record is the batch or condition note
   itself. Fix the sentence or build the tooling — do not keep citing a file
   that does not exist.
-- `DATASHEET.md` states plainly that the knowledge base is source-traceable but
+- `docs/DATASHEET.md` states plainly that the knowledge base is source-traceable but
   not clinician-adjudicated, and that this is a stated limitation.
 
 State this limitation wherever results are reported. Do not describe the
@@ -734,7 +734,7 @@ asserting equality to reporting the number, and `DATASHEET.md` needs a sentence
 saying so. **Done 2026-10-19:** `make eval-red-flags` measures the live
 pipeline (17 of 17 rules escalated, both modes, after the red-flag gate in
 `TriageAgent._enforce_red_flag`), `make eval` prints that measured rate beside
-the retired controller's numbers, and [`DATASHEET.md`](DATASHEET.md) states it
+the retired controller's numbers, and [`docs/DATASHEET.md`](docs/DATASHEET.md) states it
 as a measured rate with the other limitations. `make eval` itself still scores
 the retired controller (red-flag recall 0.333 on the 9-case file) and exits
 non-zero; CI does not run it.
