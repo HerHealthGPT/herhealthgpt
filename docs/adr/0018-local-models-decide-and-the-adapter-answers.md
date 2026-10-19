@@ -308,6 +308,37 @@ function words, not by a reader; the wording has not been reviewed by a
 native speaker. The benchmark's gold here is 100% see-doctor, so it says
 nothing about over-triage. Median 40 s per turn.
 
+## When to get help on informational answers (2026-10-19)
+
+The full-benchmark run found informational answers rarely said when to seek
+care. Re-measured on 24 of those 121 questions (8 urgent-labelled, 16
+see-doctor) with the current pipeline: the page-style answer now has a "When
+to see a doctor" section in 20 of 24 and mentions a clinician in 23, but
+mentions urgent or emergency care in only 4.
+
+Every informational answer now carries a "When to get help" section built by
+code from the knowledge base (`context.care_guidance`): the `red_flags.yaml`
+warning signs touching the symptoms the question is about, those about what
+it names first; the baseline action of any condition she names; and always
+an invitation to describe her own symptoms. Which symptoms a question is
+about is read by one short model call into the closed feature list
+(`LangChainSymptomTopics`, median 0.7 s), because the extract step records
+only what she says about herself and so read nothing from "what should I do
+if I have severe period pain?".
+
+| On the 24 questions | Before | After |
+|---|---|---|
+| Urgent-labelled with a warning sign shown | 1 of 8 | 5 of 8 (see note) |
+| Any question with a warning sign shown | 4 of 24 (prose) | 9 of 24 |
+| Invitation to describe her own symptoms | 0 | 24 of 24 |
+
+Note: of the 8 urgent-labelled English questions, 5 now show warning signs;
+the other 3 ask when in the cycle conception is most likely, which no warning
+rule addresses. With three Arabic and French urgent questions added, 8 of 11
+show warning signs. The PCOS questions show none because our sources record
+no urgent warning sign for those symptoms; nothing is invented. Warning-sign
+wording in Arabic and French is unreviewed by a native speaker.
+
 ## What this shows
 
 The points below describe the first run, before the citation change.

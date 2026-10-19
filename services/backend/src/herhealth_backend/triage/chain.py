@@ -309,6 +309,53 @@ class LangChainFeatureExtractor:
         }
 
 
+_MENTIONED_INSTRUCTIONS = (
+    "You read one message from a woman using a women's-health service. List "
+    "the symptoms or situations from FEATURES that the message mentions or "
+    "asks about, whether or not she says she has them: a question such as "
+    '"what if my period pain is severe?" mentions pelvic_pain_severity. The '
+    "message may be in any language. Reply with only a JSON object of the "
+    'form {"features": ["<feature id>", ...]}, using ids exactly as listed. '
+    'If it mentions none, reply {"features": []}.'
+)
+
+
+class LangChainSymptomTopics:
+    """Implements ``herhealth_backend.triage.agent.SymptomTopics``.
+
+    Which symptoms a question is *about*, for the "when to get help" section
+    of an informational answer. Not the extract step: that records only what
+    she says about herself, so "what should I do if I have severe period
+    pain?" extracts nothing, and measured on 24 benchmark questions the urgent
+    ones got no warning sign at all. Only ids in the feature list survive;
+    anything else, and any failure, is an empty result.
+    """
+
+    def __init__(self, chat: Any, base: KnowledgeBase) -> None:
+        self._chat = chat
+        self._ids = {feature.id for feature in base.features}
+        listing = "\n".join(f"- {feature.id} ({feature.label})" for feature in base.features)
+        self._system = f"{_MENTIONED_INSTRUCTIONS}\n\nFEATURES:\n{listing}"
+
+    def mentioned(self, question: str) -> tuple[str, ...]:
+        if not question.strip():
+            return ()
+        try:
+            reply = _invoke(
+                self._chat,
+                [SystemMessage(content=self._system), HumanMessage(content=question)],
+                what="symptom topics",
+            )
+            raw = json.loads(extract_json_object(str(reply)))
+        except (openai.APITimeoutError, ReasoningUnavailable, ValueError) as error:
+            logger.warning("reading the question's symptoms failed: %s", error)
+            return ()
+        listed = raw.get("features") if isinstance(raw, dict) else None
+        if not isinstance(listed, list):
+            return ()
+        return tuple(dict.fromkeys(str(f) for f in listed if str(f) in self._ids))
+
+
 # ---------------------------------------------------------------------------
 # The answer step
 # ---------------------------------------------------------------------------

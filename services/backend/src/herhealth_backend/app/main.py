@@ -75,6 +75,7 @@ from herhealth_backend.triage.chain import (
     LangChainAnswerWriter,
     LangChainFeatureExtractor,
     LangChainReasoningClient,
+    LangChainSymptomTopics,
     build_chat_model,
 )
 from herhealth_backend.triage.clients import DecisionValidator
@@ -230,6 +231,7 @@ def _build_triage_agent() -> TriageAgent | None:
             fallback_name=deciding,
         ),
         page_sections=PAGE_SECTIONS,
+        symptom_topics=LangChainSymptomTopics(chat(deciding, EXTRACT_MAX_TOKENS), base),
         min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
         refuse_inform_with_symptoms=True,
         refuse_repeated_question=True,

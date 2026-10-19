@@ -1,11 +1,12 @@
 import { Sparkles } from "lucide-react";
 
+import { CareGuidance } from "@/components/chat/care-guidance";
 import { CitedSources } from "@/components/chat/cited-sources";
 import { ReasoningDisclosure } from "@/components/chat/reasoning-disclosure";
 import { StructuredText } from "@/components/chat/structured-text";
 import { UnreviewedModelNotice } from "@/components/chat/unreviewed-model-notice";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import type { CitedPassage, DecisionReasoningModel } from "@/lib/api/types";
+import type { CitedPassage, DecisionReasoningModel, CareGuidance as CareGuidanceData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 /** Blank-line-separated paragraphs. HTML collapses whitespace, so a long
@@ -33,6 +34,8 @@ type ChatMessageProps = {
   rationale?: string | null;
   showReasoning?: boolean;
   reasoningModel?: DecisionReasoningModel;
+  /** When to get help, shown under an informational answer. */
+  careGuidance?: CareGuidanceData;
 };
 
 export function ChatMessage({
@@ -42,6 +45,7 @@ export function ChatMessage({
   rationale,
   showReasoning = false,
   reasoningModel,
+  careGuidance,
 }: ChatMessageProps) {
   const isAssistant = role === "assistant";
   const sources = isAssistant ? (citedPassages ?? []) : [];
@@ -97,6 +101,7 @@ export function ChatMessage({
         )}
         {isAssistant ? <UnreviewedModelNotice model={reasoningModel} /> : null}
         {sources.length > 0 ? <CitedSources passages={sources} variant="question" /> : null}
+        {isAssistant && careGuidance ? <CareGuidance guidance={careGuidance} /> : null}
         {reasoning ? <ReasoningDisclosure rationale={reasoning} /> : null}
       </div>
     </div>
