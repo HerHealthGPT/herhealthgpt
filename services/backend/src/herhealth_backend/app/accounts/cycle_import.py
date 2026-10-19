@@ -2,8 +2,9 @@
 
 Two routes in (ADR 0019):
 
-* **Converters** for formats whose shape is known — our own CSV template, and
-  Apple Health's ``export.xml`` (or the zip it ships in). Plain code.
+* **Converters** for formats whose shape is known — our own CSV template,
+  Apple Health's ``export.xml`` (or the zip it ships in), and the Cycle
+  History table of the PDF Apple Health shares. Plain code.
 * **Model extraction** for anything else — another app's CSV or JSON, a PDF
   report. The base model is asked for JSON in the ``CycleExtraction`` shape
   and its reply is validated against it, so whatever the file says, only
@@ -20,6 +21,7 @@ import csv
 import datetime
 import io
 import json
+import re
 import uuid
 import zipfile
 from collections.abc import Callable
@@ -235,6 +237,58 @@ def _apple_export_in(archive: zipfile.ZipFile) -> zipfile.ZipInfo | None:
 
 
 # ---------------------------------------------------------------------------
+# Apple Health's shared PDF
+# ---------------------------------------------------------------------------
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_MONTH = "(?:" + "|".join(_MONTHS) + ")[a-z]*"
+
+#: One row of the Cycle History table, as its text comes out of the PDF:
+#: "2026 Started 26 Sep 23 days 4 days", "1 – 28 Aug 28 days 4 days",
+#: "26 Dec 2025 – 20 Jan 2026 26 days 3 days". The leading year is the
+#: table's YEAR column, printed on the first row of each year only.
+_APPLE_PDF_ROW = re.compile(
+    rf"(?:(?P<section>20\d\d)\s+)?(?:Started\s+)?"
+    rf"(?P<d1>\d{{1,2}})(?:\s+(?P<m1>{_MONTH}))?(?:\s+(?P<y1>20\d\d))?"
+    rf"(?:\s*[–—-]\s*\d{{1,2}}\s+(?P<m2>{_MONTH})(?:\s+20\d\d)?)?"
+    rf"\s+(?P<cycle>\d{{1,3}})\s+days?\s+(?P<period>\d{{1,2}})\s+days?"
+)
+
+
+def _is_apple_health_pdf(text: str) -> bool:
+    return "Cycle History" in text and "PERIOD LENGTH" in text.upper()
+
+
+def _from_apple_health_pdf(text: str) -> CycleExtraction:
+    """The Cycle History table: one row per cycle, giving the day her period
+    started and how many days it lasted.
+
+    The PDF also draws each day's flow and symptoms, but as dots on a chart,
+    which are not in its text. So each period day is recorded as bleeding of
+    unnoted amount, the most this file states in words, and no symptoms.
+    Her name and date of birth, printed on every page, are never read.
+    """
+    section = text.split("Cycle History", 1)[1].split("Cycle Detail", 1)[0]
+    flat = " ".join(section.split())
+    days = _Days()
+    year: int | None = None
+    for row in _APPLE_PDF_ROW.finditer(flat):
+        if row["section"]:
+            year = int(row["section"])
+        month = row["m1"] or row["m2"]
+        start_year = int(row["y1"]) if row["y1"] else year
+        if month is None or start_year is None:
+            continue
+        try:
+            start = datetime.date(start_year, _MONTHS.index(month[:3]) + 1, int(row["d1"]))
+        except ValueError:
+            continue
+        for offset in range(min(int(row["period"]), 15)):
+            days.flow(start + datetime.timedelta(days=offset), FlowLevel.UNSPECIFIED)
+    return days.extraction("apple_health")
+
+
+# ---------------------------------------------------------------------------
 # Anything else: the model
 # ---------------------------------------------------------------------------
 
@@ -322,7 +376,10 @@ def extract_cycle_data(
     first_line = head.split(b"\n", 1)[0].decode("utf-8", errors="replace")
     if tuple(c.strip() for c in first_line.split(",")) == CSV_TEMPLATE_HEADER:
         return _from_csv_template(stream.read().decode("utf-8", errors="replace"))
-    return _from_model(_text_of(stream, head), extractor)
+    text = _text_of(stream, head)
+    if head.startswith(b"%PDF") and _is_apple_health_pdf(text):
+        return _from_apple_health_pdf(text)
+    return _from_model(text, extractor)
 
 
 MODEL_INSTRUCTIONS = """You read exports from menstrual cycle tracking apps.

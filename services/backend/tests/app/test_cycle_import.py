@@ -125,3 +125,55 @@ def test_a_model_reply_with_nothing_usable_is_refused() -> None:
     with pytest.raises(CycleImportFailed) as raised:
         _read(b"some report text", extractor=lambda _: "I could not find anything.")
     assert raised.value.reason == "nothing_usable"
+
+
+# --- Apple Health's shared PDF ------------------------------------------------
+
+#: Page 1 of the PDF Apple Health shares, as text: the shape of a real one
+#: (2026-10-19), with a made-up name and date of birth.
+APPLE_PDF_TEXT = """Test Person
+Date of Birth: 1 Jan 2000 (Age: 26)
+Cycle Summary
+28 October 2025–18 October 2026
+Last Menstrual Period 26 Sep 2026
+Typical Period Length 3 Days
+Typical Cycle Length 28 Days
+Cycle History
+28 October 2025–18 October 2026
+YEAR CYCLE DURATION CYCLE LENGTH PERIOD LENGTH
+2026 Started 26 Sep 23 days 4 days
+29 Aug – 25 Sep 28 days 1 day
+1 – 28 Aug 28 days 4 days
+15 Apr – 7 Jun 54 days 4 days
+26 Dec 2025 – 20 Jan 2026 26 days 3 days
+2025 22 Nov – 25 Dec 34 days 3 days
+28 Oct – 21 Nov 25 days 3 days
+ Health Page 1 of 29
+Fertile Window Ovulation Estimate
+Cycle Detail 1 2 3 4 5
+"""
+
+
+def test_the_apple_health_pdf_table_gives_each_period() -> None:
+    from herhealth_backend.app.accounts.cycle_import import _from_apple_health_pdf
+
+    extraction = _from_apple_health_pdf(APPLE_PDF_TEXT)
+
+    dates = [day.date.isoformat() for day in extraction.days]
+    assert extraction.source_app == "apple_health"
+    # Every period, each day as bleeding of unnoted amount.
+    assert {day.flow for day in extraction.days} == {FlowLevel.UNSPECIFIED}
+    assert dates[:3] == ["2025-10-28", "2025-10-29", "2025-10-30"]
+    assert "2025-12-26" in dates and "2025-12-28" in dates
+    assert "2026-08-29" in dates and "2026-08-30" not in dates
+    assert dates[-4:] == ["2026-09-26", "2026-09-27", "2026-09-28", "2026-09-29"]
+    assert len(dates) == 4 + 1 + 4 + 4 + 3 + 3 + 3
+
+
+def test_the_apple_health_pdf_reads_no_name_or_symptom() -> None:
+    from herhealth_backend.app.accounts.cycle_import import _from_apple_health_pdf
+
+    extraction = _from_apple_health_pdf(APPLE_PDF_TEXT)
+
+    assert "Test Person" not in extraction.model_dump_json()
+    assert all(not day.symptoms for day in extraction.days)
