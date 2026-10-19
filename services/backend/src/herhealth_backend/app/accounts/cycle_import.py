@@ -325,7 +325,9 @@ def _from_model(text: str, extractor: ModelCycleExtractor | None) -> CycleExtrac
     vocabulary = {symptom.value for symptom in TrackerSymptom}
     days = []
     for day in raw["days"]:
-        if not isinstance(day, dict):
+        # One day with a date the schema cannot read ("26 Sep") is dropped on
+        # its own rather than sinking the whole import.
+        if not isinstance(day, dict) or not _iso_date(day.get("date")):
             continue
         kept = {key: day[key] for key in _DAY_FIELDS if day.get(key) not in (None, "")}
         symptoms = day.get("symptoms")
@@ -343,6 +345,14 @@ def _from_model(text: str, extractor: ModelCycleExtractor | None) -> CycleExtrac
 
 
 _DAY_FIELDS = ("date", "flow", "pain_intensity", "pregnancy_test")
+
+
+def _iso_date(value: object) -> bool:
+    try:
+        datetime.date.fromisoformat(str(value))
+    except ValueError:
+        return False
+    return True
 
 
 def _one_per_day(days: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -392,6 +402,10 @@ Reply with ONE JSON object and nothing else:
            "pregnancy_test": "positive|negative" (optional)}]}
 Rules:
 - One entry per date. Omit a date with nothing on it.
+- Dates are always YYYY-MM-DD, using the year the export shows for that date.
+- Every day of a period is its own entry with a flow. If the export gives only
+  a period's start date and its length in days, list each of those days with
+  "flow": "unspecified". Use a level only where the export states one.
 - Only record what the export actually shows. Never guess or fill gaps.
 - "unusual_discharge" only when the app itself labels discharge atypical or unusual.
 - Ignore notes, sexual activity, contraception, weight, sleep and anything else
