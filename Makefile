@@ -120,8 +120,14 @@ build:
 
 # Runs the benchmark cases through the controller. No model, no network.
 # Exits 1 if a gated metric fails, so CI can depend on it.
+# Runs the RETIRED rule-based controller, not the live model pipeline (ADR 0011).
 eval:
 	$(UV) run herhealth-eval --knowledge $(KNOWLEDGE_DIR) --cases $(CASES_DIR)
+
+# Red-flag recall of the live model pipeline, one case per red_flags.yaml rule.
+# Needs the model servers and backend.env (HERHEALTH_TRIAGE_MODE=vllm). Reported, not gated.
+eval-red-flags:
+	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api --extra retrieval herhealth-eval-red-flags --output build/red_flag_eval.json
 
 # Run one scripted consultation and print the whole trace. No model, no network,
 # no server — the same case gives the same trace on any machine.

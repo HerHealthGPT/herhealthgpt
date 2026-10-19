@@ -60,6 +60,9 @@ def render(evaluation: Evaluation) -> str:
             else ""
         ),
         "",
+        "This measures the RETIRED rule-based controller, not the live model pipeline;",
+        "the live red-flag recall is `make eval-red-flags` (ADR 0011).",
+        "",
         "GATED",
         _line(f"red-flag recall ({metrics.red_flag_cases} cases)", metrics.red_flag_recall),
         _line("under-triage rate", metrics.under_triage_rate),
@@ -96,9 +99,7 @@ def render(evaluation: Evaluation) -> str:
         "",
         "HOW CONSULTATIONS ENDED",
     ]
-    for reason, count in sorted(
-        stop_reason_counts(evaluation).items(), key=lambda item: -item[1]
-    ):
+    for reason, count in sorted(stop_reason_counts(evaluation).items(), key=lambda item: -item[1]):
         lines.append(f"  {reason.value:<34} {count}")
 
     failures = failing_cases(evaluation)
@@ -132,8 +133,7 @@ def as_json(evaluation: Evaluation) -> dict[str, object]:
             "red_flag_cases": metrics.red_flag_cases,
             "under_triage_rate": metrics.under_triage_rate,
             "under_triage_by_language": {
-                language.value: rate
-                for language, rate in metrics.under_triage_by_language.items()
+                language.value: rate for language, rate in metrics.under_triage_by_language.items()
             },
             "clarification_recall": metrics.clarification_recall,
             "cross_language_action_agreement": metrics.cross_language_action_agreement,
