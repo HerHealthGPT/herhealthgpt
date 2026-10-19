@@ -340,6 +340,40 @@ symptom; it did for all 17.
 The retired controller itself now scores 0.333 on the 9-case benchmark file,
 so `make eval` fails too.
 
+## Cross-language agreement over full consultations (2026-10-19)
+
+First turns could not measure it: nothing concluded on a first turn in every
+language. `make eval-languages` runs the ten scripted consultations to a
+conclusion in English, Arabic and French and compares the action codes.
+
+| | English | Arabic | French |
+|---|---|---|---|
+| Concluded | 9 of 10 | 6 of 10 | 9 of 10 |
+
+| Measure | Result |
+|---|---|
+| Concluded in all three languages | 6 of 10 |
+| Same action code in all three | **6 of 6** |
+| Concluded lower than English for the same script | **0** |
+
+Every script that concluded everywhere ended on the same urgency: four
+`ROUTINE_APPOINTMENT`, one `URGENT_SAME_DAY`, one `EMERGENCY`. The gap is
+reaching a conclusion, not agreeing on one, and it is mostly Arabic: of its
+four failures, two were replies that twice contained no JSON, one a timeout,
+and one a decline in mid-consultation. q30 concluded in no language (English
+ran out of turns, French and Arabic failed on JSON).
+
+Two kinds of invalid reply were seen in the log. Replies with no JSON object
+at all (most often in Arabic) are not fixed here. Replies that copied feature
+names in beside the real fields, set to null (`"fever": null`), are now
+dropped before validation instead of costing a retry.
+
+Limits: ten scripts, one run at temperature 0. The Arabic and French scripts
+are translations written for this evaluation and not reviewed by a native
+speaker, so a difference could come from the translation. Agreement alone is
+not a safety metric; the "lower than English" count is the one that matters,
+and it is 0 on six scripts.
+
 ## When to get help on informational answers (2026-10-19)
 
 The full-benchmark run found informational answers rarely said when to seek
