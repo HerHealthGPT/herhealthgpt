@@ -326,6 +326,16 @@ rule-based controller guaranteed escalation by code (`should_stop` rule 1);
 under ADR 0011 that guarantee is gone and this is the measured rate. One run,
 temperature 0, 17 cases: a single case moves it by six points. A later turn may
 still escalate; this measures the turn on which the warning sign is present.
+**After the red-flag gate (same day).** When her recorded answers satisfy a
+rule and the model did not conclude at that urgency, the reply is sent back
+once with the rule named; if it still does not escalate, code concludes at the
+rule's urgency (`TriageAgent._enforce_red_flag`). This partly reverses ADR 0011
+on purpose: the model no longer has the last word on a fired warning sign.
+Re-measured: 17 of 17 in both modes (7 of 7 emergency, 10 of 10 same day). The
+split between the model escalating on its retry and code concluding was not
+recorded. In words mode this also depends on the extract step reading the
+symptom; it did for all 17.
+
 The retired controller itself now scores 0.333 on the 9-case benchmark file,
 so `make eval` fails too.
 

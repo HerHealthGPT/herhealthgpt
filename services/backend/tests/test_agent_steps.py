@@ -340,3 +340,62 @@ def test_a_question_she_has_not_answered_may_be_asked_again(base: KnowledgeBase)
     result = turn(_repeat_guarded(base, reasoning), asked=["cycle_length"], observed={})
     assert result.decision.next_feature_id == "cycle_length"
     assert len(reasoning.prompts) == 1
+
+
+# --- The red-flag gate -------------------------------------------------------
+
+
+def _conclude(action: str, red_flag: str | None = None) -> TriageDecision:
+    from herhealth_contracts.knowledge import ActionCode
+
+    return TriageDecision(
+        type=DecisionType.CONCLUDE,
+        rationale="Here is how soon to be seen.",
+        action_code=ActionCode(action),
+        red_flag_id=red_flag,
+        citations=() if red_flag else (PASSAGE.id,),
+    )
+
+
+FAINT = {"pelvic_pain_severity": "mild", "feeling_faint": "yes"}
+
+
+def test_a_fired_rule_sends_a_question_back_and_takes_the_escalation(
+    base: KnowledgeBase,
+) -> None:
+    reasoning = Reasoning(ask(), _conclude("EMERGENCY", "pelvic_pain_with_faintness"))
+    agent = TriageAgent(
+        base=base, reasoning=reasoning, retrieval=Retrieval(), enforce_red_flags=True
+    )
+
+    result = turn(agent, observed=dict(FAINT))
+
+    assert result.decision.action_code.value == "EMERGENCY"  # type: ignore[union-attr]
+    assert "pelvic_pain_with_faintness" in reasoning.prompts[-1]
+
+
+def test_code_concludes_when_the_model_still_does_not_escalate(base: KnowledgeBase) -> None:
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(ask(), ask()), retrieval=Retrieval(), enforce_red_flags=True
+    )
+
+    result = turn(agent, observed=dict(FAINT))
+
+    assert result.decision.type is DecisionType.CONCLUDE
+    assert result.decision.action_code.value == "EMERGENCY"  # type: ignore[union-attr]
+    assert result.decision.red_flag_id == "pelvic_pain_with_faintness"
+    assert result.attempts[-1].client == "red-flag-gate"
+
+
+def test_no_fired_rule_leaves_the_reply_alone(base: KnowledgeBase) -> None:
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(ask()), retrieval=Retrieval(), enforce_red_flags=True
+    )
+
+    assert turn(agent).decision.type is DecisionType.ASK
+
+
+def test_the_red_flag_gate_is_off_by_default(base: KnowledgeBase) -> None:
+    agent = TriageAgent(base=base, reasoning=Reasoning(ask()), retrieval=Retrieval())
+
+    assert turn(agent, observed=dict(FAINT)).decision.type is DecisionType.ASK
