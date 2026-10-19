@@ -781,7 +781,7 @@ class TriageAgent:
         result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
         result = self._refuse_premature_conclusion(result, turn_context, system, history, context)
         result = self._refuse_repeated_question(
-            result, turn_context, asked, system, history, context
+            result, turn_context, asked, system, history, context, language
         )
         # Last, so no other gate can undo it.
         result = self._enforce_red_flag(result, turn_context, system, history, context, language)
@@ -950,6 +950,7 @@ class TriageAgent:
         system: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
+        language: str | None = None,
     ) -> ReasoningResult:
         """Send back a question she answered in the message just read.
 
@@ -963,29 +964,77 @@ class TriageAgent:
         may still return to an older feature to check it. Refuses once; a
         second repeat stands, like the other gates.
         """
-        decision = result.decision
-        last = list(asked)[-1] if asked else None
-        if (
-            not self.refuse_repeated_question
-            or decision.type is not DecisionType.ASK
-            or last is None
-            or decision.next_feature_id != last
-            or last not in turn_context.given
-        ):
+        given = turn_context.given
+
+        def repeats(decision: TriageDecision) -> bool:
+            # Any question she has already answered, not only the last one:
+            # measured, a model refused once came straight back to it.
+            return (
+                decision.type is DecisionType.ASK
+                and decision.next_feature_id is not None
+                and decision.next_feature_id in given
+            )
+
+        if not self.refuse_repeated_question or not repeats(result.decision):
             return result
+        feature = result.decision.next_feature_id
         retry = (
             f"{system}\n\nYOUR PREVIOUS QUESTION WAS REJECTED: SHE HAS ALREADY ANSWERED IT. "
-            f"You asked about {last} on the last turn and her answer is recorded as "
-            f"{turn_context.given[last]!r}. Do not ask about {last} again. Ask about a "
-            "different feature from the list above, or conclude if you have enough."
+            f"Her answer about {feature} is recorded as {given.get(feature or '')!r}. Do not "
+            "ask about anything she has already answered. Ask about a different feature "
+            "from the list above, or conclude if you have enough."
         )
+        attempts = result.attempts
         try:
             retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
         except Exception:
             return result
+        attempts = (*attempts, *retried.attempts)
+        if not repeats(retried.decision):
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+
+        # Refused once and still repeating: name the question to ask instead,
+        # the best unanswered one on the ranked menu.
+        best = next(
+            (item.feature for item in turn_context.askable if item.feature.id not in given), None
+        )
+        if best is None:
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+        retry = (
+            f"{retry}\n\nYOU REPEATED AN ANSWERED QUESTION AGAIN. Ask about {best.id} "
+            f"({best.label}) now, with next_feature_id {best.id}."
+        )
+        try:
+            third = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+            attempts = (*attempts, *third.attempts)
+            if not repeats(third.decision):
+                return ReasoningResult(decision=third.decision, attempts=attempts)
+        except Exception:
+            pass
+        # Still repeating. Ask the menu's question in its authored wording,
+        # which exists in English only (CLAUDE.md, "Language scope"); in
+        # another language the model's reply stands rather than switch
+        # language mid-conversation.
+        wording = best.probe.get("en") if language is None else None
+        if not wording:
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+        decision = TriageDecision(
+            type=DecisionType.ASK,
+            next_feature_id=best.id,
+            question_text=wording,
+            rationale="One more detail would change the advice.",
+            observed=dict(retried.decision.observed),
+        )
         return ReasoningResult(
-            decision=retried.decision,
-            attempts=(*result.attempts, *retried.attempts),
+            decision=decision,
+            attempts=(
+                *attempts,
+                ReasoningAttempt(
+                    client="repeat-gate",
+                    outcome=AttemptOutcome.OK,
+                    detail=f"asked {best.id} in code after repeated questions",
+                ),
+            ),
         )
 
     def _write_answer(

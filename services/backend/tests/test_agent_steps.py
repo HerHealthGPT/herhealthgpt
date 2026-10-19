@@ -324,15 +324,39 @@ def test_asking_the_question_she_just_answered_is_refused_once(base: KnowledgeBa
     assert "cycle_length" in reasoning.prompts[1] and "ALREADY ANSWERED" in reasoning.prompts[1]
 
 
-def test_a_second_repeat_stands(base: KnowledgeBase) -> None:
-    reasoning = Reasoning(ask("cycle_length"), ask("cycle_length"))
+def test_a_second_repeat_is_refused_naming_the_question_to_ask(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"), ask("cycle_length"), ask("period_duration"))
     result = turn(
         _repeat_guarded(base, reasoning),
         asked=["cycle_length"],
         observed={"cycle_length": "over_35_days"},
     )
-    assert result.decision.next_feature_id == "cycle_length"
-    assert len(reasoning.prompts) == 2
+    assert result.decision.next_feature_id == "period_duration"
+    assert len(reasoning.prompts) == 3
+    assert "YOU REPEATED AN ANSWERED QUESTION AGAIN" in reasoning.prompts[-1]
+
+
+def test_a_third_repeat_is_replaced_by_the_menu_question_in_code(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"), ask("cycle_length"), ask("cycle_length"))
+    result = turn(
+        _repeat_guarded(base, reasoning),
+        asked=["cycle_length"],
+        observed={"cycle_length": "over_35_days"},
+    )
+    assert result.decision.type is DecisionType.ASK
+    assert result.decision.next_feature_id != "cycle_length"
+    assert result.decision.question_text
+    assert result.attempts[-1].client == "repeat-gate"
+
+
+def test_an_earlier_answered_question_counts_as_a_repeat(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"), ask("period_duration"))
+    result = turn(
+        _repeat_guarded(base, reasoning),
+        asked=["cycle_length", "fever"],
+        observed={"cycle_length": "over_35_days", "fever": "no"},
+    )
+    assert result.decision.next_feature_id == "period_duration"
 
 
 def test_a_question_she_has_not_answered_may_be_asked_again(base: KnowledgeBase) -> None:
