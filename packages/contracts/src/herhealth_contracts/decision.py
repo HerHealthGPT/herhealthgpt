@@ -449,24 +449,16 @@ class TriageDecision(BaseModel):
                     "a CONCLUDE decision must not carry next_feature_id or question_text"
                 )
 
-        # ADR 0013 originally carved out EMERGENCY alone. Widened 2026-09-17,
-        # on the product owner's decision, to both urgent tiers: a woman told
-        # to be seen today is making the same "what is this about?" judgement
-        # as one sent to an emergency department, and withholding the pattern
-        # names from her was not buying safety.
+        # ADR 0013: EMERGENCY alone. Widened to URGENT_SAME_DAY on 2026-09-17
+        # and narrowed back on 2026-10-19, on the product owner's decision, so
+        # the code again matches ADR 0013 and CLAUDE.md: a same-day warning
+        # sign escalates on the symptom without naming what it may be, the
+        # discipline that keeps cancer unnamed.
         #
-        # What has NOT changed: this is still "may match patterns our sources
+        # At EMERGENCY this is still "may match patterns our sources
         # associate with…", never "you have…", and the closed vocabulary still
-        # cannot produce a condition that is not in conditions.yaml — cancer
-        # among them. SELF_CARE and ROUTINE_APPOINTMENT red flags keep the
-        # original restriction.
-        #
-        # ADR 0013 is still `proposed` and its scope section now understates
-        # what the code does. Amend it before this is reviewed.
-        urgent_exception = self.action_code in (
-            ActionCode.EMERGENCY,
-            ActionCode.URGENT_SAME_DAY,
-        )
+        # cannot produce a condition that is not in conditions.yaml.
+        urgent_exception = self.action_code is ActionCode.EMERGENCY
         if self.red_flag_id is not None and self.matching_conditions and not urgent_exception:
             raise ValueError(
                 "a red-flag-driven decision must not name matching_conditions — "

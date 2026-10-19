@@ -119,3 +119,31 @@ def test_reject_leaked_internals_checks_question_text_too() -> None:
         )
 
 
+def test_names_beside_a_same_day_red_flag_are_dropped_not_the_turn() -> None:
+    """ADR 0013, narrowed back 2026-10-19: only EMERGENCY may name conditions
+    beside a red flag. A same-day reply that names them keeps its urgency and
+    its rule; only the names go."""
+    from herhealth_backend.triage.clients import parse_decision_text
+
+    decision = parse_decision_text(
+        '{"type": "conclude", "action_code": "URGENT_SAME_DAY", '
+        '"red_flag_id": "severe_pelvic_pain", '
+        '"matching_conditions": ["pelvic_inflammatory_disease"], '
+        '"rationale": "Pain this severe needs to be seen today.", "citations": []}'
+    )
+    assert decision.action_code is not None
+    assert decision.action_code.value == "URGENT_SAME_DAY"
+    assert decision.red_flag_id == "severe_pelvic_pain"
+    assert decision.matching_conditions == ()
+
+
+def test_names_beside_an_emergency_red_flag_are_kept() -> None:
+    from herhealth_backend.triage.clients import parse_decision_text
+
+    decision = parse_decision_text(
+        '{"type": "conclude", "action_code": "EMERGENCY", '
+        '"red_flag_id": "severe_pelvic_pain", '
+        '"matching_conditions": ["ovarian_cyst"], '
+        '"rationale": "Go to an emergency department now.", "citations": []}'
+    )
+    assert decision.matching_conditions == ("ovarian_cyst",)
