@@ -146,6 +146,13 @@ export type DecisionReasoningModel = {
   reviewed: boolean;
 };
 
+/** When to get help, on an informational answer: read from the knowledge
+ *  base by the backend (`care_guidance`), never written by the model. */
+export type CareGuidance = {
+  topics: { condition_id: string; baseline_action: ActionCode }[];
+  warning_signs: { rule_id: string; action: ActionCode; source_id: string }[];
+};
+
 export type TriageDecision = {
   type: "ask" | "conclude" | "inform" | "decline";
   question_text: string | null;
@@ -164,6 +171,8 @@ export type TriageDecision = {
    *  sources or checks (`model_a`, `model_b`). Absent on the product's own
    *  path. */
   comparison_mode?: string;
+  /** Present on an `inform` from the product's own path. */
+  care_guidance?: CareGuidance;
 };
 
 /** One version an evaluator may pick. The label is all there is to show. */

@@ -399,3 +399,50 @@ def test_the_red_flag_gate_is_off_by_default(base: KnowledgeBase) -> None:
     agent = TriageAgent(base=base, reasoning=Reasoning(ask()), retrieval=Retrieval())
 
     assert turn(agent, observed=dict(FAINT)).decision.type is DecisionType.ASK
+
+
+# --- What an informational question is about ------------------------------
+
+
+class Topics:
+    def __init__(self, found: tuple[str, ...]) -> None:
+        self.found = found
+        self.questions: list[str] = []
+
+    def mentioned(self, question: str) -> tuple[str, ...]:
+        self.questions.append(question)
+        return self.found
+
+
+def test_an_inform_carries_what_its_question_is_about(base: KnowledgeBase) -> None:
+    topics = Topics(("pelvic_pain_severity",))
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(inform()), retrieval=Retrieval(), symptom_topics=topics
+    )
+
+    result = turn(agent, "What should I do if my period pain is severe?")
+
+    assert result.mentioned == ("pelvic_pain_severity",)
+    assert topics.questions == ["What should I do if my period pain is severe?"]
+
+
+def test_a_question_is_not_read_for_topics(base: KnowledgeBase) -> None:
+    topics = Topics(("pelvic_pain_severity",))
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(ask()), retrieval=Retrieval(), symptom_topics=topics
+    )
+
+    assert turn(agent).mentioned == ()
+    assert topics.questions == []
+
+
+def test_a_failing_topic_reader_never_fails_the_turn(base: KnowledgeBase) -> None:
+    class Broken:
+        def mentioned(self, question: str) -> tuple[str, ...]:
+            raise RuntimeError("down")
+
+    agent = TriageAgent(
+        base=base, reasoning=Reasoning(inform()), retrieval=Retrieval(), symptom_topics=Broken()
+    )
+
+    assert turn(agent).mentioned == ()

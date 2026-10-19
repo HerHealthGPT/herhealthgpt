@@ -432,6 +432,12 @@ _RED_FLAG_RATIONALE = {
 }
 
 
+class SymptomTopics(Protocol):
+    """Which features a question is about, whether or not she has them."""
+
+    def mentioned(self, question: str) -> tuple[str, ...]: ...
+
+
 class MaxTurnsExceeded(RuntimeError):
     """The turn cap was reached without a CONCLUDE decision.
 
@@ -583,6 +589,9 @@ class AgentTurn:
     #: tests that build an AgentTurn directly keep working; a turn that went
     #: through :meth:`TriageAgent.run_turn` always has at least one.
     attempts: tuple[ReasoningAttempt, ...] = ()
+    #: On an ``inform``: the features its question is about, for the "when to
+    #: get help" section (``context.care_guidance``). Empty otherwise.
+    mentioned: tuple[str, ...] = ()
 
     @property
     def served_by(self) -> str | None:
@@ -644,6 +653,10 @@ class TriageAgent:
     page_sections: tuple[tuple[str, str], ...] = ()
     #: Source passages kept per section.
     page_passages_per_section: int = 6
+
+    #: Reads which symptoms an informational question is about, for the
+    #: "when to get help" section. ``None`` leaves that to the extract step.
+    symptom_topics: SymptomTopics | None = None
 
     #: Refuse, once, a question about the feature she was asked last turn and
     #: has now answered. Off here and switched on by the deployment.
@@ -787,11 +800,21 @@ class TriageAgent:
             )
             attempts = (*attempts, *written)
 
+        mentioned: tuple[str, ...] = ()
+        if decision.type is DecisionType.INFORM and self.symptom_topics is not None:
+            question = next((m.content for m in reversed(history) if m.role == "user"), "")
+            try:
+                mentioned = self.symptom_topics.mentioned(question)
+            except Exception:
+                # A missing list only makes the section shorter; never a failed turn.
+                mentioned = ()
+
         return AgentTurn(
             history_before=tuple(history),
             retrieved=context,
             decision=decision,
             attempts=attempts,
+            mentioned=mentioned,
         )
 
     def _refuse_inform_with_symptoms(

@@ -372,3 +372,32 @@ def test_other_failures_do_not_get_the_extra_attempt() -> None:
     with pytest.raises(ValueError, match="no JSON object"):
         _decide(_client(script, max_attempts=2))
     assert len(script.seen) == 2
+
+
+def test_symptom_topics_keep_only_listed_feature_ids() -> None:
+    from pathlib import Path
+
+    from herhealth_contracts.loading import load_knowledge_base
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from herhealth_backend.triage.chain import LangChainSymptomTopics
+
+    base = load_knowledge_base(Path(__file__).resolve().parents[3] / "knowledge")
+    reply = '{"features": ["pelvic_pain_severity", "invented_feature", "pelvic_pain_severity"]}'
+    reader = LangChainSymptomTopics(FakeListChatModel(responses=[reply]), base)
+
+    assert reader.mentioned("What if my period pain is severe?") == ("pelvic_pain_severity",)
+
+
+def test_symptom_topics_return_nothing_on_a_bad_reply() -> None:
+    from pathlib import Path
+
+    from herhealth_contracts.loading import load_knowledge_base
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from herhealth_backend.triage.chain import LangChainSymptomTopics
+
+    base = load_knowledge_base(Path(__file__).resolve().parents[3] / "knowledge")
+    reader = LangChainSymptomTopics(FakeListChatModel(responses=["no json here"]), base)
+
+    assert reader.mentioned("anything") == ()
