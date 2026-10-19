@@ -1,11 +1,10 @@
 # Batch 27 — the thinnest conditions, from pages already in the corpus.
 #
 # DRAFTED 2026-10-19 by Claude, reading build/clean/{womenshealth,medlineplus}
-# directly. NOT APPROVED: `approved: false` keeps every row below out of
-# evidence.csv until a second reader confirms each quote supports its row
-# (CLAUDE.md, "Verification protocol"). That is a provenance check, not a
-# clinical review; the knowledge base stays source-traceable, not
-# clinician-adjudicated.
+# directly. APPROVED 2026-10-19 by the repo owner, who read each quote in its
+# paragraph on the fetched page and confirmed it supports its row (CLAUDE.md,
+# "Verification protocol"). That is a provenance check, not a clinical review;
+# the knowledge base stays source-traceable, not clinician-adjudicated.
 #
 # WHY THIS BATCH
 #
@@ -44,7 +43,8 @@
 # hourly soaking as how to tell heavy bleeding, and says heavy periods may mean
 # a bleeding disorder. Weak, because it is that two-step reading of one page.
 
-approved: false
+approved: true
+reviewed_on: 2026-10-19
 
 rows:
   - condition_id: infertility

@@ -45,15 +45,15 @@ diff.
 |---|---|---|
 | `features.yaml` | 39 | everything the system may ask about |
 | `conditions.yaml` | 19 | everything the system may suggest a match with |
-| `evidence.csv` | 146 | the sparse grid connecting features to conditions |
+| `evidence.csv` | 150 | the sparse grid connecting features to conditions |
 | `red_flags.yaml` | 17 | warning-sign rules, derived only from explicit escalation language |
 | `sources.yaml` | 5 | provenance, licence, precedence |
 | `actions.yaml` | 4 | `SELF_CARE`, `ROUTINE_APPOINTMENT`, `URGENT_SAME_DAY`, `EMERGENCY` |
 | `weights.yaml` | — | ordinal weights (used by the retired controller) |
 
-`evidence.csv` by source: womenshealth 57, NHS 53, MedlinePlus 26, NICHD 8,
-CDC 2. By strength: `weak_support` 90, `strong_support` 46, `argues_against`
-10, `rules_out` 0. 146 of 741 possible cells (19 × 39) carry a row; a missing
+`evidence.csv` by source: womenshealth 61, NHS 53, MedlinePlus 26, NICHD 8,
+CDC 2. By strength: `weak_support` 94, `strong_support` 46, `argues_against`
+10, `rules_out` 0. 150 of 741 possible cells (19 × 39) carry a row; a missing
 row means the sources do not connect the two, not a gap to fill. No
 probabilities, likelihood ratios or prevalence figures are stored.
 
@@ -73,9 +73,10 @@ stripped and replaced by action codes resolved per locale.
 
 ## Coverage
 
-Nineteen conditions are modelled. The thinnest, with three evidence rows each,
-are bacterial vaginosis, infertility, inherited bleeding disorder and
-iron-deficiency anaemia; the differential is likeliest to be weak there.
+Nineteen conditions are modelled. The thinnest are bacterial vaginosis and
+iron-deficiency anaemia (three evidence rows each), then inherited bleeding
+disorder and pelvic organ prolapse (four); the differential is likeliest to be
+weak there.
 Adenomyosis rests on a single source (NHS), admitted under
 [ADR 0006](adr/0006-a-condition-may-cite-one-source-if-it-says-why.md). Primary ovarian insufficiency carries a documented
 source conflict about its relation to premature menopause.
