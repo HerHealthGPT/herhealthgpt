@@ -57,10 +57,12 @@ Four facts shape the design:
 From both the chat composer's attach button and Settings; one endpoint, one
 flow, the result saved to her account.
 
-- **Known formats are parsed by code**: a converter per format, starting with
-  a CSV template of our own and Apple Health's `export.xml`, then each app for
-  which a real (anonymised) sample export exists. No converter is written from
-  a guessed format.
+- **Known formats are parsed by code**: a converter per format — a CSV
+  template of our own, Apple Health's `export.xml` (or its zip), and the
+  Cycle History table in the PDF Apple Health shares (#67; its per-day flow
+  dots are drawings, not text, so that reader yields periods without levels)
+  — then each app for which a real (anonymised) sample export exists. No
+  converter is written from a guessed format.
 - **Anything else is extracted by the base model** (`Qwen/Qwen3.5-9B`, the
   same vLLM process that decides triage — [ADR 0018](0018-local-models-decide-and-the-adapter-answers.md)),
   asked for JSON in the shape of `CycleExtraction` (below), whose only
