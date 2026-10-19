@@ -184,6 +184,20 @@ export type TriageDecision = {
   comparison_mode?: string;
   /** Present on an `inform` from the product's own path. */
   care_guidance?: CareGuidance;
+  /** What of her imported cycle data this reply drew on (backend
+   *  `_her_data_use`). Absent when it drew on none. */
+  her_data?: HerDataUse;
+};
+
+export type HerDataUse = {
+  source_app: string;
+  periods: number;
+  /** ISO date of her last logged day. */
+  last_entry: string;
+  /** The reply opens with a breakdown read from it. */
+  breakdown: boolean;
+  /** Feature ids her data answered, so she was not asked them. */
+  answered: string[];
 };
 
 /** One version an evaluator may pick. The label is all there is to show. */

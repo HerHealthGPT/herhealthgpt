@@ -111,4 +111,15 @@ export const chat: ChatMessages = {
   delete: "حذف",
   deleteChat: "حذف المحادثة",
   deleteChatLabel: (preview: string) => `حذف المحادثة: ${preview}`,
+  herData: {
+    title: "بيانات دورتكِ",
+    app: (id: string) =>
+      id === "csv_template" ? "جدولكِ" : id === "apple_health" ? "Apple Health" : id.replace(/_/g, " "),
+    summary: (app: string, periods: number, lastEntry: string) =>
+      `من ${app} · عدد الدورات: ${periods} · آخر إدخال ${lastEntry}`,
+    breakdown: "الملخص أعلاه مأخوذ منها.",
+    answered: (items: string) => `أُجيب عنه منها، فلم نسألكِ عن: ${items}.`,
+    chip: (app: string, periods: number) => `بيانات الدورة · ${app} · ${periods}`,
+    chipHint: "المحادثة تقرأ هذه البيانات. اضغطي لاستبدالها أو مراجعتها.",
+  },
 };

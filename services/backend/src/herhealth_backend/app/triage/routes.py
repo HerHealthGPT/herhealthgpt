@@ -477,6 +477,15 @@ async def _run_turn(
         question=request.message,
         mentioned=(*decision.observed, *turn.mentioned),
     )
+    her_data = _her_data_use(
+        cycle_summary,
+        cycle_answers,
+        breakdown=breakdown is not None,
+        concluded=decision.type is DecisionType.CONCLUDE,
+        first_turn=sum(1 for m in history if m.role == "user") == 1,
+    )
+    if her_data is not None:
+        payload["her_data"] = her_data
     served_by = _served_by_payload((*discarded, *turn.attempts))
     await _persist_turn(session_id, request.message, decision, payload, database, served_by)
 
@@ -685,6 +694,35 @@ def _profile_age_band(user: User) -> str | None:
     if user.date_of_birth is None:
         return None
     return age_band_for(user.date_of_birth, today=date.today())
+
+
+def _her_data_use(
+    summary: CycleSummary | None,
+    answers: Mapping[str, str],
+    *,
+    breakdown: bool,
+    concluded: bool,
+    first_turn: bool,
+) -> dict[str, Any] | None:
+    """What of her imported cycle data this reply drew on, for the chat to
+    show as a source beside the others. Stored with the turn.
+
+    Only where it says something: the breakdown turn, a conclusion that rests
+    on answers from her data, and the first turn of a chat her data answered
+    questions in. On every other turn it would only repeat itself.
+    """
+    if summary is None or not (breakdown or answers):
+        return None
+    if not (breakdown or concluded or first_turn):
+        return None
+    return {
+        "source_app": summary.source_app,
+        "periods": len(summary.periods),
+        "last_entry": summary.last_entry.isoformat(),
+        "breakdown": breakdown,
+        # Feature ids her data answered, so she was not asked them.
+        "answered": sorted(answers),
+    }
 
 
 def _breakdown_language(history: list[Message]) -> str:

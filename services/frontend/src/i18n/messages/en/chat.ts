@@ -105,6 +105,18 @@ export const chat = {
   delete: "Delete",
   deleteChat: "Delete chat",
   deleteChatLabel: (preview: string) => `Delete chat: ${preview}`,
+  herData: {
+    title: "Your cycle data",
+    app: (id: string) =>
+      id === "csv_template" ? "your spreadsheet" : id === "apple_health" ? "Apple Health" : id.replace(/_/g, " "),
+    summary: (app: string, periods: number, lastEntry: string) =>
+      `From ${app} · ${periods} ${periods === 1 ? "period" : "periods"} · last entry ${lastEntry}`,
+    breakdown: "The breakdown above is read from it.",
+    answered: (items: string) => `Answered from it, so you weren't asked: ${items}.`,
+    chip: (app: string, periods: number) =>
+      `Cycle data · ${app} · ${periods} ${periods === 1 ? "period" : "periods"}`,
+    chipHint: "The chat reads this. Tap to replace or check it.",
+  },
 };
 
 export type ChatMessages = typeof chat;

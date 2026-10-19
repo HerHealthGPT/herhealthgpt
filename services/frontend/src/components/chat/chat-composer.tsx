@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Paperclip } from "lucide-react";
+import { ArrowUp, FileText, Paperclip } from "lucide-react";
 
 import { CycleDataImport } from "@/components/account/cycle-data-import";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/i18n/locale-provider";
+import { getCycleData } from "@/lib/api/accounts";
+import type { CycleDataSummary } from "@/lib/api/types";
 
 /** Tallest the composer grows before it starts scrolling instead. Matches
  *  `max-h-40` on the textarea below — the two must agree, or the JS caps the
@@ -31,7 +33,25 @@ export function ChatComposer({
   const { m } = useI18n();
   const [value, setValue] = useState("");
   const [showCycleData, setShowCycleData] = useState(false);
+  // Her imported cycle data, shown as an attachment the chat reads, the way
+  // an attached file sits above the input. Null when she has none.
+  const [cycle, setCycle] = useState<CycleDataSummary | null>(null);
+  const [cycleVersion, setCycleVersion] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCycleData()
+      .then((status) => {
+        if (!cancelled) setCycle(status.summary);
+      })
+      .catch(() => {
+        if (!cancelled) setCycle(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cycleVersion]);
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -65,8 +85,28 @@ export function ChatComposer({
     <div className="border-t border-border/60 bg-background/95 p-3 backdrop-blur-sm sm:p-4">
       {showCycleData ? (
         <div className="mb-3 rounded-2xl border border-border/60 bg-background p-3">
-          <CycleDataImport onSaved={() => setShowCycleData(false)} />
+          <CycleDataImport
+            onSaved={() => {
+              setShowCycleData(false);
+              setCycleVersion((version) => version + 1);
+            }}
+          />
         </div>
+      ) : null}
+      {cycle && !showCycleData ? (
+        <button
+          type="button"
+          onClick={() => setShowCycleData(true)}
+          title={m.chat.herData.chipHint}
+          className="mb-2 inline-flex max-w-full items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-2.5 py-1.5 text-xs text-foreground hover:bg-primary/10"
+        >
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <FileText className="size-3.5" aria-hidden />
+          </span>
+          <span className="truncate">
+            {m.chat.herData.chip(m.chat.herData.app(cycle.source_app), cycle.periods_found)}
+          </span>
+        </button>
       ) : null}
       <div className="flex items-end gap-2">
         {/* Cycle data is saved to her account and used from the next turn on,

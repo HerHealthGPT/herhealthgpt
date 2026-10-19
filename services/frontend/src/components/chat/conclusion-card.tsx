@@ -3,6 +3,7 @@
 import { AlertTriangle } from "lucide-react";
 
 import { CitedSources } from "@/components/chat/cited-sources";
+import { HerDataSource } from "@/components/chat/her-data-source";
 import { UnreviewedModelNotice } from "@/components/chat/unreviewed-model-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,8 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
             </div>
           </div>
         ) : null}
+
+        {decision.her_data ? <HerDataSource use={decision.her_data} /> : null}
 
         <CitedSources passages={decision.cited_passages ?? []} />
 

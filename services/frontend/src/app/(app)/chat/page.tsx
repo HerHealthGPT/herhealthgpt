@@ -26,6 +26,7 @@ import {
 } from "@/lib/api/triage";
 import type {
   CareGuidance,
+  HerDataUse,
   CitedPassage,
   DecisionReasoningModel,
   TriageDecision,
@@ -54,6 +55,8 @@ type ChatEntry =
       reasoningModel?: DecisionReasoningModel;
       /** When to get help, on an informational answer. */
       careGuidance?: CareGuidance;
+      /** Her imported cycle data, when the reply drew on it. */
+      herData?: HerDataUse;
     }
   | { id: string; kind: "conclusion"; decision: TriageDecision }
   /** An off-scope message the model refused (ADR 0014). Its own kind, not a
@@ -146,6 +149,7 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
       rationale: decision.rationale,
       reasoningModel: decision.reasoning_model,
       careGuidance: decision.care_guidance,
+      herData: decision.her_data,
     };
   }
 
@@ -158,6 +162,7 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
       citedPassages: decision.cited_passages,
       rationale: decision.rationale,
       reasoningModel: decision.reasoning_model,
+      herData: decision.her_data,
     };
   }
 
@@ -377,6 +382,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           citedPassages: response.decision.cited_passages,
           rationale: response.decision.rationale,
           reasoningModel: response.decision.reasoning_model,
+          herData: response.decision.her_data,
         });
       } else if (response.decision.type === "decline") {
         appendEntry({
@@ -393,6 +399,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           rationale: response.decision.rationale,
           reasoningModel: response.decision.reasoning_model,
           careGuidance: response.decision.care_guidance,
+          herData: response.decision.her_data,
         });
       } else {
         appendEntry({ kind: "conclusion", decision: response.decision });
@@ -498,6 +505,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
                 return (
                   <ChatMessage
                     careGuidance={entry.careGuidance}
+                    herData={entry.herData}
                     key={entry.id}
                     role={entry.role}
                     text={entry.id === "greeting" ? m.chat.greeting(greetingName) : entryText(entry, greetingName)}
