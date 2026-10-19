@@ -62,6 +62,7 @@ def render(evaluation: Evaluation) -> str:
         "",
         "This measures the RETIRED rule-based controller, not the live model pipeline;",
         "the live red-flag recall is `make eval-red-flags` (ADR 0011).",
+        *_live_red_flag_recall(),
         "",
         "GATED",
         _line(f"red-flag recall ({metrics.red_flag_cases} cases)", metrics.red_flag_recall),
@@ -160,6 +161,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument("--json", action="store_true")
     return parser
+
+
+#: Written by `make eval-red-flags`.
+LIVE_RED_FLAG_RESULTS = Path("build/red_flag_eval.json")
+
+
+def _live_red_flag_recall() -> list[str]:
+    """The live pipeline's last measured red-flag recall, if it has been run
+    here. A measured rate on one case per rule, not a proof (ADR 0011)."""
+    try:
+        summary = json.loads(LIVE_RED_FLAG_RESULTS.read_text())["summary"]
+    except (OSError, ValueError, KeyError):
+        return ["  (no live measurement in build/red_flag_eval.json yet)"]
+    lines = ["Live pipeline, last `make eval-red-flags` (measured, not asserted):"]
+    for mode, result in summary.items():
+        lines.append(
+            f"  {mode:<8} {result['recall']:.3f} over {result['cases']} rules, "
+            f"misses: {len(result['misses'])}"
+        )
+    return lines
 
 
 def main(argv: Sequence[str] | None = None) -> int:

@@ -187,14 +187,15 @@ through `batch_24`).
 |---|---|---|
 | `features.yaml` | 39 | Everything the system may ask about |
 | `conditions.yaml` | 19 | Everything the system may suspect |
-| `evidence.csv` | 140 | The sparse grid connecting them |
-| `red_flags.yaml` | 16 | Deterministic escalation rules |
+| `evidence.csv` | 146 | The sparse grid connecting them |
+| `red_flags.yaml` | 17 | Deterministic escalation rules |
 | `sources.yaml` | 5 | Provenance, licence, precedence |
 | `weights.yaml` | — | Ordinal-to-log-odds mapping, tunable |
 | `actions.yaml` | 4 | Four action codes, resolved per locale |
 
-`evidence.csv` rows by source: womenshealth 57, NHS 47, MedlinePlus 26, NICHD 8,
-CDC 2. By strength: `weak_support` 85, `strong_support` 45, `argues_against` 10,
+`evidence.csv` rows by source (recounted from the files 2026-10-19; the 140
+above was stale): womenshealth 57, NHS 53, MedlinePlus 26, NICHD 8, CDC 2. By
+strength: `weak_support` 90, `strong_support` 46, `argues_against` 10,
 and **no `rules_out` row has ever been authored** — see ADR 0009, which must be
 revisited before the first one is.
 
@@ -331,8 +332,8 @@ condition is still *"may match patterns our sources associate with…"*, never
 `strong_support` `weak_support` `neutral` `argues_against` `rules_out`
 
 `neutral` means **omit the row**. The file is sparse, and much sparser than it
-looks: 19 conditions × 39 features is 741 possible cells, and 140 carry meaning —
-**19% filled**. Seven of those 39 features are red-flag-only and will never carry
+looks: 19 conditions × 39 features is 741 possible cells, and 146 carry meaning —
+**20% filled**. Seven of those 39 features are red-flag-only and will never carry
 an evidence row (see above), so the reachable grid is smaller than 741 and the
 real fill is higher than 19%. A missing row is not a gap to be filled in; it is
 the correct representation of "this source does not connect these two things".
@@ -398,7 +399,7 @@ If in doubt, omit the row — a missing row is neutral, which is safe.
   exists, the durable, git-tracked record is the batch or condition note
   itself. Fix the sentence or build the tooling — do not keep citing a file
   that does not exist.
-- `DATASHEET.md` states plainly that the knowledge base is source-traceable but
+- `docs/DATASHEET.md` states plainly that the knowledge base is source-traceable but
   not clinician-adjudicated, and that this is a stated limitation.
 
 State this limitation wherever results are reported. Do not describe the
@@ -433,8 +434,8 @@ it.
 | CDC | `cdc` | 4 | US federal, public domain *(unverified)* | **available** |
 | NHS website | `nhs` | 2 | Crown copyright, no reuse grant | **citable_only** |
 
-**`womenshealth` (womenshealth.gov) carries 57 of the 140 evidence rows and has
-overtaken NHS (47) as the largest contributor.** That reversal matters more than
+**`womenshealth` (womenshealth.gov) carries 57 of the 146 evidence rows and is
+the largest contributor, ahead of NHS (53).** That reversal matters more than
 the count: womenshealth is public domain and ingestable, NHS is `citable_only`
 and none of its rows may enter `passages.parquet`. So the ingestable corpus is
 still smaller than the row count suggests, but the gap is closing from the right
@@ -730,9 +731,13 @@ red-flag clause by code — a proof, not a sample. Once escalation depends on th
 reasoning model noticing injected `red_flags.yaml` text, 100% recall becomes a
 measured rate like every other metric here. `make eval` needs to change from
 asserting equality to reporting the number, and `DATASHEET.md` needs a sentence
-saying so — neither has happened yet (ADR 0011 migration checklist, item 9).
-Until it does, this line describes the accepted target policy, not what
-today's `make eval` enforces.
+saying so. **Done 2026-10-19:** `make eval-red-flags` measures the live
+pipeline (17 of 17 rules escalated, both modes, after the red-flag gate in
+`TriageAgent._enforce_red_flag`), `make eval` prints that measured rate beside
+the retired controller's numbers, and [`docs/DATASHEET.md`](docs/DATASHEET.md) states it
+as a measured rate with the other limitations. `make eval` itself still scores
+the retired controller (red-flag recall 0.333 on the 9-case file) and exits
+non-zero; CI does not run it.
 
 ---
 
