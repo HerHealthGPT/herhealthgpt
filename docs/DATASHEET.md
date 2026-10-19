@@ -23,7 +23,7 @@ These apply to every result below, and to any result reported elsewhere.
 - **Red-flag recall is a measured rate, not a proof.** Under the retired
   rule-based controller every warning-sign rule was evaluated by code, so
   escalation was guaranteed. Since
-  [ADR 0011](docs/adr/0011-controller-free-triage.md) the reasoning model
+  [ADR 0011](adr/0011-controller-free-triage.md) the reasoning model
   decides, and escalation is measured on a sample (see below). A code gate
   now concludes at the rule's urgency when the recorded answers satisfy a rule
   and the model does not escalate, which restores the guarantee for answers
@@ -77,7 +77,7 @@ Nineteen conditions are modelled. The thinnest, with three evidence rows each,
 are bacterial vaginosis, infertility, inherited bleeding disorder and
 iron-deficiency anaemia; the differential is likeliest to be weak there.
 Adenomyosis rests on a single source (NHS), admitted under
-[ADR 0006](docs/adr/0006-a-condition-may-cite-one-source-if-it-says-why.md). Primary ovarian insufficiency carries a documented
+[ADR 0006](adr/0006-a-condition-may-cite-one-source-if-it-says-why.md). Primary ovarian insufficiency carries a documented
 source conflict about its relation to premature menopause.
 
 ## Models
@@ -89,19 +89,19 @@ source conflict about its relation to premature menopause.
 | Retrieval | `Qwen/Qwen3-Embedding-4B` over sentence-level passages | the reranker exists and is off: no measured gain |
 
 All three run on the campus GPU server
-([ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)).
+([ADR 0018](adr/0018-local-models-decide-and-the-adapter-answers.md)).
 
 ## Data she gives the system
 
 - **Profile:** date of birth (used as an age band) and an optional health note,
   treated as background, never as a symptom report.
 - **Imported cycle data**
-  ([ADR 0019](docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md),
+  ([ADR 0019](adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md),
   proposed): only dates, flow and a closed list of symptoms, kept after she
   confirms a preview. It may answer a question only when fresh, and a
   warning-sign question only in the alarming direction.
 - **Kept files**
-  ([ADR 0020](docs/adr/0020-she-may-keep-an-uploaded-file-for-30-days.md),
+  ([ADR 0020](adr/0020-she-may-keep-an-uploaded-file-for-30-days.md),
   proposed): a copy of a tracker export she chooses to keep, deleted
   automatically after 30 days. Nothing reads it.
 
