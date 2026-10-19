@@ -108,4 +108,15 @@ export const chat: ChatMessages = {
   delete: "Supprimer",
   deleteChat: "Supprimer la discussion",
   deleteChatLabel: (preview: string) => `Supprimer la discussion : ${preview}`,
+  herData: {
+    title: "Vos données de cycle",
+    app: (id: string) =>
+      id === "csv_template" ? "votre tableur" : id === "apple_health" ? "Apple Santé" : id.replace(/_/g, " "),
+    summary: (app: string, periods: number, lastEntry: string) =>
+      `Depuis ${app} · ${periods} règles · dernière entrée le ${lastEntry}`,
+    breakdown: "Le résumé ci-dessus en est tiré.",
+    answered: (items: string) => `Réponses tirées de ces données, donc pas de question sur : ${items}.`,
+    chip: (app: string, periods: number) => `Données de cycle · ${app} · ${periods} règles`,
+    chipHint: "La discussion lit ces données. Appuyez pour les remplacer ou les vérifier.",
+  },
 };
