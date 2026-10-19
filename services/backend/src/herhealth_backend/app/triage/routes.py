@@ -55,10 +55,14 @@ from herhealth_backend.triage.agent import (
 from herhealth_backend.triage.comparison import MODEL_C, MODEL_LABELS, PlainChatResponder
 from herhealth_backend.triage.context import care_guidance, join_evidence
 from herhealth_backend.triage.cycle_data import (
+    CycleSummary,
+    asks_about_cycle_data,
     prefill,
     render_cycle_background,
+    render_cycle_breakdown,
     summarize,
 )
+from herhealth_backend.triage.language import ARABIC, FRENCH, detect_language
 from herhealth_backend.triage.provenance import (
     drop_unknown_conditions,
     enforce_provenance_cap,
@@ -326,7 +330,14 @@ async def _run_turn(
     loaded = await _load_session(request, user, database)
     session_id, history, carried = loaded.session_id, loaded.history, loaded.carried
     history.append(Message(role="user", content=request.message))
-    background, cycle_answers = await _known_background(user, database, agent.base)
+    background, cycle_answers, cycle_summary = await _known_background(user, database, agent.base)
+    # She is asking about her imported data: code writes the breakdown, the
+    # model only triages (see TriageAgent._require_triage_for_her_data).
+    breakdown = (
+        render_cycle_breakdown(cycle_summary, _breakdown_language(history))
+        if cycle_summary is not None and asks_about_cycle_data(request.message)
+        else None
+    )
 
     # Her stored age band is an ANSWER, not just prose. Seeding the case
     # vector with it does two things the background block alone cannot:
@@ -388,6 +399,7 @@ async def _run_turn(
                             if current_language() != "en"
                             else None
                         ),
+                        about_her_data=breakdown is not None,
                     ),
                 ),
                 timeout=REASONING_TIMEOUT_SECONDS,
@@ -455,6 +467,8 @@ async def _run_turn(
         )
 
     decision = enforce_provenance_cap(turn.decision, turn.retrieved)
+    if breakdown is not None:
+        decision = _with_breakdown(decision, breakdown)
     payload = _decision_payload(
         decision,
         turn.retrieved,
@@ -673,9 +687,33 @@ def _profile_age_band(user: User) -> str | None:
     return age_band_for(user.date_of_birth, today=date.today())
 
 
+def _breakdown_language(history: list[Message]) -> str:
+    """The language her messages are in, else the interface's."""
+    detected = detect_language(m.content for m in history if m.role == "user")
+    if detected == ARABIC:
+        return "ar"
+    if detected == FRENCH:
+        return "fr"
+    if any(any(ch.isalpha() for ch in m.content) for m in history if m.role == "user"):
+        return "en"
+    return current_language()
+
+
+def _with_breakdown(decision: TriageDecision, breakdown: str) -> TriageDecision:
+    """Her data breakdown, placed first in the text she reads, and so kept in
+    the transcript the next turn replays."""
+    if decision.type is DecisionType.ASK and decision.question_text:
+        return decision.model_copy(
+            update={"question_text": f"{breakdown}\n\n{decision.question_text}"}
+        )
+    if decision.type is DecisionType.INFORM and decision.answer_text:
+        return decision.model_copy(update={"answer_text": f"{breakdown}\n\n{decision.answer_text}"})
+    return decision.model_copy(update={"rationale": f"{breakdown}\n\n{decision.rationale}"})
+
+
 async def _known_background(
     user: User, database: Database, base: KnowledgeBase
-) -> tuple[str | None, dict[str, str]]:
+) -> tuple[str | None, dict[str, str], CycleSummary | None]:
     """Her stored age band, health note and cycle data, rendered for the
     system prompt, plus the feature values her cycle data answers.
 
@@ -697,7 +735,7 @@ async def _known_background(
     )
     extraction = stored_extraction(cycle_row) if cycle_row is not None else None
     if cycle_row is None or extraction is None:
-        return profile, {}
+        return profile, {}, None
     summary = summarize(
         extraction,
         today=date.today(),
@@ -705,7 +743,7 @@ async def _known_background(
     )
     answers = prefill(summary, base)
     cycle = render_cycle_background(summary, answers)
-    return "\n\n".join(block for block in (profile, cycle) if block), answers
+    return "\n\n".join(block for block in (profile, cycle) if block), answers, summary
 
 
 def _passage_from_cited(raw: object) -> RetrievedPassage | None:

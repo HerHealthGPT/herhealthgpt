@@ -515,3 +515,46 @@ def test_the_decline_gate_is_off_by_default(base: KnowledgeBase) -> None:
     agent = TriageAgent(base=base, reasoning=Reasoning(_decline()), retrieval=Retrieval())
 
     assert turn(agent).decision.type is DecisionType.DECLINE
+
+
+# --- Her own cycle data ---------------------------------------------------------
+
+
+def test_an_explanation_about_her_data_is_sent_back_for_triage(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(inform(), ask("pelvic_pain_severity"))
+    agent = TriageAgent(base=base, reasoning=reasoning, retrieval=Retrieval())
+    result = turn(agent, "Is my cycle data healthy?", about_her_data=True)
+    assert result.decision.next_feature_id == "pelvic_pain_severity"
+    assert "She asked about her own imported cycle data" in reasoning.prompts[1]
+
+
+def test_a_second_explanation_about_her_data_becomes_a_question_in_code(
+    base: KnowledgeBase,
+) -> None:
+    reasoning = Reasoning(inform(), inform(), inform())
+    agent = TriageAgent(base=base, reasoning=reasoning, retrieval=Retrieval())
+    result = turn(
+        agent,
+        "Is my cycle data healthy?",
+        about_her_data=True,
+        observed={"cycle_regularity": "irregular"},
+    )
+    assert result.decision.type is DecisionType.ASK
+    assert result.decision.next_feature_id not in ("cycle_regularity", None)
+    assert result.attempts[-1].client == "her-data-gate"
+
+
+def test_a_named_question_is_asked_for_before_code_steps_in(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(inform(), inform(), ask("pelvic_pain_severity"))
+    agent = TriageAgent(base=base, reasoning=reasoning, retrieval=Retrieval())
+    result = turn(agent, "Is my cycle data healthy?", about_her_data=True)
+    assert result.decision.next_feature_id == "pelvic_pain_severity"
+    assert "YOU DID NOT TRIAGE AGAIN" in reasoning.prompts[2]
+
+
+def test_a_question_about_her_data_is_left_alone(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("pelvic_pain_severity"))
+    agent = TriageAgent(base=base, reasoning=reasoning, retrieval=Retrieval())
+    result = turn(agent, "Is my cycle data healthy?", about_her_data=True)
+    assert result.decision.next_feature_id == "pelvic_pain_severity"
+    assert len(reasoning.prompts) == 1
