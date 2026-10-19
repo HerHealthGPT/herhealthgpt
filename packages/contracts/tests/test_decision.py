@@ -285,3 +285,31 @@ def test_an_explanation_with_no_citation_is_still_refused() -> None:
             answer_text="An explanation.",
             rationale="A general question.",
         )
+
+
+def test_unknown_keys_set_to_null_are_dropped() -> None:
+    """Observed 2026-10-19: feature names copied in beside the real fields."""
+    decision = TriageDecision.model_validate(
+        {
+            "type": "ask",
+            "next_feature_id": "fever",
+            "question_text": "Do you have a fever?",
+            "rationale": "testing",
+            "fever": None,
+            "difficulty_breathing": None,
+        }
+    )
+    assert decision.next_feature_id == "fever"
+
+
+def test_an_unknown_key_with_a_value_still_fails() -> None:
+    with pytest.raises(ValidationError):
+        TriageDecision.model_validate(
+            {
+                "type": "ask",
+                "next_feature_id": "fever",
+                "question_text": "Do you have a fever?",
+                "rationale": "testing",
+                "fever": "yes",
+            }
+        )

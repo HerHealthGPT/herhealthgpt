@@ -66,7 +66,12 @@ Consequences, all binding:
    unless the decision is red-flag-driven, up to five `matching_conditions`
    from `conditions.yaml`'s roster — nothing outside those vocabularies is
    representable. Which question, or which action, the model picks *within*
-   that vocabulary is no longer checked by code. That gap is named, not
+   that vocabulary is no longer checked by code, except by the gates in
+   `TriageAgent.run_turn` (ADR 0018): a fired warning sign is escalated in
+   code, a question she just answered is not asked again, and a question about
+   her own cycle data gets a code-written breakdown and is triaged, not
+   explained. Each gate sends the reply back first and acts in code only
+   after that. The rest of that gap is named, not
    hidden — see [ADR 0011's risk register](docs/adr/0011-controller-free-triage.md#risk-register).
 3. **Under-triage is the dominant failure mode.** Whenever a design choice trades
    false alarms against missed escalations, choose false alarms.
@@ -139,9 +144,11 @@ shell is for reading logs and diagnosing.
 models through LangChain ([ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)):
 the base model extracts what she said and decides, and the fine-tuned adapter
 words informational answers only (see "The fine-tuned model" below). The served retrieval index (`make index`) never contains quote-only (NHS)
-passages, and the backend refuses to load one that does. **Production has no
-index and no route to the model endpoints yet, so triage there reports "not
-configured"** until that is connected (ADR 0017). Full procedure,
+passages, and the backend refuses to load one that does. **Production reaches
+the campus models through Cloudflare quick tunnels** (`scripts/tunnel-models.sh`);
+their addresses change when a tunnel restarts, so `tunnel-models.sh watch` runs
+on the pod to reopen a dead tunnel and republish (which redeploys). The index is
+built in CI and baked into the backend image. Full procedure,
 trade-offs (single server, single-AZ database, no staging, no WAF) and the
 pre-demo checklist: [`docs/runbooks/aws-deploy.md`](docs/runbooks/aws-deploy.md).
 The earlier plan of a self-hosted runner on the GPU server is not the
@@ -151,7 +158,8 @@ production path; the campus GPU box remains the dev vLLM host.
 **Cycle data she imports may answer features
 ([ADR 0019](docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md),
 proposed).** A tracker export is uploaded from Settings or the chat's attach
-button, read by a converter (CSV template, Apple Health) or by the base model,
+button, read by a converter (CSV template, Apple Health's export, and the
+Cycle History table of the PDF Apple Health shares) or by the base model,
 and kept only after she confirms the preview — never the file, only
 `CycleExtraction`'s closed vocabulary. (She may separately keep a copy of
 the file for 30 days to download again —
@@ -523,7 +531,12 @@ escalation screen described below is a property of this outgoing code, not a
 guarantee the new design currently reproduces**: the replacement injects
 `red_flags.yaml` in full every turn, but nothing forces the model to notice
 that a more severe rule sits one answer away the way `should_stop` rule 1 did
-by code. That gap is open, tracked in ADR 0011's risk register.
+by code. That gap is open, tracked in ADR 0011's risk register. **Partly
+closed 2026-10-19:** when her recorded answers satisfy a rule and the model does
+not escalate, `TriageAgent._enforce_red_flag` sends the reply back once, then
+concludes at the rule's urgency in code (ADR 0018; red-flag recall 17 of 17).
+What is still not reproduced is the screen for a more severe rule one answer
+away.
 
 Plain Python in `services/backend/app/triage/`. No LLM involvement.
 

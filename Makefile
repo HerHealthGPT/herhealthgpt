@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: index index-authoring help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval triage triage-all lint fmt hygiene test test-api test-frontend db-up db-down migrate serve clean-build
+.PHONY: index index-authoring help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval eval-languages triage triage-all lint fmt hygiene test test-api test-frontend db-up db-down migrate serve clean-build
 
 # A demonstration case for `make triage`. Override to run another:
 #   make triage CASE=services/backend/cases/says_nothing.yaml
@@ -128,6 +128,12 @@ eval:
 # Needs the model servers and backend.env (HERHEALTH_TRIAGE_MODE=vllm). Reported, not gated.
 eval-red-flags:
 	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api --extra retrieval herhealth-eval-red-flags --output build/red_flag_eval.json
+
+# Cross-language agreement on the action code: the ten scripted consultations
+# in English, Arabic and French, each run to a conclusion. Needs the model
+# servers. Reported, not gated. Takes a couple of hours.
+eval-languages:
+	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api --extra retrieval herhealth-eval-languages
 
 # Run one scripted consultation and print the whole trace. No model, no network,
 # no server — the same case gives the same trace on any machine.
