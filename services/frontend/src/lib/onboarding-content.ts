@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { BookOpen, Heart, MessageCircle, Shield } from "lucide-react";
+import { BookOpen, Heart, MessageCircle, Shield, CalendarDays } from "lucide-react";
 
 import type { IllustrationName } from "@/components/ui/illustration";
 
@@ -48,6 +48,12 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     // full sentences instead: what we do say, what we deliberately do not,
     // and why a warning sign short-circuits the questions.
     body: "We tell you how soon to seek care and why — never what you have. We may mention conditions your symptoms are associated with in our sources, but that is a pattern, not a diagnosis; only a clinician can give you one. If you describe something that needs urgent attention we say so straight away, without asking anything further. And if something feels urgent to you, get seen rather than waiting for a reply.",
+  },
+  {
+    id: "cycle",
+    icon: CalendarDays,
+    title: "Bring your cycle history",
+    body: "Keep a record of your periods? Add it as a simple spreadsheet and the chat skips questions your record already answers.",
   },
   {
     id: "sources",

@@ -10,7 +10,8 @@ import { actions, errorPages, home } from "./en/site";
 import { articles, conditions, dashboard, sourceNames } from "./en/dashboard";
 import { account, onboarding } from "./en/account";
 import { chat } from "./en/chat";
+import { cycleGuide } from "./en/cycle-guide";
 
-export const en = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account, chat, errors, articles, sourceNames };
+export const en = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account, chat, errors, articles, sourceNames, cycleGuide };
 
 export type Messages = typeof en;

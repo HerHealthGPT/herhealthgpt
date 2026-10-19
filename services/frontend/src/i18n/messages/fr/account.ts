@@ -14,6 +14,10 @@ export const onboarding: OnboardingMessages = {
       title: "Bon à savoir",
       body: "Nous vous disons dans quel délai consulter et pourquoi — jamais ce que vous avez. Nous pouvons mentionner des situations que nos sources associent à vos symptômes, mais c'est une tendance, pas un diagnostic ; seul un professionnel de santé peut en poser un. Si vous décrivez quelque chose qui demande une attention urgente, nous le disons tout de suite, sans autre question. Et si quelque chose vous semble urgent, consultez plutôt que d'attendre une réponse.",
     },
+    cycle: {
+      title: "Apportez l'historique de votre cycle",
+      body: "Vous notez vos règles ? Ajoutez-les sous forme de tableau simple et la discussion évite les questions auxquelles votre relevé répond déjà. Compte → Données du cycle, ou le trombone dans la discussion.",
+    },
     sources: {
       title: "Des sources fiables",
       body: "Tout ce que nous vous disons provient de pages publiées par MedlinePlus, l'Office on Women's Health, le NICHD, les CDC et le NHS. Nous citons ces pages directement plutôt que de les reformuler, et chaque citation renvoie à sa page pour que vous puissiez la lire en entier. Quand deux sources ne sont pas d'accord sur l'urgence, nous retenons la plus urgente.",

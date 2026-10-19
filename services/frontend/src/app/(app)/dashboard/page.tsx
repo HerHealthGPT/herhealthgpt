@@ -35,6 +35,7 @@ import { userDisplayName } from "@/lib/display-name";
 import { needsFirstTimeOnboarding } from "@/lib/onboarding";
 import { routes } from "@/lib/routes";
 import { useI18n } from "@/i18n/locale-provider";
+import { CycleDataDashboardCard } from "@/components/account/cycle-data-import";
 
 function DashboardContent() {
   const router = useRouter();
@@ -177,6 +178,9 @@ function DashboardContent() {
             </CardContent>
           </div>
         </Card>
+
+        <CycleDataDashboardCard />
+
 
         {/* What a finished chat's verdict actually meant. Placed after
             Recent chats so it reads as a key to the list above rather than
