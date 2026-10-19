@@ -420,6 +420,18 @@ class AnswerWriter(Protocol):
     ) -> str | None: ...
 
 
+#: The rationale when code concludes on a fired warning sign. The urgency
+#: itself is shown by the interface from the action code, in her language.
+_RED_FLAG_RATIONALE = {
+    "": "What you have described matches a warning sign in our sources that "
+    "should be checked by a healthcare professional without waiting.",
+    "Arabic": "ما وصفتِه يطابق علامة تحذيرية في مصادرنا يجب أن يفحصها أحد "
+    "مقدّمي الرعاية الصحية دون انتظار.",
+    "French": "Ce que vous décrivez correspond à un signe d'alerte de nos sources, "
+    "qui doit être examiné par un professionnel de santé sans attendre.",
+}
+
+
 class SymptomTopics(Protocol):
     """Which features a question is about, whether or not she has them."""
 
@@ -650,6 +662,13 @@ class TriageAgent:
     #: has now answered. Off here and switched on by the deployment.
     refuse_repeated_question: bool = False
 
+    #: When her recorded answers satisfy a warning-sign rule and the model did
+    #: not conclude at that rule's urgency, send the reply back once naming the
+    #: rule; if it still does not escalate, conclude at the rule's urgency in
+    #: code. Off here and switched on by the deployment. See
+    #: :meth:`_enforce_red_flag`.
+    enforce_red_flags: bool = False
+
     def run_turn(
         self,
         history: Sequence[Message],
@@ -764,6 +783,8 @@ class TriageAgent:
         result = self._refuse_repeated_question(
             result, turn_context, asked, system, history, context
         )
+        # Last, so no other gate can undo it.
+        result = self._enforce_red_flag(result, turn_context, system, history, context, language)
         decision, attempts = result.decision, result.attempts
 
         # What the extract step read is carried on the decision, so the
@@ -844,6 +865,81 @@ class TriageAgent:
         return ReasoningResult(
             decision=retried.decision,
             attempts=(*result.attempts, *retried.attempts),
+        )
+
+    def _enforce_red_flag(
+        self,
+        result: ReasoningResult,
+        turn_context: TurnContext,
+        system: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+        language: str | None,
+    ) -> ReasoningResult:
+        """Escalate when a warning sign has fired, whatever the model chose.
+
+        **This partly reverses ADR 0011, deliberately.** Measured on
+        2026-10-19 (``make eval-red-flags``, ADR 0018), the model escalated on
+        the turn a warning sign was present in 6 of 17 rules with her answers
+        recorded, mostly asking another question instead. CLAUDE.md promises
+        that a matched rule escalates "immediately without asking anything
+        further", and that a missed escalation is worse than a false alarm.
+
+        Which rule has fired is computed by code from her recorded answers
+        (``TurnContext.fired``, the most severe one), as ``should_stop`` rule
+        1 did. The model is first sent back once with the rule named; if it
+        still does not conclude at that urgency or higher, code concludes at
+        the rule's urgency with the rule as its ground. A conclusion at a
+        higher urgency than the rule is left alone.
+        """
+        fired = turn_context.fired
+        if not self.enforce_red_flags or fired is None:
+            return result
+        severity = {action.code: action.severity for action in self.base.actions.actions}
+        needed = severity[fired.rule.action]
+
+        def escalated(decision: TriageDecision) -> bool:
+            return (
+                decision.type is DecisionType.CONCLUDE
+                and decision.action_code is not None
+                and severity[decision.action_code] >= needed
+            )
+
+        if escalated(result.decision):
+            return result
+        retry = (
+            f"{system}\n\nYOUR PREVIOUS ANSWER DID NOT ESCALATE AND WAS REJECTED. Her "
+            f"answers satisfy the warning-sign rule {fired.rule.id} "
+            f'({fired.rule.action.value}). Respond again with type "conclude", '
+            f"action_code {fired.rule.action.value} or higher, red_flag_id "
+            f"{fired.rule.id}, and a rationale telling her plainly how soon to be "
+            "seen. Ask nothing further."
+        )
+        attempts = result.attempts
+        try:
+            retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+            attempts = (*attempts, *retried.attempts)
+            if escalated(retried.decision):
+                return ReasoningResult(decision=retried.decision, attempts=attempts)
+        except Exception:
+            pass
+        decision = TriageDecision(
+            type=DecisionType.CONCLUDE,
+            action_code=fired.rule.action,
+            red_flag_id=fired.rule.id,
+            rationale=_RED_FLAG_RATIONALE.get(language or "", _RED_FLAG_RATIONALE[""]),
+            observed=dict(result.decision.observed),
+        )
+        return ReasoningResult(
+            decision=decision,
+            attempts=(
+                *attempts,
+                ReasoningAttempt(
+                    client="red-flag-gate",
+                    outcome=AttemptOutcome.OK,
+                    detail=f"concluded {fired.rule.action.value} on {fired.rule.id} in code",
+                ),
+            ),
         )
 
     def _refuse_repeated_question(

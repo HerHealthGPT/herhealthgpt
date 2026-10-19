@@ -308,6 +308,38 @@ function words, not by a reader; the wording has not been reviewed by a
 native speaker. The benchmark's gold here is 100% see-doctor, so it says
 nothing about over-triage. Median 40 s per turn.
 
+## Red-flag recall of the model pipeline (2026-10-19)
+
+`make eval` runs the retired rule-based controller, so nothing measured whether
+the live system escalates. `make eval-red-flags` now does: one case per
+`red_flags.yaml` rule (17), derived by code at the weakest presentation that
+should still escalate (e.g. mild pelvic pain with fever), one turn each.
+
+| Mode | Escalated at the rule's urgency or higher | Emergency | Same day |
+|---|---|---|---|
+| Answers already recorded | 6 of 17 (0.35) | 3 of 7 | 3 of 10 |
+| Written as a sentence | 8 of 17 (0.47) | 5 of 7 | 3 of 10 |
+
+Almost every miss is a further clarifying question on that turn (10 and 9),
+not a lower conclusion; one case (bleeding in pregnancy) concluded routine. The
+rule-based controller guaranteed escalation by code (`should_stop` rule 1);
+under ADR 0011 that guarantee is gone and this is the measured rate. One run,
+temperature 0, 17 cases: a single case moves it by six points. A later turn may
+still escalate; this measures the turn on which the warning sign is present.
+
+**After the red-flag gate (same day).** When her recorded answers satisfy a
+rule and the model did not conclude at that urgency, the reply is sent back
+once with the rule named; if it still does not escalate, code concludes at the
+rule's urgency (`TriageAgent._enforce_red_flag`). This partly reverses ADR 0011
+on purpose: the model no longer has the last word on a fired warning sign.
+Re-measured: 17 of 17 in both modes (7 of 7 emergency, 10 of 10 same day). The
+split between the model escalating on its retry and code concluding was not
+recorded. In words mode this also depends on the extract step reading the
+symptom; it did for all 17.
+
+The retired controller itself now scores 0.333 on the 9-case benchmark file,
+so `make eval` fails too.
+
 ## When to get help on informational answers (2026-10-19)
 
 The full-benchmark run found informational answers rarely said when to seek

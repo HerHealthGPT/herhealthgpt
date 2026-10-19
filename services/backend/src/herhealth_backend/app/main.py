@@ -235,6 +235,7 @@ def _build_triage_agent() -> TriageAgent | None:
         min_answers=MIN_ANSWERS_BEFORE_CONCLUDING,
         refuse_inform_with_symptoms=True,
         refuse_repeated_question=True,
+        enforce_red_flags=True,
     )
 
 

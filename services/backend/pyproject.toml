@@ -22,6 +22,7 @@ herhealth-triage = "herhealth_backend.triage.cli:main"
 herhealth-eval = "herhealth_backend.evaluation.cli:main"
 herhealth-eval-retrieval = "herhealth_backend.evaluation.retrieval_eval:main"
 herhealth-eval-decisions = "herhealth_backend.evaluation.decision_eval:main"
+herhealth-eval-red-flags = "herhealth_backend.evaluation.red_flag_eval:main"
 
 [project.optional-dependencies]
 # The retriever (triage/retrieval.py, ADR 0017). An extra of its own so the
