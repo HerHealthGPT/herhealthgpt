@@ -275,6 +275,12 @@ class TriageDecision(BaseModel):
         if not isinstance(data, dict):
             return data
         patched = dict(data)
+        # A key the schema does not have, set to null, says nothing: the model
+        # copied feature names in beside the real fields ("fever": null).
+        # Observed 2026-10-19 in Arabic consultations, where it cost a whole
+        # retry each time. Dropped; an unknown key WITH a value still fails.
+        for key in [k for k, v in patched.items() if v is None and k not in cls.model_fields]:
+            del patched[key]
         for key in ("matching_conditions", "citations"):
             if patched.get(key) is None:
                 patched[key] = []
