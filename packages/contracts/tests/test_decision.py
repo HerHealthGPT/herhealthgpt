@@ -53,19 +53,18 @@ def test_a_red_flag_conclusion_below_urgent_may_not_name_conditions() -> None:
         )
 
 
-def test_an_urgent_same_day_red_flag_may_name_conditions() -> None:
-    """Widened 2026-09-17 on the product owner's decision: a woman told to be
-    seen today is making the same "what is this about?" judgement as one sent
-    to an emergency department. Still "may match patterns our sources
-    associate with…", never "you have…"."""
-    decision = TriageDecision(
-        type=DecisionType.CONCLUDE,
-        action_code=ActionCode.URGENT_SAME_DAY,
-        red_flag_id="severe_pelvic_pain",
-        matching_conditions=("pelvic_inflammatory_disease",),
-        rationale="testing",
-    )
-    assert decision.matching_conditions == ("pelvic_inflammatory_disease",)
+def test_an_urgent_same_day_red_flag_may_not_name_conditions() -> None:
+    """Narrowed back 2026-10-19 on the product owner's decision, to ADR 0013:
+    EMERGENCY is the one exception. A same-day warning sign escalates on the
+    symptom without naming what it may be."""
+    with pytest.raises(ValidationError, match="must not name matching_conditions"):
+        TriageDecision(
+            type=DecisionType.CONCLUDE,
+            action_code=ActionCode.URGENT_SAME_DAY,
+            red_flag_id="severe_pelvic_pain",
+            matching_conditions=("pelvic_inflammatory_disease",),
+            rationale="testing",
+        )
 
 
 def test_an_emergency_red_flag_conclusion_may_name_conditions() -> None:
