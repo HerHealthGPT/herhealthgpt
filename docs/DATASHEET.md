@@ -118,12 +118,13 @@ All English unless stated; silver labels; one run at temperature 0.
 | Clarification recall on the 90 vague rewordings | 0.189 | same run; later 18 of the 22 that were declined now get a question or answer (2026-10-19) |
 | Scripted multi-turn consultations reaching a conclusion | 10 of 10 | 2026-10-19, after the repeat and invented-name fixes |
 | Reply written in the question's language (EN/AR/FR) | 20/20 each | 2026-10-15, 20 items |
+| Same urgency across English, Arabic and French, full consultations | 6 of 6 that concluded in all three; 0 lower than English (Arabic concluded 6 of 10) | 2026-10-19, `make eval-languages`; translated scripts unreviewed |
 
 ## What has not been measured
 
-- **Cross-language agreement on the action code.** No item reached a
-  conclusion on its first turn in every language, so action codes have not
-  been compared across English, Arabic and French.
+- **Cross-language agreement at scale.** It has been measured on ten scripted
+  consultations only (above), with translations no native speaker has
+  reviewed, and Arabic concluded in only 6 of 10.
 - **Whether the urgency advice is right.** "Valid" means a reply passed the
   system's own checks. No measurement here judges the advice clinically.
 - **Over-triage** on full consultations, and how many questions a
