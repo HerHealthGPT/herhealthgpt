@@ -22,6 +22,7 @@ exists to catch it after the fact instead.
 
 from __future__ import annotations
 
+import difflib
 from collections.abc import Sequence
 
 from herhealth_contracts.decision import DecisionType, TriageDecision
@@ -41,6 +42,31 @@ class ClosedVocabularyViolation(ValueError):
     """
 
 
+def closest_features(base: KnowledgeBase, invented: str, count: int = 3) -> list[str]:
+    """The real feature ids nearest an invented one, by id and label.
+
+    Measured 2026-10-19: the model builds ids from a feature's label, so
+    ``difficulty_becoming_pregnant`` for ``difficulty_conceiving`` (label
+    "Difficulty becoming pregnant"). Told only to use a real id, it made the
+    same guess on the retry. A suggestion, never a substitution: the model
+    still chooses (see :class:`ClosedVocabularyViolation`).
+    """
+    wanted = invented.replace("_", " ")
+
+    def score(feature_id: str) -> float:
+        label = base.features_by_id[feature_id].label.lower()
+        return max(
+            difflib.SequenceMatcher(None, wanted, feature_id.replace("_", " ")).ratio(),
+            difflib.SequenceMatcher(None, wanted, label).ratio(),
+        )
+
+    return sorted(base.features_by_id, key=score, reverse=True)[:count]
+
+
+def _did_you_mean(base: KnowledgeBase, invented: str) -> str:
+    return "; the closest real ids are " + ", ".join(closest_features(base, invented))
+
+
 def validate_against_knowledge_base(
     decision: TriageDecision, base: KnowledgeBase, context: Sequence[RetrievedPassage]
 ) -> None:
@@ -53,6 +79,7 @@ def validate_against_knowledge_base(
     if decision.type is DecisionType.ASK and decision.next_feature_id not in base.features_by_id:
         raise ClosedVocabularyViolation(
             f"next_feature_id {decision.next_feature_id!r} is not a real feature in features.yaml"
+            + _did_you_mean(base, decision.next_feature_id or "")
         )
 
     for condition_id in decision.matching_conditions:
@@ -74,6 +101,7 @@ def validate_against_knowledge_base(
         if feature is None:
             raise ClosedVocabularyViolation(
                 f"observed references {feature_id!r}, not a real feature in features.yaml"
+                + _did_you_mean(base, feature_id)
             )
         # ``unknown`` is always legal and is not in any feature's
         # ``allowed_values``: "she was asked and could not say" has to be
