@@ -81,6 +81,11 @@ class Script:
     id: str
     opening: str
     answers: dict[str, str]
+    #: Her replies when asked something the script has no answer for, and
+    #: after an explanation. Per script so a translated script stays in its
+    #: own language.
+    default_reply: str = DEFAULT_REPLY
+    after_inform_reply: str = AFTER_INFORM_REPLY
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +126,8 @@ def load_scripts(path: Path) -> list[Script]:
                 id=str(row["id"]),
                 opening=str(row["opening"]),
                 answers={str(k): str(v) for k, v in answers.items()},
+                default_reply=str(row.get("default_reply", DEFAULT_REPLY)),
+                after_inform_reply=str(row.get("after_inform_reply", AFTER_INFORM_REPLY)),
             )
         )
     return scripts
@@ -197,8 +204,8 @@ def run_script(
         turns += 1
         if decision.type is DecisionType.ASK and decision.next_feature_id:
             asked.append(decision.next_feature_id)
-            return script.answers.get(decision.next_feature_id, DEFAULT_REPLY)
-        return AFTER_INFORM_REPLY
+            return script.answers.get(decision.next_feature_id, script.default_reply)
+        return script.after_inform_reply
 
     try:
         transcript = replace(agent, max_turns=max_turns).run_consultation(script.opening, reply)
