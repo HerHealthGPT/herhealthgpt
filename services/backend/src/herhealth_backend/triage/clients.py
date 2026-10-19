@@ -298,10 +298,7 @@ def _drop_conditions_named_beside_a_red_flag(raw: object) -> object:
         return raw
     if not raw.get("red_flag_id") or not raw.get("matching_conditions"):
         return raw
-    if raw.get("action_code") in (
-        ActionCode.EMERGENCY.value,
-        ActionCode.URGENT_SAME_DAY.value,
-    ):
+    if raw.get("action_code") == ActionCode.EMERGENCY.value:
         return raw
     repaired = dict(raw)
     repaired["matching_conditions"] = []
