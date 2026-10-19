@@ -236,6 +236,7 @@ def _build_triage_agent() -> TriageAgent | None:
         refuse_inform_with_symptoms=True,
         refuse_repeated_question=True,
         enforce_red_flags=True,
+        refuse_unclear_decline=True,
     )
 
 

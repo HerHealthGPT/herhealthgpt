@@ -470,3 +470,39 @@ def test_a_failing_topic_reader_never_fails_the_turn(base: KnowledgeBase) -> Non
     )
 
     assert turn(agent).mentioned == ()
+
+
+# --- The decline gate ---------------------------------------------------------
+
+
+def _decline() -> TriageDecision:
+    return TriageDecision(type=DecisionType.DECLINE, rationale="This is outside what we cover.")
+
+
+def test_a_decline_is_sent_back_once_and_a_question_taken(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(_decline(), ask())
+    agent = TriageAgent(
+        base=base, reasoning=reasoning, retrieval=Retrieval(), refuse_unclear_decline=True
+    )
+
+    result = turn(agent, "What does having this actually mean for me?")
+
+    assert result.decision.type is DecisionType.ASK
+    assert "DECLINED AND WAS REJECTED" in reasoning.prompts[-1]
+
+
+def test_a_second_decline_stands(base: KnowledgeBase) -> None:
+    agent = TriageAgent(
+        base=base,
+        reasoning=Reasoning(_decline(), _decline()),
+        retrieval=Retrieval(),
+        refuse_unclear_decline=True,
+    )
+
+    assert turn(agent, "What's the weather tomorrow?").decision.type is DecisionType.DECLINE
+
+
+def test_the_decline_gate_is_off_by_default(base: KnowledgeBase) -> None:
+    agent = TriageAgent(base=base, reasoning=Reasoning(_decline()), retrieval=Retrieval())
+
+    assert turn(agent).decision.type is DecisionType.DECLINE

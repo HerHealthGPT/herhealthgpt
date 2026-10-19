@@ -669,6 +669,11 @@ class TriageAgent:
     #: :meth:`_enforce_red_flag`.
     enforce_red_flags: bool = False
 
+    #: Send a decline back once: an unclear message that may be in scope
+    #: should get a clarifying question, not a refusal. See
+    #: :meth:`_refuse_unclear_decline`.
+    refuse_unclear_decline: bool = False
+
     def run_turn(
         self,
         history: Sequence[Message],
@@ -778,6 +783,7 @@ class TriageAgent:
         # and that conclusion has to meet the early-conclusion gate like any
         # other: in the other order it would be accepted unchallenged, on a
         # path the model takes often (it informed on 21 of 23 first turns).
+        result = self._refuse_unclear_decline(result, system, history, context)
         result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
         result = self._refuse_premature_conclusion(result, turn_context, system, history, context)
         result = self._refuse_repeated_question(
@@ -861,6 +867,50 @@ class TriageAgent:
             retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
         except Exception:
             # As with the conclusion gate: an improvement, not a guarantee.
+            return result
+        return ReasoningResult(
+            decision=retried.decision,
+            attempts=(*result.attempts, *retried.attempts),
+        )
+
+    def _refuse_unclear_decline(
+        self,
+        result: ReasoningResult,
+        system: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> ReasoningResult:
+        """Send a decline back once, so an unclear message is clarified.
+
+        Measured on the benchmark's vague rewordings (ADR 0018), 22 of 90 were
+        declined as out of scope, e.g. "What does having this actually mean
+        for me?": unclear, not off-topic. A clarifying question must name a
+        feature, so there is no plain "what do you mean?", and the model
+        declined instead. It is told to ask with the closest feature, or to
+        answer if the topic is clear, and to decline only a message clearly
+        about something else. A second decline stands, but if it is a decline
+        for being unclear, its words must ask her what she means instead of
+        saying the topic is not covered.
+        """
+        if not self.refuse_unclear_decline or result.decision.type is not DecisionType.DECLINE:
+            return result
+        retry = (
+            f"{system}\n\nYOUR PREVIOUS ANSWER DECLINED AND WAS REJECTED. Decline only a "
+            "message that is clearly about something other than women's reproductive "
+            "health. A message that is unclear but could be about periods, pain, "
+            "bleeding, discharge, fertility, pregnancy, menopause or a related "
+            "condition is in scope: ask ONE clarifying question with the feature from "
+            "the list that best narrows down what she means, or answer it as an "
+            "informational question if its topic is clear. If you still decline "
+            "because you cannot tell what she means, your rationale must ask her, in "
+            "one or two plain sentences, to say a little more about what she means "
+            '(for example what she is noticing, or what "this" refers to), and must '
+            "NOT say that this tool only covers reproductive health. Use that sentence "
+            "only for a message clearly about something else."
+        )
+        try:
+            retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+        except Exception:
             return result
         return ReasoningResult(
             decision=retried.decision,
