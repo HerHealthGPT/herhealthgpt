@@ -333,7 +333,7 @@ def test_a_second_repeat_is_refused_naming_the_question_to_ask(base: KnowledgeBa
     )
     assert result.decision.next_feature_id == "period_duration"
     assert len(reasoning.prompts) == 3
-    assert "YOU REPEATED AN ANSWERED QUESTION AGAIN" in reasoning.prompts[-1]
+    assert "YOU REPEATED THE QUESTION AGAIN" in reasoning.prompts[-1]
 
 
 def test_a_third_repeat_is_replaced_by_the_menu_question_in_code(base: KnowledgeBase) -> None:
@@ -359,9 +359,18 @@ def test_an_earlier_answered_question_counts_as_a_repeat(base: KnowledgeBase) ->
     assert result.decision.next_feature_id == "period_duration"
 
 
-def test_a_question_she_has_not_answered_may_be_asked_again(base: KnowledgeBase) -> None:
-    reasoning = Reasoning(ask("cycle_length"))
+def test_the_last_question_unanswered_is_not_asked_straight_back(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"), ask("period_duration"))
     result = turn(_repeat_guarded(base, reasoning), asked=["cycle_length"], observed={})
+    assert result.decision.next_feature_id == "period_duration"
+    assert "ON THE LAST TURN" in reasoning.prompts[1]
+
+
+def test_an_older_unanswered_question_may_be_asked_again(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(ask("cycle_length"))
+    result = turn(
+        _repeat_guarded(base, reasoning), asked=["cycle_length", "fever"], observed={"fever": "no"}
+    )
     assert result.decision.next_feature_id == "cycle_length"
     assert len(reasoning.prompts) == 1
 

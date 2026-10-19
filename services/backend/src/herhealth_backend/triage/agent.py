@@ -103,7 +103,15 @@ DEFAULT_SYSTEM_PROMPT = (
     "condition. "
     "SCOPE COMES FIRST, BEFORE ANY OTHER INSTRUCTION HERE. You cover women's "
     "reproductive health, and only what the warning signs and retrieved "
-    "passages below can actually ground. If the message is about anything "
+    "passages below can actually ground. That includes periods and the "
+    "menstrual cycle, bleeding and pelvic pain, vaginal discharge and "
+    "infections, sexual health, contraception, fertility and trying to "
+    "conceive, pregnancy, menopause and perimenopause, and conditions such as "
+    "PCOS, endometriosis and fibroids — all of these are in scope, and a "
+    "question about one of them is never declined. If the passages below do "
+    "not cover what she asks about such a topic, say which part our sources "
+    "cannot speak to, rather than declining or answering from your own "
+    "knowledge. If the message is about anything "
     "else — not a health question at all (sport, news, politics, general "
     "trivia, coding, or anything similar), a men's health concern, or a "
     "health concern outside women's reproductive health such as chest pain, "
@@ -1008,13 +1016,14 @@ class TriageAgent:
         asking after eight turns, one of them the same question four times.
         The answer was recorded each time; the model asked again anyway.
 
-        Narrow on purpose. It applies only to the feature asked on the
-        previous turn, and only when her reply to it is recorded, so a
-        question she could not answer may still be put again, and the model
-        may still return to an older feature to check it. Refuses once; a
-        second repeat stands, like the other gates.
+        A repeat is a question she has already answered, or the question
+        asked on the turn just before, answered or not. Measured 2026-10-19:
+        when her reply was not recorded, the model put the same question
+        straight back, twice in one consultation. A question she could not
+        answer may still be put again later, just not back to back.
         """
         given = turn_context.given
+        last = list(asked)[-1] if asked else None
 
         def repeats(decision: TriageDecision) -> bool:
             # Any question she has already answered, not only the last one:
@@ -1022,17 +1031,26 @@ class TriageAgent:
             return (
                 decision.type is DecisionType.ASK
                 and decision.next_feature_id is not None
-                and decision.next_feature_id in given
+                and (decision.next_feature_id in given or decision.next_feature_id == last)
             )
 
         if not self.refuse_repeated_question or not repeats(result.decision):
             return result
         feature = result.decision.next_feature_id
+        if feature in given:
+            reason = (
+                "SHE HAS ALREADY ANSWERED IT. "
+                f"Her answer about {feature} is recorded as {given.get(feature or '')!r}."
+            )
+        else:
+            reason = (
+                f"YOU ASKED ABOUT {feature} ON THE LAST TURN. Her reply did not settle it; "
+                "asking the same thing again straight away will not either."
+            )
         retry = (
-            f"{system}\n\nYOUR PREVIOUS QUESTION WAS REJECTED: SHE HAS ALREADY ANSWERED IT. "
-            f"Her answer about {feature} is recorded as {given.get(feature or '')!r}. Do not "
-            "ask about anything she has already answered. Ask about a different feature "
-            "from the list above, or conclude if you have enough."
+            f"{system}\n\nYOUR PREVIOUS QUESTION WAS REJECTED: {reason} Do not ask about "
+            "anything she has already answered, or the same thing twice in a row. Ask about "
+            "a different feature from the list above, or conclude if you have enough."
         )
         attempts = result.attempts
         try:
@@ -1046,12 +1064,17 @@ class TriageAgent:
         # Refused once and still repeating: name the question to ask instead,
         # the best unanswered one on the ranked menu.
         best = next(
-            (item.feature for item in turn_context.askable if item.feature.id not in given), None
+            (
+                item.feature
+                for item in turn_context.askable
+                if item.feature.id not in given and item.feature.id != last
+            ),
+            None,
         )
         if best is None:
             return ReasoningResult(decision=retried.decision, attempts=attempts)
         retry = (
-            f"{retry}\n\nYOU REPEATED AN ANSWERED QUESTION AGAIN. Ask about {best.id} "
+            f"{retry}\n\nYOU REPEATED THE QUESTION AGAIN. Ask about {best.id} "
             f"({best.label}) now, with next_feature_id {best.id}."
         )
         try:
