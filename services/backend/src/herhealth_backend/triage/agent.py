@@ -103,7 +103,15 @@ DEFAULT_SYSTEM_PROMPT = (
     "condition. "
     "SCOPE COMES FIRST, BEFORE ANY OTHER INSTRUCTION HERE. You cover women's "
     "reproductive health, and only what the warning signs and retrieved "
-    "passages below can actually ground. If the message is about anything "
+    "passages below can actually ground. That includes periods and the "
+    "menstrual cycle, bleeding and pelvic pain, vaginal discharge and "
+    "infections, sexual health, contraception, fertility and trying to "
+    "conceive, pregnancy, menopause and perimenopause, and conditions such as "
+    "PCOS, endometriosis and fibroids — all of these are in scope, and a "
+    "question about one of them is never declined. If the passages below do "
+    "not cover what she asks about such a topic, say which part our sources "
+    "cannot speak to, rather than declining or answering from your own "
+    "knowledge. If the message is about anything "
     "else — not a health question at all (sport, news, politics, general "
     "trivia, coding, or anything similar), a men's health concern, or a "
     "health concern outside women's reproductive health such as chest pain, "
@@ -669,6 +677,11 @@ class TriageAgent:
     #: :meth:`_enforce_red_flag`.
     enforce_red_flags: bool = False
 
+    #: Send a decline back once: an unclear message that may be in scope
+    #: should get a clarifying question, not a refusal. See
+    #: :meth:`_refuse_unclear_decline`.
+    refuse_unclear_decline: bool = False
+
     def run_turn(
         self,
         history: Sequence[Message],
@@ -778,10 +791,11 @@ class TriageAgent:
         # and that conclusion has to meet the early-conclusion gate like any
         # other: in the other order it would be accepted unchallenged, on a
         # path the model takes often (it informed on 21 of 23 first turns).
+        result = self._refuse_unclear_decline(result, system, history, context)
         result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
         result = self._refuse_premature_conclusion(result, turn_context, system, history, context)
         result = self._refuse_repeated_question(
-            result, turn_context, asked, system, history, context
+            result, turn_context, asked, system, history, context, language
         )
         # Last, so no other gate can undo it.
         result = self._enforce_red_flag(result, turn_context, system, history, context, language)
@@ -861,6 +875,50 @@ class TriageAgent:
             retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
         except Exception:
             # As with the conclusion gate: an improvement, not a guarantee.
+            return result
+        return ReasoningResult(
+            decision=retried.decision,
+            attempts=(*result.attempts, *retried.attempts),
+        )
+
+    def _refuse_unclear_decline(
+        self,
+        result: ReasoningResult,
+        system: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+    ) -> ReasoningResult:
+        """Send a decline back once, so an unclear message is clarified.
+
+        Measured on the benchmark's vague rewordings (ADR 0018), 22 of 90 were
+        declined as out of scope, e.g. "What does having this actually mean
+        for me?": unclear, not off-topic. A clarifying question must name a
+        feature, so there is no plain "what do you mean?", and the model
+        declined instead. It is told to ask with the closest feature, or to
+        answer if the topic is clear, and to decline only a message clearly
+        about something else. A second decline stands, but if it is a decline
+        for being unclear, its words must ask her what she means instead of
+        saying the topic is not covered.
+        """
+        if not self.refuse_unclear_decline or result.decision.type is not DecisionType.DECLINE:
+            return result
+        retry = (
+            f"{system}\n\nYOUR PREVIOUS ANSWER DECLINED AND WAS REJECTED. Decline only a "
+            "message that is clearly about something other than women's reproductive "
+            "health. A message that is unclear but could be about periods, pain, "
+            "bleeding, discharge, fertility, pregnancy, menopause or a related "
+            "condition is in scope: ask ONE clarifying question with the feature from "
+            "the list that best narrows down what she means, or answer it as an "
+            "informational question if its topic is clear. If you still decline "
+            "because you cannot tell what she means, your rationale must ask her, in "
+            "one or two plain sentences, to say a little more about what she means "
+            '(for example what she is noticing, or what "this" refers to), and must '
+            "NOT say that this tool only covers reproductive health. Use that sentence "
+            "only for a message clearly about something else."
+        )
+        try:
+            retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+        except Exception:
             return result
         return ReasoningResult(
             decision=retried.decision,
@@ -950,6 +1008,7 @@ class TriageAgent:
         system: str,
         history: Sequence[Message],
         context: Sequence[RetrievedPassage],
+        language: str | None = None,
     ) -> ReasoningResult:
         """Send back a question she answered in the message just read.
 
@@ -957,35 +1016,98 @@ class TriageAgent:
         asking after eight turns, one of them the same question four times.
         The answer was recorded each time; the model asked again anyway.
 
-        Narrow on purpose. It applies only to the feature asked on the
-        previous turn, and only when her reply to it is recorded, so a
-        question she could not answer may still be put again, and the model
-        may still return to an older feature to check it. Refuses once; a
-        second repeat stands, like the other gates.
+        A repeat is a question she has already answered, or the question
+        asked on the turn just before, answered or not. Measured 2026-10-19:
+        when her reply was not recorded, the model put the same question
+        straight back, twice in one consultation. A question she could not
+        answer may still be put again later, just not back to back.
         """
-        decision = result.decision
+        given = turn_context.given
         last = list(asked)[-1] if asked else None
-        if (
-            not self.refuse_repeated_question
-            or decision.type is not DecisionType.ASK
-            or last is None
-            or decision.next_feature_id != last
-            or last not in turn_context.given
-        ):
+
+        def repeats(decision: TriageDecision) -> bool:
+            # Any question she has already answered, not only the last one:
+            # measured, a model refused once came straight back to it.
+            return (
+                decision.type is DecisionType.ASK
+                and decision.next_feature_id is not None
+                and (decision.next_feature_id in given or decision.next_feature_id == last)
+            )
+
+        if not self.refuse_repeated_question or not repeats(result.decision):
             return result
+        feature = result.decision.next_feature_id
+        if feature in given:
+            reason = (
+                "SHE HAS ALREADY ANSWERED IT. "
+                f"Her answer about {feature} is recorded as {given.get(feature or '')!r}."
+            )
+        else:
+            reason = (
+                f"YOU ASKED ABOUT {feature} ON THE LAST TURN. Her reply did not settle it; "
+                "asking the same thing again straight away will not either."
+            )
         retry = (
-            f"{system}\n\nYOUR PREVIOUS QUESTION WAS REJECTED: SHE HAS ALREADY ANSWERED IT. "
-            f"You asked about {last} on the last turn and her answer is recorded as "
-            f"{turn_context.given[last]!r}. Do not ask about {last} again. Ask about a "
-            "different feature from the list above, or conclude if you have enough."
+            f"{system}\n\nYOUR PREVIOUS QUESTION WAS REJECTED: {reason} Do not ask about "
+            "anything she has already answered, or the same thing twice in a row. Ask about "
+            "a different feature from the list above, or conclude if you have enough."
         )
+        attempts = result.attempts
         try:
             retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
         except Exception:
             return result
+        attempts = (*attempts, *retried.attempts)
+        if not repeats(retried.decision):
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+
+        # Refused once and still repeating: name the question to ask instead,
+        # the best unanswered one on the ranked menu.
+        best = next(
+            (
+                item.feature
+                for item in turn_context.askable
+                if item.feature.id not in given and item.feature.id != last
+            ),
+            None,
+        )
+        if best is None:
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+        retry = (
+            f"{retry}\n\nYOU REPEATED THE QUESTION AGAIN. Ask about {best.id} "
+            f"({best.label}) now, with next_feature_id {best.id}."
+        )
+        try:
+            third = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+            attempts = (*attempts, *third.attempts)
+            if not repeats(third.decision):
+                return ReasoningResult(decision=third.decision, attempts=attempts)
+        except Exception:
+            pass
+        # Still repeating. Ask the menu's question in its authored wording,
+        # which exists in English only (CLAUDE.md, "Language scope"); in
+        # another language the model's reply stands rather than switch
+        # language mid-conversation.
+        wording = best.probe.get("en") if language is None else None
+        if not wording:
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+        decision = TriageDecision(
+            type=DecisionType.ASK,
+            next_feature_id=best.id,
+            question_text=wording,
+            rationale="One more detail would change the advice.",
+            observed=dict(retried.decision.observed),
+        )
         return ReasoningResult(
-            decision=retried.decision,
-            attempts=(*result.attempts, *retried.attempts),
+            decision=decision,
+            attempts=(
+                *attempts,
+                ReasoningAttempt(
+                    client="repeat-gate",
+                    outcome=AttemptOutcome.OK,
+                    detail=f"asked {best.id} in code after repeated questions",
+                ),
+            ),
         )
 
     def _write_answer(
