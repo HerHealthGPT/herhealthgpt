@@ -803,7 +803,12 @@ def _passage_from_cited(raw: object) -> RetrievedPassage | None:
             score=0.0,
             url=raw.get("url"),
         )
-    except (KeyError, TypeError, ValidationError):
+    except (KeyError, TypeError, ValueError, ValidationError):
+        # ValueError: a passage_type that is not a PassageType, such as the
+        # "evidence_row" citations a conclusion carries (_evidence_citations).
+        # Those are quotes, not retrievable passages, so there is nothing to
+        # carry. Found 2026-10-19 by the trace harness; a live chat is closed
+        # after its conclusion, so it had not been reached there.
         return None
 
 

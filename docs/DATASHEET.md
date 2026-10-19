@@ -121,6 +121,10 @@ All English unless stated; silver labels; one run at temperature 0.
 | Reply written in the question's language (EN/AR/FR) | 20/20 each | 2026-10-15, 20 items |
 | Same urgency across English, Arabic and French, full consultations | 6 of 6 that concluded in all three; 0 lower than English (Arabic concluded 6 of 10) | 2026-10-19, `make eval-languages`; translated scripts unreviewed |
 
+How a reply is produced, layer by layer, with ten traced consultations:
+[experiments/2026-10-19-traced-consultations.md](experiments/2026-10-19-traced-consultations.md)
+(`make trace-turns`).
+
 ## What has not been measured
 
 - **Cross-language agreement at scale.** It has been measured on ten scripted
