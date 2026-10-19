@@ -21,6 +21,9 @@ __all__ = [
     "InvalidDisplayName",
     "CycleImportFailed",
     "CycleImportUnavailable",
+    "StoredFileNotFound",
+    "StoredFileRejected",
+    "StoredFilesUnavailable",
 ]
 
 
@@ -183,3 +186,23 @@ class CycleImportFailed(Exception):
 class CycleImportUnavailable(Exception):
     """The file needs the model to read it, and no model is configured — as
     in production today, where triage reports "not configured" too."""
+
+
+class StoredFileRejected(Exception):
+    """A file she asked to keep was refused before anything was written.
+    ``reason`` is a code the frontend words in her language:
+    ``unsupported_type``, ``too_large``, ``too_many_files``,
+    ``account_full`` or ``storage_full``."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class StoredFilesUnavailable(Exception):
+    """This deployment has no directory to keep files in
+    (``HERHEALTH_UPLOAD_DIR`` is unset)."""
+
+
+class StoredFileNotFound(Exception):
+    """No such file, someone else's, or past its date — all answered alike."""

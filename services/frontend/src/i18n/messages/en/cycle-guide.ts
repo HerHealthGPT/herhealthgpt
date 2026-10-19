@@ -79,7 +79,7 @@ export const cycleGuide = {
   ],
   privacyTitle: "What we keep",
   privacy:
-    "We keep only the dates, flow and symptoms listed above — never the file itself. You can see, replace or delete your cycle data in Account settings at any time. What you tell us in a chat always comes first.",
+    "We keep only the dates, flow and symptoms listed above — not the file itself, unless you choose to keep a copy, which is deleted automatically after 30 days. You can see, replace or delete your cycle data in Account settings at any time. What you tell us in a chat always comes first.",
   notDiagnosis:
     "Your cycle data helps us ask better questions. It is never used to tell you what you have.",
   promoTitle: "Bring your cycle history",

@@ -53,8 +53,13 @@ RUN /app/.venv/bin/python -c "import herhealth_backend.app"
 
 FROM python:3.12-slim AS runtime
 
-# Not root. The app writes nothing to disk; the knowledge base is read-only.
-RUN useradd --create-home --uid 10001 herhealth
+# Not root. The knowledge base is read-only; the one thing written is files
+# she chooses to keep (ADR 0020), into /data/uploads. The directory is made
+# here and owned by the app user, so the named volume compose.prod.yml mounts
+# over it starts out writable by that user.
+RUN useradd --create-home --uid 10001 herhealth \
+    && mkdir -p /data/uploads \
+    && chown herhealth:herhealth /data/uploads
 
 WORKDIR /app
 

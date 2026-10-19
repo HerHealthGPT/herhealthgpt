@@ -4,12 +4,13 @@
  * All requests use credentials: "include" (httpOnly cookies set by sign-in / Google).
  * Base path is proxied to the backend via Next.js rewrites (/api → localhost:8000).
  */
-import { apiRequest } from "./client";
+import { apiDownload, apiRequest } from "./client";
 import type {
   CycleDataPreview,
   CycleDataStatus,
   CycleExtraction,
   HealthNote,
+  StoredFile,
   UserSummary,
 } from "./types";
 
@@ -160,6 +161,28 @@ export function getCycleData() {
 /** DELETE /accounts/cycle-data → 204. Deletes the data, not the account. */
 export function deleteCycleData() {
   return apiRequest<void>("/accounts/cycle-data", { method: "DELETE" });
+}
+
+/** GET /accounts/files → 200. Her kept files, newest first (ADR 0020). */
+export function listStoredFiles() {
+  return apiRequest<StoredFile[]>("/accounts/files");
+}
+
+/** POST /accounts/files → 201. Keeps the file for 30 days. */
+export function uploadStoredFile(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiRequest<StoredFile>("/accounts/files", { method: "POST", body: form, json: false });
+}
+
+/** GET /accounts/files/{id} → the file, saved under its name. */
+export function downloadStoredFile(file: StoredFile) {
+  return apiDownload(`/accounts/files/${file.id}`, file.filename);
+}
+
+/** DELETE /accounts/files/{id} → 204 */
+export function deleteStoredFile(id: string) {
+  return apiRequest<void>(`/accounts/files/${id}`, { method: "DELETE" });
 }
 
 /** POST /accounts/refresh → 204 */

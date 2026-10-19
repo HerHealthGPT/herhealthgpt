@@ -75,7 +75,7 @@ export const cycleGuide: CycleGuideMessages = {
   ],
   privacyTitle: "Ce que nous conservons",
   privacy:
-    "Nous ne conservons que les dates, les saignements et les symptômes listés ci-dessus — jamais le fichier lui-même. Vous pouvez consulter, remplacer ou supprimer vos données de cycle dans les paramètres du compte à tout moment. Ce que vous nous dites dans une discussion passe toujours en premier.",
+    "Nous ne conservons que les dates, les saignements et les symptômes listés ci-dessus — pas le fichier lui-même, sauf si vous choisissez d'en garder une copie, supprimée automatiquement au bout de 30 jours. Vous pouvez consulter, remplacer ou supprimer vos données de cycle dans les paramètres du compte à tout moment. Ce que vous nous dites dans une discussion passe toujours en premier.",
   notDiagnosis:
     "Vos données de cycle nous aident à poser de meilleures questions. Elles ne servent jamais à vous dire ce que vous avez.",
   promoTitle: "Apportez l'historique de votre cycle",

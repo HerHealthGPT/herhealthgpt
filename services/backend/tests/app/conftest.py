@@ -44,6 +44,7 @@ from testcontainers.community.postgres import PostgresContainer  # noqa: E402
 from herhealth_backend.app import Database, create_app  # noqa: E402
 from herhealth_backend.app.accounts.errors import GoogleTokenInvalid  # noqa: E402
 from herhealth_backend.app.accounts.google_identity import GoogleIdentity  # noqa: E402
+from herhealth_backend.app.accounts.stored_files import FileStore  # noqa: E402
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 _ALEMBIC_INI = _BACKEND_ROOT / "alembic.ini"
@@ -176,11 +177,18 @@ def google_verifier() -> StaticGoogleTokenVerifier:
     return StaticGoogleTokenVerifier()
 
 
+@pytest.fixture
+def file_store(tmp_path: Path) -> FileStore:
+    """Kept files go to a fresh directory per test (ADR 0020)."""
+    return FileStore(tmp_path / "uploads")
+
+
 @pytest_asyncio.fixture
 async def client(
     database_url: str,
     email_sender: RecordingEmailSender,
     google_verifier: StaticGoogleTokenVerifier,
+    file_store: FileStore,
 ) -> AsyncIterator[AsyncClient]:
     """An ASGI-driven HTTP client against a real app, pointed at the migrated database.
 
@@ -201,6 +209,7 @@ async def client(
         session_secret=_TEST_SESSION_SECRET,
         email_sender=email_sender,
         google_verifier=google_verifier,
+        file_store=file_store,
     )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="https://test") as client:

@@ -30,6 +30,7 @@ from enum import StrEnum
 
 from sqlalchemy import (
     TIMESTAMP,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -45,6 +46,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 __all__ = [
     "Base",
+    "StoredFile",
     "CredentialKind",
     "User",
     "Credential",
@@ -203,6 +205,37 @@ class CycleData(Base):
     )
 
     user: Mapped[User] = relationship(back_populates="cycle_data")
+
+
+class StoredFile(Base):
+    """A file she chose to keep, for 30 days (ADR 0020). The bytes are on the
+    server's disk (``stored_files.FileStore``); this row is what is known
+    about them. Many per user, each deletable on its own, and all of them
+    removed with her account: the rows by ``ON DELETE CASCADE``, the files by
+    the delete-account route.
+
+    ``id`` is set by the application, not the database, because the file is
+    written under it before the row is inserted.
+    """
+
+    __tablename__ = "stored_files"
+    __table_args__ = (
+        Index("ix_stored_files_user_id", "user_id"),
+        Index("ix_stored_files_expires_at", "expires_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Her filename, made safe (``stored_files.safe_filename``). Display and
+    #: download only; never part of a path on disk.
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    content_type: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
 
 
 class Credential(Base):

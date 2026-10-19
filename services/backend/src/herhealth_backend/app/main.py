@@ -14,6 +14,7 @@ already know from the fact that it answered at all.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -43,6 +44,7 @@ from herhealth_backend.app.accounts.google_identity import (
     UnconfiguredGoogleTokenVerifier,
 )
 from herhealth_backend.app.accounts.routes import router as accounts_router
+from herhealth_backend.app.accounts.stored_files import FileStore, purge_expired
 from herhealth_backend.app.config import EMAIL_SENDER_ENV, database_url
 from herhealth_backend.app.config import answer_model as configured_answer_model
 from herhealth_backend.app.config import (
@@ -58,6 +60,7 @@ from herhealth_backend.app.config import openrouter_model as configured_openrout
 from herhealth_backend.app.config import page_model as configured_page_model
 from herhealth_backend.app.config import session_secret as configured_session_secret
 from herhealth_backend.app.config import triage_mode as configured_triage_mode
+from herhealth_backend.app.config import upload_dir as configured_upload_dir
 from herhealth_backend.app.config import vllm_api_key as configured_vllm_api_key
 from herhealth_backend.app.config import vllm_max_attempts as configured_vllm_max_attempts
 from herhealth_backend.app.config import vllm_timeout as configured_vllm_timeout
@@ -134,6 +137,26 @@ def _decision_validator(base: KnowledgeBase) -> DecisionValidator:
         validate_against_knowledge_base(decision, base, context)
 
     return validate
+
+
+#: How often expired files are looked for. A file is never served or listed
+#: past its date whatever this is (``stored_files.file_for``); this only
+#: decides how soon the bytes leave the disk.
+PURGE_INTERVAL_SECONDS = 3600
+
+
+async def _purge_expired_files(app: FastAPI) -> None:
+    """Delete files past their 30 days, at start-up and then hourly (ADR 0020).
+    A failed pass is logged and the next one tries again."""
+    while True:
+        try:
+            async with app.state.database.session() as session:
+                removed = await purge_expired(session, app.state.file_store)
+            if removed:
+                logger.info("stored files: deleted %d past their date", removed)
+        except Exception:
+            logger.exception("stored files: clean-up pass failed; retrying next hour")
+        await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
 def _build_retrieval() -> RetrievalClient | None:
@@ -333,6 +356,7 @@ def create_app(
     triage_agent: TriageAgent | None = None,
     comparison_responders: dict[str, PlainChatResponder] | None = None,
     cycle_extractor: ModelCycleExtractor | None = None,
+    file_store: FileStore | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -376,9 +400,19 @@ def create_app(
             app.state.comparison_responders = _build_comparison_responders()
         if getattr(app.state, "cycle_extractor", None) is None:
             app.state.cycle_extractor = _build_cycle_extractor()
+        if getattr(app.state, "file_store", None) is None:
+            root = configured_upload_dir()
+            app.state.file_store = FileStore(root) if root is not None else None
+        purge = (
+            asyncio.create_task(_purge_expired_files(app))
+            if app.state.file_store is not None
+            else None
+        )
         try:
             yield
         finally:
+            if purge is not None:
+                purge.cancel()
             if owns_database:
                 await app.state.database.dispose()
 
@@ -418,6 +452,8 @@ def create_app(
         app.state.comparison_responders = comparison_responders
     if cycle_extractor is not None:
         app.state.cycle_extractor = cycle_extractor
+    if file_store is not None:
+        app.state.file_store = file_store
     register_error_handlers(app)
     app.include_router(accounts_router)
     app.include_router(triage_router)

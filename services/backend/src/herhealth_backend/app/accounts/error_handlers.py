@@ -27,6 +27,9 @@ from herhealth_backend.app.accounts.errors import (
     InvalidSession,
     NoPasswordCredential,
     PasswordResetCodeExpired,
+    StoredFileNotFound,
+    StoredFileRejected,
+    StoredFilesUnavailable,
     TooManyPasswordResetRequests,
     TooManySignInAttempts,
     TooManyVerificationRequests,
@@ -229,6 +232,34 @@ def register_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"detail": {"reason": "not_configured"}},
+        )
+
+    @app.exception_handler(StoredFileRejected)
+    async def _stored_file_rejected(
+        request: Request, exc: StoredFileRejected
+    ) -> JSONResponse:
+        # A reason code, worded by the frontend in her language.
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": {"reason": exc.reason}},
+        )
+
+    @app.exception_handler(StoredFilesUnavailable)
+    async def _stored_files_unavailable(
+        request: Request, exc: StoredFilesUnavailable
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": {"reason": "not_configured"}},
+        )
+
+    @app.exception_handler(StoredFileNotFound)
+    async def _stored_file_not_found(
+        request: Request, exc: StoredFileNotFound
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"detail": {"reason": "not_found"}},
         )
 
     @app.exception_handler(InvalidDisplayName)

@@ -94,8 +94,15 @@ services:
       HERHEALTH_EMAIL_SENDER: ses
       HERHEALTH_COOKIE_SECURE: "true"
       HERHEALTH_CORS_ORIGINS: https://${DOMAIN}
+      # Files she chooses to keep, deleted 30 days after upload (ADR 0020).
+      HERHEALTH_UPLOAD_DIR: /data/uploads
       # HERHEALTH_KNOWLEDGE_DIR=/app/knowledge is set in the image; the
       # knowledge files are part of it.
+    # A named volume, so kept files survive every release: deploy.sh brings
+    # the stack up again but never removes volumes. On the encrypted root
+    # disk, like everything else on this host.
+    volumes:
+      - uploads:/data/uploads
     # Healthcheck is defined in the image: GET /health. That endpoint pings the
     # database, so it is a readiness check on RDS too -- but it never calls
     # OpenRouter or any other external service.
@@ -109,3 +116,4 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+  uploads:

@@ -16,6 +16,7 @@ from datetime import date, datetime
 
 from anyio import to_thread
 from fastapi import APIRouter, Depends, Request, Response, UploadFile, status
+from fastapi.responses import FileResponse
 from herhealth_contracts.cycle import CycleExtraction
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -41,7 +42,12 @@ from herhealth_backend.app.accounts.email_verification import (
     send_verification_code,
     verify_email,
 )
-from herhealth_backend.app.accounts.errors import CycleImportFailed, InvalidSession
+from herhealth_backend.app.accounts.errors import (
+    CycleImportFailed,
+    InvalidSession,
+    StoredFileNotFound,
+    StoredFilesUnavailable,
+)
 from herhealth_backend.app.accounts.google_identity import GoogleTokenVerifier
 from herhealth_backend.app.accounts.google_sign_in import sign_in_with_google
 from herhealth_backend.app.accounts.models import User
@@ -63,6 +69,13 @@ from herhealth_backend.app.accounts.sessions import (
     start_session,
 )
 from herhealth_backend.app.accounts.sign_in import sign_in as sign_in_user
+from herhealth_backend.app.accounts.stored_files import (
+    FileStore,
+    add_file,
+    delete_file,
+    file_for,
+    files_for,
+)
 from herhealth_backend.app.accounts.verification_code_policy import CODE_LENGTH
 from herhealth_backend.app.db import Database
 from herhealth_backend.triage.age_bands import age_band_for
@@ -545,6 +558,103 @@ async def delete_cycle_data(
         await clear_cycle_data(session, current_user.id)
 
 
+class StoredFileSummary(BaseModel):
+    """One file she kept. The bytes come from GET /accounts/files/{id}."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+    #: When it is deleted automatically.
+    expires_at: datetime
+
+
+def _file_store(request: Request) -> FileStore:
+    store: FileStore | None = getattr(request.app.state, "file_store", None)
+    if store is None:
+        raise StoredFilesUnavailable()
+    return store
+
+
+@router.get("/files", response_model=list[StoredFileSummary])
+async def list_files(
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> list[StoredFileSummary]:
+    """Her kept files, newest first (ADR 0020)."""
+    _file_store(request)
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        rows = await files_for(session, current_user.id)
+    return [StoredFileSummary.model_validate(row) for row in rows]
+
+
+@router.post("/files", response_model=StoredFileSummary, status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    file: UploadFile,
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> StoredFileSummary:
+    """Keep one file for 30 days. Only the kinds the cycle-data import reads;
+    the type is checked against the file's first bytes, not just its name."""
+    store = _file_store(request)
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        row = await add_file(
+            session,
+            store,
+            current_user.id,
+            filename=file.filename,
+            stream=file.file,
+            declared_size=file.size,
+        )
+        await session.commit()
+        return StoredFileSummary.model_validate(row)
+
+
+@router.get("/files/{file_id}", response_class=FileResponse)
+async def download_file(
+    file_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> FileResponse:
+    """Her file, as a download. Always ``attachment`` and never sniffed, so a
+    browser saves it rather than running anything in it."""
+    store = _file_store(request)
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        row = await file_for(session, current_user.id, file_id)
+    path = store.path_for(current_user.id, file_id) if row is not None else None
+    if row is None or path is None or not path.is_file():
+        raise StoredFileNotFound()
+    return FileResponse(
+        path,
+        media_type=row.content_type,
+        filename=row.filename,
+        content_disposition_type="attachment",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.delete("/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_file(
+    file_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+) -> None:
+    store = _file_store(request)
+    database: Database = request.app.state.database
+    async with database.session() as session:
+        row = await file_for(session, current_user.id, file_id)
+        if row is None:
+            raise StoredFileNotFound()
+        await delete_file(session, store, row)
+        await session.commit()
+
+
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_me(
     request: Request,
@@ -561,6 +671,10 @@ async def delete_me(
     async with database.session() as session:
         await delete_user_account(session, current_user.id)
         await session.commit()
+    # Her kept files go with the account: the rows went by cascade above.
+    store: FileStore | None = getattr(request.app.state, "file_store", None)
+    if store is not None:
+        await to_thread.run_sync(store.remove_user, current_user.id)
     clear_auth_cookies(response)
 
 

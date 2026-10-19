@@ -215,6 +215,11 @@ deleted on its own, as the glossary requires. A re-import replaces the
 previous one rather than merging, so there is never a question of which
 import is current.
 
+**Amended 2026-10-19 by [ADR 0020](0020-she-may-keep-an-uploaded-file-for-30-days.md):**
+the file is still discarded by the import, but she may now choose to keep a
+copy, in a separate store, for 30 days. Nothing reads a kept file; what
+reaches triage is unchanged.
+
 ## What this does not change
 
 - **`TriageDecision`**, the action codes, and the closed vocabularies. No new
