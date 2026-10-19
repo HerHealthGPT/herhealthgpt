@@ -13,7 +13,7 @@ KNOWLEDGE_DIR ?= knowledge
 CASES_DIR ?= services/data/eval/cases
 
 .DEFAULT_GOAL := help
-.PHONY: index index-authoring help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval eval-languages triage triage-all lint fmt hygiene test test-api test-frontend db-up db-down migrate serve clean-build
+.PHONY: index index-authoring help install install-ingest install-api lock sync-check fetch fetch-plan clean evidence tables icd verify-quotes validate thresholds build eval eval-languages trace-turns triage triage-all lint fmt hygiene test test-api test-frontend db-up db-down migrate serve clean-build
 
 # A demonstration case for `make triage`. Override to run another:
 #   make triage CASE=services/backend/cases/says_nothing.yaml
@@ -134,6 +134,12 @@ eval-red-flags:
 # servers. Reported, not gated. Takes a couple of hours.
 eval-languages:
 	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api --extra retrieval herhealth-eval-languages
+
+# Trace the cases in services/data/eval/trace_cases.jsonl through every layer:
+# each model and retrieval call, the gates, the route's post-processing. Needs
+# the model servers. Writes build/trace/. CASE=<id> runs one.
+trace-turns:
+	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api --extra retrieval herhealth-trace $(if $(CASE),--only $(CASE))
 
 # Run one scripted consultation and print the whole trace. No model, no network,
 # no server — the same case gives the same trace on any machine.
