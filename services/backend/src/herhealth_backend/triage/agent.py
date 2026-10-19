@@ -693,6 +693,7 @@ class TriageAgent:
         observed: Mapping[str, str] | None = None,
         asked: Sequence[str] = (),
         fallback_language: str | None = None,
+        about_her_data: bool = False,
     ) -> AgentTurn:
         """One retrieve-then-reason step. Does not mutate ``history``.
 
@@ -791,8 +792,17 @@ class TriageAgent:
         # and that conclusion has to meet the early-conclusion gate like any
         # other: in the other order it would be accepted unchallenged, on a
         # path the model takes often (it informed on 21 of 23 first turns).
-        result = self._refuse_unclear_decline(result, system, history, context)
-        result = self._refuse_inform_with_symptoms(result, turn_context, system, history, context)
+        if about_her_data:
+            # Covers what the two gates below would: she asked about her own
+            # data, so neither a decline nor an explanation will do.
+            result = self._require_triage_for_her_data(
+                result, turn_context, system, history, context, language
+            )
+        else:
+            result = self._refuse_unclear_decline(result, system, history, context)
+            result = self._refuse_inform_with_symptoms(
+                result, turn_context, system, history, context
+            )
         result = self._refuse_premature_conclusion(result, turn_context, system, history, context)
         result = self._refuse_repeated_question(
             result, turn_context, asked, system, history, context, language
@@ -861,7 +871,13 @@ class TriageAgent:
             return result
 
         why = (
-            f"she has described something she is experiencing herself ({', '.join(described)})"
+            # The answers may come from her imported cycle data rather than
+            # from her words: measured 2026-10-19, "can you see my cycle data,
+            # is it healthy?" was answered with a generic page after this
+            # reason told the model she had described a symptom, which she
+            # had not.
+            "the question is about her own situation: what she has described or "
+            f"what her imported cycle data records ({', '.join(described)})"
             if described
             else "a warning sign applies or is one answer away"
         )
@@ -879,6 +895,92 @@ class TriageAgent:
         return ReasoningResult(
             decision=retried.decision,
             attempts=(*result.attempts, *retried.attempts),
+        )
+
+    def _require_triage_for_her_data(
+        self,
+        result: ReasoningResult,
+        turn_context: TurnContext,
+        system: str,
+        history: Sequence[Message],
+        context: Sequence[RetrievedPassage],
+        language: str | None,
+    ) -> ReasoningResult:
+        """When she asks about her imported cycle data, ask or conclude.
+
+        Measured 2026-10-19: asked "is my cycle healthy? give me a breakdown"
+        with her data in the prompt, the model first declined ("I cannot view
+        attached files"), then, told it could see the data, answered with a
+        general health page every time it was asked in English, even after
+        the inform gate sent it back. A page carries no urgency level. The
+        breakdown she asked for is written by code (``render_cycle_breakdown``)
+        and shown above the reply, so the model's one job here is the triage.
+
+        Sends anything else back once, then once more naming the top
+        unanswered question on the menu. If the model still does not ask or
+        conclude, code asks that question in its authored English wording; in
+        another language the model's reply stands, as in the repeat gate.
+        """
+        triage = (DecisionType.ASK, DecisionType.CONCLUDE)
+        if result.decision.type in triage:
+            return result
+        retry = (
+            f"{system}\n\nYOUR PREVIOUS ANSWER WAS REJECTED. She asked about her own "
+            "imported cycle data. A breakdown of it, written by code, is already shown to "
+            'her above your reply, so do not restate it. Respond with type "ask" (a real '
+            'next_feature_id from the list above, and question_text) or type "conclude". '
+            'Do not use type "inform" or "decline".'
+        )
+        attempts = result.attempts
+        try:
+            retried = self.reasoning.decide(system_prompt=retry, history=history, context=context)
+        except Exception:
+            return result
+        attempts = (*attempts, *retried.attempts)
+        if retried.decision.type in triage:
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+
+        best = next(
+            (
+                item.feature
+                for item in turn_context.askable
+                if item.feature.id not in turn_context.given
+            ),
+            None,
+        )
+        if best is None:
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+        # Name the question, so the model can still word it in her language.
+        named = (
+            f"{retry}\n\nYOU DID NOT TRIAGE AGAIN. Ask about {best.id} ({best.label}) now: "
+            f'type "ask", next_feature_id {best.id}, and question_text in her language.'
+        )
+        try:
+            third = self.reasoning.decide(system_prompt=named, history=history, context=context)
+            attempts = (*attempts, *third.attempts)
+            if third.decision.type in triage:
+                return ReasoningResult(decision=third.decision, attempts=attempts)
+        except Exception:
+            pass
+        wording = best.probe.get("en") if language is None else None
+        if not wording:
+            return ReasoningResult(decision=retried.decision, attempts=attempts)
+        decision = TriageDecision(
+            type=DecisionType.ASK,
+            next_feature_id=best.id,
+            question_text=wording,
+            rationale="One more detail would change the advice.",
+        )
+        return ReasoningResult(
+            decision=decision,
+            attempts=(
+                *attempts,
+                ReasoningAttempt(
+                    client="her-data-gate",
+                    outcome=AttemptOutcome.OK,
+                    detail=f"asked {best.id} in code after the model would not triage",
+                ),
+            ),
         )
 
     def _refuse_unclear_decline(

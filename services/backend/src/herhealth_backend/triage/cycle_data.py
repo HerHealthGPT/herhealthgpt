@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import itertools
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -32,6 +33,8 @@ from herhealth_contracts.cycle import (
 from herhealth_contracts.knowledge import KnowledgeBase
 
 __all__ = [
+    "asks_about_cycle_data",
+    "render_cycle_breakdown",
     "ALARMING_PREFILLS",
     "FRESHNESS_DAYS",
     "MIN_CYCLES",
@@ -305,10 +308,13 @@ def render_cycle_background(summary: CycleSummary, prefilled: Mapping[str, str])
     ]
     if summary.cycle_lengths:
         lengths = ", ".join(str(n) for n in summary.cycle_lengths)
-        lines.append(f"- Her most recent cycle lengths, in days: {lengths}.")
+        lines.append(
+            f"- Her most recent cycle lengths, in days, oldest first and the "
+            f"latest last: {lengths}."
+        )
     if summary.period_durations:
         durations = ", ".join(str(n) for n in summary.period_durations)
-        lines.append(f"- How long her recent periods lasted, in days: {durations}.")
+        lines.append(f"- How long her recent periods lasted, in days, oldest first: {durations}.")
     if summary.heavy_days_recent:
         lines.append(f"- Heavy flow logged on {summary.heavy_days_recent} recent days.")
     if summary.between_period_bleeding_recent:
@@ -343,4 +349,109 @@ def render_cycle_background(summary: CycleSummary, prefilled: Mapping[str, str])
         "pregnancy or pain — ask one short question confirming it instead of "
         "asking from scratch. Pain severity is always asked about today."
     )
+    # Measured 2026-10-19: asked "Can you see my cycle data? Is it healthy?",
+    # the model declined with "I cannot view attached files", with this very
+    # block in its prompt. Nothing told it she may ask about it.
+    lines.append(
+        "SHE MAY ASK ABOUT THIS DATA. If she asks whether you can see her cycle "
+        "data, her file or her tracker, she can: you see what her import "
+        "recorded above. Such a question is in scope and is never declined. "
+        "A breakdown of the data, written by code from the numbers above, is "
+        "shown to her above your reply, so do not restate the numbers. It is a "
+        "question about her, so ask or conclude, never inform: ask the one "
+        "question that would most change the advice, or give the urgency if "
+        "you have enough. Never call her cycle healthy, unhealthy or normal "
+        "for her, and never say what it means she has."
+    )
+    return "\n".join(lines)
+
+
+#: Words that show a message is about her imported data, in the three
+#: languages the product supports. Matched only when she has cycle data.
+_ABOUT_HER_DATA = re.compile(
+    r"\b(?:cycle|period|tracker|tracking|apple health|health app)\s+"
+    r"(?:data|history|record|records|file|log|logs|export|app)\b"
+    r"|\bmy\s+(?:data|file|tracker|records?|export|upload)\b"
+    r"|\b(?:breakdown|uploaded|imported|attached)\b"
+    r"|بيانات|سجل|ملف|التطبيق|المرفق"
+    r"|\b(?:données|historique|fichier|application de suivi|export)\b",
+    re.IGNORECASE,
+)
+
+
+def asks_about_cycle_data(message: str) -> bool:
+    """Whether her message refers to her imported data."""
+    return bool(_ABOUT_HER_DATA.search(message))
+
+
+_BREAKDOWN_TEXT = {
+    "en": {
+        "intro": "From the cycle data you imported:",
+        "periods": "{n} periods, the most recent starting on {date}.",
+        "cycles": "Your last {n} cycles, oldest first: {list} days.",
+        "outside": "Outside the 21 to 35 days our sources give as usual: {list} days.",
+        "inside": "All of them are within the 21 to 35 days our sources give as usual.",
+        "durations": "How long those periods lasted, oldest first: {list} days.",
+        "stale": "Your last entry was {n} days ago, so it may not show what is happening now.",
+    },
+    "ar": {
+        "intro": "من بيانات الدورة التي أضفتِها:",
+        "periods": "عدد الدورات الشهرية: {n}، وبدأت آخرها في {date}.",
+        "cycles": "أطوال الدورات الأخيرة ({n})، من الأقدم إلى الأحدث، بالأيام: {list}.",
+        "outside": "خارج المدى المعتاد بحسب مصادرنا (21 إلى 35 يومًا)، بالأيام: {list}.",
+        "inside": "كلها ضمن المدى المعتاد بحسب مصادرنا (21 إلى 35 يومًا).",
+        "durations": "مدة تلك الدورات بالأيام، من الأقدم إلى الأحدث: {list}.",
+        "stale": "عدد الأيام منذ آخر إدخال لكِ: {n}، لذلك قد لا تعكس البيانات ما يحدث الآن.",
+    },
+    "fr": {
+        "intro": "D'après les données de cycle que vous avez importées :",
+        "periods": "Nombre de règles : {n}, les dernières ayant commencé le {date}.",
+        "cycles": "Vos {n} derniers cycles, du plus ancien au plus récent : {list} jours.",
+        "outside": (
+            "En dehors des 21 à 35 jours que nos sources donnent comme habituels : {list} jours."
+        ),
+        "inside": "Tous sont dans les 21 à 35 jours que nos sources donnent comme habituels.",
+        "durations": "Durée de ces règles, du plus ancien au plus récent : {list} jours.",
+        "stale": (
+            "Votre dernière entrée date d'il y a {n} jours ; "
+            "elle peut ne pas refléter la situation actuelle."
+        ),
+    },
+}
+
+
+def render_cycle_breakdown(summary: CycleSummary, language: str) -> str | None:
+    """Her data in plain words, for her to read: counts, lengths and which
+    cycles fall outside the NHS 21 to 35 days. Written by code so no number
+    can be misread, and with no judgement on what it means — the triage
+    decides that. ``language`` is ``en``, ``ar`` or ``fr``. ``None`` when
+    there is no period to describe."""
+    if not summary.periods:
+        return None
+    text = _BREAKDOWN_TEXT.get(language, _BREAKDOWN_TEXT["en"])
+    separator = "، " if language == "ar" else ", "
+    lines = [
+        text["intro"],
+        "- "
+        + text["periods"].format(
+            n=len(summary.periods), date=summary.periods[-1].start.isoformat()
+        ),
+    ]
+    if summary.cycle_lengths:
+        lengths = summary.cycle_lengths
+        lines.append(
+            "- " + text["cycles"].format(n=len(lengths), list=separator.join(map(str, lengths)))
+        )
+        outside = [n for n in lengths if n < SHORTEST_REGULAR_CYCLE or n > LONGEST_REGULAR_CYCLE]
+        lines.append(
+            "- " + text["outside"].format(list=separator.join(map(str, outside)))
+            if outside
+            else "- " + text["inside"]
+        )
+    if summary.period_durations:
+        lines.append(
+            "- " + text["durations"].format(list=separator.join(map(str, summary.period_durations)))
+        )
+    if not summary.fresh:
+        lines.append("- " + text["stale"].format(n=summary.days_since_last_entry))
     return "\n".join(lines)
