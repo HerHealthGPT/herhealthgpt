@@ -99,7 +99,8 @@ export const account: AccountMessages = {
     remove: "Supprimer les données de cycle",
     removed: "Données de cycle supprimées",
     privacy:
-      "Nous ne gardons que les dates, le flux et les symptômes utiles — jamais votre fichier, vos notes ni rien d'autre. Ce que vous nous dites dans une discussion passe toujours en premier.",
+      "Nous ne gardons que les dates, le flux et les symptômes utiles — pas votre fichier, sauf si vous choisissez d'en garder une copie, supprimée au bout de 30 jours. Ce que vous nous dites dans une discussion passe toujours en premier.",
+    keepFile: "Garder aussi une copie de ce fichier pendant 30 jours, pour pouvoir le télécharger à nouveau",
     attach: "Ajouter des données de cycle",
     features: {
       cycle_length: "la durée de vos cycles",
@@ -122,6 +123,34 @@ export const account: AccountMessages = {
       bad_template_row: "Une ligne de ce fichier ne correspond pas au modèle.",
       nothing_usable: "Nous n'avons trouvé aucune donnée de règles dans ce fichier.",
       not_configured: "Nous ne pouvons pas encore lire ce type de fichier. Essayez un export Apple Santé ou notre modèle CSV.",
+    } as Record<string, string>,
+  },
+  files: {
+    title: "Vos fichiers",
+    lead: "Gardez ici une copie d'un export de votre application de suivi ou d'un relevé de vos règles, pour pouvoir le télécharger à nouveau — par exemple avant un rendez-vous.",
+    upload: "Importer un fichier",
+    uploading: "Importation…",
+    none: "Aucun fichier gardé.",
+    kinds: "CSV, JSON, XML, texte, zip ou PDF, jusqu'à 100 Mo chacun. Jusqu'à 10 fichiers.",
+    size: (bytes: number) =>
+      bytes >= 1024 * 1024
+        ? `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} Mo`
+        : `${Math.max(1, Math.round(bytes / 1024))} Ko`,
+    deletesOn: (date: string) => `Supprimé automatiquement le ${date}`,
+    download: "Télécharger",
+    remove: "Supprimer",
+    removed: "Fichier supprimé",
+    saved: "Fichier gardé pendant 30 jours",
+    privacy:
+      "Vous seule voyez vos fichiers. Chacun est supprimé automatiquement 30 jours après son importation, ou immédiatement si vous le supprimez ou supprimez votre compte. Garder un fichier ne change rien à vos discussions — nous ne lisons pas les fichiers gardés.",
+    errors: {
+      unsupported_type: "Nous ne pouvons garder que des fichiers CSV, JSON, XML, texte, zip ou PDF.",
+      too_large: "Ce fichier dépasse 100 Mo.",
+      too_many_files: "Vous avez déjà 10 fichiers. Supprimez-en un pour en ajouter un autre.",
+      account_full: "Vos fichiers occupent tout l'espace disponible. Supprimez-en un pour en ajouter un autre.",
+      storage_full: "Nous ne pouvons pas garder de fichiers pour le moment. Veuillez réessayer plus tard.",
+      not_configured: "La conservation des fichiers n'est pas encore disponible.",
+      not_found: "Ce fichier n'est plus disponible.",
     } as Record<string, string>,
   },
   ageBand: (band: string) => band.replace("_to_", " à ").replace("_plus", " et +").replace(/_/g, " "),

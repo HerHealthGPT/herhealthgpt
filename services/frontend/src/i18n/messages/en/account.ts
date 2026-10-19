@@ -94,7 +94,8 @@ export const account = {
     remove: "Delete cycle data",
     removed: "Cycle data deleted",
     privacy:
-      "We keep only dates, flow and the symptoms we can use — never your file, notes or anything else in it. What you tell us in a chat always comes first.",
+      "We keep only dates, flow and the symptoms we can use — not your file, unless you choose to keep a copy, which is deleted after 30 days. What you tell us in a chat always comes first.",
+    keepFile: "Also keep a copy of this file for 30 days, so I can download it again",
     attach: "Add cycle data",
     features: {
       cycle_length: "how long your cycles are",
@@ -120,6 +121,32 @@ export const account = {
     } as Record<string, string>,
   },
   /** "20_to_29" → "20 to 29", "50_plus" → "50+". */
+  files: {
+    title: "Your files",
+    lead: "Keep a copy of a tracker export or period report here, so you can download it again — for example before an appointment.",
+    upload: "Upload a file",
+    uploading: "Uploading…",
+    none: "No files kept.",
+    kinds: "CSV, JSON, XML, text, zip or PDF, up to 100 MB each. Up to 10 files.",
+    size: (bytes: number) =>
+      bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`,
+    deletesOn: (date: string) => `Deleted automatically on ${date}`,
+    download: "Download",
+    remove: "Delete",
+    removed: "File deleted",
+    saved: "File kept for 30 days",
+    privacy:
+      "Only you can see your files. Each one is deleted automatically 30 days after you upload it, or straight away when you delete it or your account. Keeping a file doesn't change your chats — we don't read kept files.",
+    errors: {
+      unsupported_type: "We can only keep CSV, JSON, XML, text, zip or PDF files.",
+      too_large: "That file is over 100 MB.",
+      too_many_files: "You already have 10 files. Delete one to add another.",
+      account_full: "Your files are using all the space you have. Delete one to add another.",
+      storage_full: "We can't keep files right now. Please try again later.",
+      not_configured: "Keeping files isn't available yet.",
+      not_found: "That file is no longer available.",
+    } as Record<string, string>,
+  },
   ageBand: (band: string) => band.replace("_to_", " to ").replace("_plus", "+").replace(/_/g, " "),
   deleteTitle: "Delete account",
   deleteLead: "Permanently remove your account and every health chat. This cannot be undone.",

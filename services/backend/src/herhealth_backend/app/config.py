@@ -196,6 +196,16 @@ def knowledge_dir() -> Path:
     return Path(os.environ.get(KNOWLEDGE_DIR_ENV, "knowledge"))
 
 
+#: Where files she chose to keep are written (ADR 0020). Unset, keeping files
+#: is switched off and its routes answer 503; nothing else is affected.
+UPLOAD_DIR_ENV = "HERHEALTH_UPLOAD_DIR"
+
+
+def upload_dir() -> Path | None:
+    value = os.environ.get(UPLOAD_DIR_ENV, "").strip()
+    return Path(value) if value else None
+
+
 #: The modes a deployment may run triage in.
 TRIAGE_MODES = ("vllm", "demo", "off")
 

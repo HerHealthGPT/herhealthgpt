@@ -153,7 +153,10 @@ production path; the campus GPU box remains the dev vLLM host.
 proposed).** A tracker export is uploaded from Settings or the chat's attach
 button, read by a converter (CSV template, Apple Health) or by the base model,
 and kept only after she confirms the preview — never the file, only
-`CycleExtraction`'s closed vocabulary. `triage/cycle_data.py` pre-fills answers
+`CycleExtraction`'s closed vocabulary. (She may separately keep a copy of
+the file for 30 days to download again —
+[ADR 0020](docs/adr/0020-she-may-keep-an-uploaded-file-for-30-days.md),
+proposed; nothing reads it.) `triage/cycle_data.py` pre-fills answers
 from it under four rules that are binding: only when the last entry is within
 45 days and rests on 3+ cycles; "irregular" only by the NHS 21–35 day sentence
 already in `evidence.csv`; never from something she did not log unless she

@@ -17,12 +17,14 @@ import {
   getCycleData,
   previewCycleData,
   saveCycleData,
+  uploadStoredFile,
 } from "@/lib/api/accounts";
 import { ApiError, friendlyApiError } from "@/lib/api/errors";
 import type { CycleDataPreview, CycleDataStatus, CycleDataSummary } from "@/lib/api/types";
 import { useI18n } from "@/i18n/locale-provider";
 import Link from "next/link";
 import { routes } from "@/lib/routes";
+import { STORED_FILES_CHANGED } from "@/components/account/stored-files";
 
 /**
  * Upload a period-tracker export, check what was found, then keep it.
@@ -40,6 +42,10 @@ export function CycleDataImport({ onSaved }: { onSaved?: () => void }) {
   const [status, setStatus] = useState<CycleDataStatus | null>(null);
   const [preview, setPreview] = useState<CycleDataPreview | null>(null);
   const [noPeriodPain, setNoPeriodPain] = useState<boolean | null>(null);
+  // The file behind the preview, kept in the browser only, so she can choose
+  // to keep a copy when she confirms (ADR 0020). Off unless she ticks it.
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [keepFile, setKeepFile] = useState(false);
   const [busy, setBusy] = useState<"reading" | "saving" | "deleting" | null>(null);
 
   useEffect(() => {
@@ -75,8 +81,10 @@ export function CycleDataImport({ onSaved }: { onSaved?: () => void }) {
     if (!file) return;
     setBusy("reading");
     setNoPeriodPain(null);
+    setKeepFile(false);
     try {
       setPreview(await previewCycleData(file));
+      setPreviewFile(file);
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -93,6 +101,22 @@ export function CycleDataImport({ onSaved }: { onSaved?: () => void }) {
       setPreview(null);
       toast.success(c.saved);
       onSaved?.();
+      if (keepFile && previewFile) {
+        // The cycle data is already saved; a refused copy is its own message.
+        try {
+          await uploadStoredFile(previewFile);
+          window.dispatchEvent(new Event(STORED_FILES_CHANGED));
+          toast.success(m.account.files.saved);
+        } catch (error) {
+          const detail = error instanceof ApiError ? (error.detail as unknown) : null;
+          const reason =
+            detail && typeof detail === "object" && "reason" in detail
+              ? String((detail as { reason: unknown }).reason)
+              : "";
+          toast.error(m.account.files.errors[reason] ?? friendlyApiError(error));
+        }
+      }
+      setPreviewFile(null);
     } catch (error) {
       toast.error(errorMessage(error));
     } finally {
@@ -152,11 +176,27 @@ export function CycleDataImport({ onSaved }: { onSaved?: () => void }) {
               </div>
             </div>
           ) : null}
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 shrink-0 accent-primary"
+              checked={keepFile}
+              onChange={(event) => setKeepFile(event.target.checked)}
+            />
+            <span>{c.keepFile}</span>
+          </label>
           <div className="flex flex-wrap gap-2">
             <Button type="button" disabled={busy !== null} onClick={() => void handleConfirm()}>
               {busy === "saving" ? m.onboarding.saving : c.confirm}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setPreview(null)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setPreview(null);
+                setPreviewFile(null);
+              }}
+            >
               {m.account.cancel}
             </Button>
           </div>

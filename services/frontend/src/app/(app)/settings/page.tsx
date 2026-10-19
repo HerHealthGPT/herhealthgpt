@@ -5,6 +5,7 @@ import { CycleDataCard } from "@/components/account/cycle-data-import";
 import { DeleteAccountSection } from "@/components/account/delete-account-section";
 import { HealthDetailsForm } from "@/components/account/health-details-form";
 import { ProfileSettingsForm } from "@/components/account/profile-settings-form";
+import { StoredFilesCard } from "@/components/account/stored-files";
 import { useI18n } from "@/i18n/locale-provider";
 
 function AccountSettingsContent() {
@@ -26,6 +27,7 @@ function AccountSettingsContent() {
         <ProfileSettingsForm />
         <HealthDetailsForm />
         <CycleDataCard />
+        <StoredFilesCard />
         <DeleteAccountSection />
       </div>
     </div>

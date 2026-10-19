@@ -93,13 +93,21 @@ Menstrual tracking a user may import to give the system context. Hers, optional,
 and deletable independently of her account.
 
 Uploaded as an export file from any tracking app; only values that map onto
-`features.yaml` are kept, and the file itself is never stored. She confirms what
+`features.yaml` are kept, and the import never stores the file itself. She confirms what
 was found before it is saved. When fresh, it may answer a feature so she is not
 asked it again — for a feature a red flag reads, only in the alarming direction,
 and never from something she did not log unless she confirmed the absence
 herself. See
 [ADR 0019](../../docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md).
 _Avoid_: health data, records, history
+
+**Stored file**:
+A file a user chose to keep so she can download it again — a tracker export
+or period report, never anything else. Hers, optional, deleted automatically
+30 days after upload, deletable on its own at any time, and deleted with her
+account. Nothing reads it: it is not **Cycle data** and never reaches triage.
+See [ADR 0020](../../docs/adr/0020-she-may-keep-an-uploaded-file-for-30-days.md).
+_Avoid_: document, record, attachment
 
 **Health note**:
 Anything a user chooses to tell the system about herself once — a condition she

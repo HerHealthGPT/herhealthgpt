@@ -72,3 +72,32 @@ export async function apiRequest<T>(
     throw new ApiError(500, currentMessages().errors.generic);
   }
 }
+
+/**
+ * GET a file and save it under ``filename``. A plain link would land on a
+ * 401 page once the short-lived access token has expired; this refreshes it
+ * once, the way ``apiRequest`` does.
+ */
+export async function apiDownload(path: string, filename: string): Promise<void> {
+  const get = () => fetch(`${API_BASE}${path}`, { credentials: "include" });
+  let response: Response;
+  try {
+    response = await get();
+    if (response.status === 401 && (await refreshAccessToken())) {
+      response = await get();
+    }
+  } catch {
+    throw new ApiError(0, networkErrorMessage());
+  }
+  if (!response.ok) {
+    throw await parseApiError(response);
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

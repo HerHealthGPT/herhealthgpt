@@ -54,6 +54,17 @@ export type CycleDataStatus = {
   summary: CycleDataSummary | null;
 };
 
+/** A file she chose to keep (backend ``StoredFileSummary``, ADR 0020). */
+export type StoredFile = {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  created_at: string;
+  /** When it is deleted automatically: 30 days after upload. */
+  expires_at: string;
+};
+
 export type PasswordWeakDetail = {
   reasons: string[];
 };
