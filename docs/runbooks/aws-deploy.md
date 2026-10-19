@@ -618,24 +618,45 @@ different AMI), `terraform apply -replace=aws_instance.app` — `user_data` and 
 AMI are deliberately ignored in plans so they never replace the host by
 accident. Do the Caddy backup first.
 
-## 12. Model: Base only in production
+## 12. Models: the campus GPU box, through a tunnel
 
-Production runs `HERHEALTH_TRIAGE_MODE=openrouter` with the **Base** model
-(Qwen3.5-9B via OpenRouter) and `HERHEALTH_MODEL_SELECTOR=off`. No
-`HERHEALTH_VLLM_URL`, `HERHEALTH_VLLM_MODEL` or `HERHEALTH_VLLM_API_KEY` exists in
-the compose file or the secrets. `default_model_id` is not touched here.
+Production runs `HERHEALTH_TRIAGE_MODE=vllm`
+([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)): the
+base model (`Qwen/Qwen3.5-9B`) extracts and decides, and the fine-tuned adapter
+only words informational answers. Both, and the embedding server, run on the
+campus GPU box (`scripts/serve-models.sh`). There is no OpenRouter in the
+product path.
 
-Why: the fine-tuned adapter is phrasing-trained, has no clarifying-question turns
-in its training data, and is not cleared to own triage decisions until the
-multi-turn retrain is reviewed (CLAUDE.md, "The fine-tuned model"). Nothing about
-that has changed. The fine-tuned model stays campus/dev-only —
-[uni-server-vllm.md](uni-server-vllm.md).
+**How production reaches them.** The pod accepts no inbound connections, so
+`scripts/tunnel-models.sh` opens Cloudflare quick tunnels from the pod to the
+chat and embedding servers, guarded by the bearer key in
+`infra/envs/models.env`. `publish` stores the public addresses in the GitHub
+variables `MODELS_CHAT_URL` / `MODELS_EMBED_URL` and the key in the secret
+`MODELS_API_KEY`, then redeploys; the deploy writes them to
+`/run/herhealth/models.env` on the host.
 
-> **Enabling Fine-tuned in production requires an explicit written
-> team/supervisor decision and an ADR first.** The model selector's dev-only
-> scoping is recorded in ADR 0016, per the team; **that file is not in this
-> checkout** (the newest ADR here is 0015), so it lives on another branch — find
-> it before relying on this paragraph's wording.
+**Keeping it up.** A quick tunnel survives network drops by itself; what breaks
+the link is the `cloudflared` process dying, after which its address is gone
+and every chat on the site fails (502) until a new address is published. Run
+the watchdog on the pod once after the model servers and tunnels are up:
+
+```bash
+nohup scripts/tunnel-models.sh watch >/dev/null 2>&1 &   # log: $RUN_DIR/tunnel-watch.log
+scripts/tunnel-models.sh unwatch                          # stop it
+```
+
+Every 5 minutes it checks each tunnel from the public side with the key,
+reopens one whose process died or that failed three checks in a row, and
+publishes again (redeploying production) whenever an address changed. A
+republish costs one deploy, a few minutes in which chat is unavailable.
+It does **not** survive the pod restarting; neither do the model servers, so
+after a pod restart run `serve-models.sh`, `tunnel-models.sh start`, `publish`
+and `watch` again.
+
+**The lasting fix** is a named Cloudflare tunnel with a fixed hostname (e.g.
+`models.herhealthgpt.org`), so a restart never changes the address and nothing
+has to be republished. It needs a Cloudflare account with the domain's DNS on
+Cloudflare. Not done.
 
 ## 13. Working on the host
 
@@ -756,7 +777,8 @@ Tick these before showing the site to anyone.
 - [ ] `https://www.herhealthgpt.org` redirects to the apex; both certificates
       are valid (not staging).
 - [ ] `https://api.herhealthgpt.org/health` returns 200.
-- [ ] One full triage conversation completes (retrieval + OpenRouter).
+- [ ] One full triage conversation completes (retrieval + the campus models).
+- [ ] The tunnel watchdog is running on the pod (§12): `cat $RUN_DIR/tunnel-watch.pid`.
 - [ ] The retrieval image's labels show the expected index version and bge-m3
       revision (`docker inspect`, §13).
 - [ ] Known statement gaps are understood: DMARC is `p=none`; bounce/complaint
