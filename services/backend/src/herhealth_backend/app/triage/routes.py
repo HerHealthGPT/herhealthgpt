@@ -461,6 +461,7 @@ async def _run_turn(
         base=agent.base,
         observed=observed,
         question=request.message,
+        mentioned=(*decision.observed, *turn.mentioned),
     )
     served_by = _served_by_payload((*discarded, *turn.attempts))
     await _persist_turn(session_id, request.message, decision, payload, database, served_by)
@@ -607,6 +608,7 @@ def _decision_payload(
     base: KnowledgeBase,
     observed: Mapping[str, str] | None = None,
     question: str | None = None,
+    mentioned: Sequence[str] = (),
 ) -> dict[str, Any]:
     """``TriageDecision`` as JSON, plus the passages its ``citations`` name.
 
@@ -655,7 +657,7 @@ def _decision_payload(
     # care_guidance). Stored with the turn, so a reopened chat shows it too.
     if decision.type is DecisionType.INFORM and question is not None:
         payload["care_guidance"] = care_guidance(
-            base, question, retrieved, mentioned=decision.observed.keys()
+            base, question, retrieved, mentioned=mentioned or tuple(decision.observed)
         )
     return payload
 
