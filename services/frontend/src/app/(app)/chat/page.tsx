@@ -25,6 +25,7 @@ import {
   sendTriageTurn,
 } from "@/lib/api/triage";
 import type {
+  CareGuidance,
   CitedPassage,
   DecisionReasoningModel,
   TriageDecision,
@@ -51,6 +52,8 @@ type ChatEntry =
        *  toggle. Only meaningful on an assistant turn. */
       rationale?: string | null;
       reasoningModel?: DecisionReasoningModel;
+      /** When to get help, on an informational answer. */
+      careGuidance?: CareGuidance;
     }
   | { id: string; kind: "conclusion"; decision: TriageDecision }
   /** An off-scope message the model refused (ADR 0014). Its own kind, not a
@@ -142,6 +145,7 @@ function messageToEntry(message: TriageSessionMessage): ChatEntry | null {
       citedPassages: decision.cited_passages,
       rationale: decision.rationale,
       reasoningModel: decision.reasoning_model,
+      careGuidance: decision.care_guidance,
     };
   }
 
@@ -388,6 +392,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
           citedPassages: response.decision.cited_passages,
           rationale: response.decision.rationale,
           reasoningModel: response.decision.reasoning_model,
+          careGuidance: response.decision.care_guidance,
         });
       } else {
         appendEntry({ kind: "conclusion", decision: response.decision });
@@ -492,6 +497,7 @@ function ChatContent({ requestedSessionId }: { requestedSessionId: string | null
               if (entry.kind === "message") {
                 return (
                   <ChatMessage
+                    careGuidance={entry.careGuidance}
                     key={entry.id}
                     role={entry.role}
                     text={entry.id === "greeting" ? m.chat.greeting(greetingName) : entryText(entry, greetingName)}

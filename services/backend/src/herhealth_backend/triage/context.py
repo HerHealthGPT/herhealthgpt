@@ -743,9 +743,7 @@ def topic_conditions(
     return tuple(named[:limit])
 
 
-def _warning_signs_touching(
-    base: KnowledgeBase, feature_ids: set[str]
-) -> tuple[RedFlagRule, ...]:
+def _warning_signs_touching(base: KnowledgeBase, feature_ids: set[str]) -> tuple[RedFlagRule, ...]:
     """Red-flag rules that trigger on any of these features.
 
     Scoped by feature overlap rather than by injecting all of
@@ -792,7 +790,7 @@ def render_topic_brief(base: KnowledgeBase, condition_ids: Sequence[str]) -> str
             feature = base.features_by_id.get(row.feature_id)
             name = getattr(feature, "label", None) or row.feature_id
             return (
-                f'- {name} = {row.value} ({row.strength.value}, {row.source_id}): '
+                f"- {name} = {row.value} ({row.strength.value}, {row.source_id}): "
                 f'"{row.source_quote}"'
             )
 
@@ -814,7 +812,7 @@ def render_topic_brief(base: KnowledgeBase, condition_ids: Sequence[str]) -> str
                 "rule, a label or an action code:"
             )
             lines.extend(
-                f'- needs {rule.action.value}: {rule.label} ({rule.source_id}): '
+                f"- needs {rule.action.value}: {rule.label} ({rule.source_id}): "
                 f'"{rule.source_quote}"'
                 for rule in signs
             )
@@ -959,3 +957,70 @@ def render_turn_context(context: TurnContext, *, max_rules: int = 8) -> str:
             lines.append(f'- passage_id={passage.id} ({passage.citation}): "{passage.text}"')
 
     return "\n".join(lines)
+
+
+def care_guidance(
+    base: KnowledgeBase,
+    question: str,
+    context: Sequence[RetrievedPassage] = (),
+    mentioned: Iterable[str] = (),
+) -> dict[str, object]:
+    """When to get help, for an informational answer, assembled by code.
+
+    An ``inform`` carries no urgency level, and the benchmark run of
+    2026-10-13 (ADR 0018) found that the model's own prose rarely said when to
+    seek care: 121 of 192 questions labelled see-doctor or urgent got an
+    informational answer, and a warning sign appeared in two. The topic brief
+    already holds the material; this returns it as data so the interface
+    shows it every time, whatever the model wrote.
+
+    Everything here is read from the knowledge base, nothing is generated:
+    the identified topics with their ``baseline_action`` from
+    ``conditions.yaml``, and the ``red_flags.yaml`` rules that touch the
+    symptoms those topics are linked to, most severe first. Nothing is said
+    about her: the interface frames it as what our sources advise for
+    symptoms like these, and always invites her to describe her own.
+    ``topics`` is empty when no authored condition is recognised in her words.
+
+    Warning signs come from two places. The topic's evidence rows, and
+    ``mentioned``: the features her question itself names, as the extract
+    step read them (any language, closed vocabulary). The second matters
+    most. Measured on the 121 affected benchmark questions, topic rows alone
+    produced no warning sign for any of them, because the urgent ones ("can I
+    bleed during pregnancy?", "what if my period pain is severe?") name a
+    symptom rather than a condition. The rules themselves are still read
+    from ``red_flags.yaml``; the model only says which symptoms she named.
+    """
+    # Conditions she named, not ones the retrieved passages happen to be
+    # about: "can I bleed during pregnancy?" retrieved endometriosis rows,
+    # and a topic she never raised is noise under her answer, or worse.
+    topics = topic_conditions(base, question, (), limit=2)
+    feature_ids = {row.feature_id for row in base.evidence if row.condition_id in topics}
+    # Her age band is profile data, not a symptom she raised.
+    feature_ids |= {f for f in mentioned if f in base.features_by_id and f != "age_band"}
+    signs = _warning_signs_touching(base, feature_ids) if feature_ids else ()
+    severity = {action.code: action.severity for action in base.actions.actions}
+    named = set(mentioned)
+    # Signs about what she asked come first, then by severity: a pregnancy
+    # question should lead with bleeding in pregnancy, not with every
+    # emergency that pelvic pain can carry.
+    ordered = sorted(
+        signs,
+        key=lambda rule: (
+            not any(clause.feature_id in named for clause in rule.all_of),
+            -severity.get(rule.action, 0),
+        ),
+    )
+    return {
+        "topics": [
+            {
+                "condition_id": condition_id,
+                "baseline_action": base.conditions_by_id[condition_id].baseline_action.value,
+            }
+            for condition_id in topics
+        ],
+        "warning_signs": [
+            {"rule_id": rule.id, "action": rule.action.value, "source_id": rule.source_id}
+            for rule in ordered
+        ],
+    }

@@ -168,7 +168,7 @@ def test_an_answered_feature_kills_the_rule_rather_than_leaving_it_near() -> Non
 
 
 def test_an_unknown_answer_still_counts_as_asked() -> None:
-    """"Asked and she could not say" must not be re-offered forever."""
+    """ "Asked and she could not say" must not be re-offered forever."""
     turn = build_turn_context(
         build(), given={"pain": "severe", "fever": "unknown"}, asked=["pain", "fever"]
     )
@@ -481,3 +481,72 @@ def test_rank_askable_respects_its_limit() -> None:
     base = build()
     ranked = rank_askable(base, {}, [], assess_rules(base, {}), limit=2)
     assert len(ranked) == 2
+
+
+# --- care_guidance: when to get help, assembled by code -------------------
+
+
+def _base():  # type: ignore[no-untyped-def]
+    """The real, tracked knowledge base: these tests read authored rows."""
+    from pathlib import Path
+
+    from herhealth_contracts.loading import load_knowledge_base
+
+    return load_knowledge_base(Path(__file__).resolve().parents[3] / "knowledge")
+
+
+def test_care_guidance_names_the_topic_and_its_baseline() -> None:
+    from herhealth_backend.triage.context import care_guidance
+
+    guidance = care_guidance(_base(), "What is PCOS?")
+    topics = guidance["topics"]
+    assert topics and topics[0]["condition_id"] == "pcos"  # type: ignore[index]
+    assert topics[0]["baseline_action"] == "ROUTINE_APPOINTMENT"  # type: ignore[index]
+
+
+def test_care_guidance_lists_warning_signs_most_severe_first_when_none_named() -> None:
+    from herhealth_backend.triage.context import care_guidance
+
+    signs = care_guidance(_base(), "What is endometriosis?")["warning_signs"]
+    actions = [sign["action"] for sign in signs]  # type: ignore[union-attr,index]
+    assert actions, "endometriosis is linked to pelvic pain, which has warning signs"
+    order = {"EMERGENCY": 0, "URGENT_SAME_DAY": 1}
+    assert actions == sorted(actions, key=order.__getitem__)
+    assert all(sign["source_id"] for sign in signs)  # type: ignore[union-attr,index]
+
+
+def test_care_guidance_with_no_recognised_topic_is_empty_not_invented() -> None:
+    from herhealth_backend.triage.context import care_guidance
+
+    assert care_guidance(_base(), "When is the best time to drink water?") == {
+        "topics": [],
+        "warning_signs": [],
+    }
+
+
+def test_a_symptom_she_names_brings_its_warning_signs_without_a_topic() -> None:
+    from herhealth_backend.triage.context import care_guidance
+
+    guidance = care_guidance(
+        _base(), "Can I bleed during pregnancy?", mentioned=["pregnancy_status"]
+    )
+    assert guidance["topics"] == []
+    rules = {sign["rule_id"] for sign in guidance["warning_signs"]}  # type: ignore[union-attr,index]
+    assert {"bleeding_in_pregnancy", "pelvic_pain_in_pregnancy"} <= rules
+
+
+def test_signs_about_what_she_named_come_first() -> None:
+    from herhealth_backend.triage.context import care_guidance
+
+    signs = care_guidance(_base(), "What is endometriosis?", mentioned=["pregnancy_status"])[
+        "warning_signs"
+    ]
+    first = signs[0]["rule_id"]  # type: ignore[index]
+    assert first in {"bleeding_in_pregnancy", "pelvic_pain_in_pregnancy"}
+
+
+def test_age_band_and_unknown_features_bring_no_warning_signs() -> None:
+    from herhealth_backend.triage.context import care_guidance
+
+    guidance = care_guidance(_base(), "hello", mentioned=["age_band", "not_a_feature"])
+    assert guidance["warning_signs"] == []
