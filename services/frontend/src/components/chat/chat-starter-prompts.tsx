@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n/locale-provider";
+import Link from "next/link";
+import { routes } from "@/lib/routes";
 
 
 
@@ -31,6 +33,12 @@ export function ChatStarterPrompts({ disabled, onSelect }: ChatStarterPromptsPro
           </Button>
         ))}
       </div>
+      <p className="text-xs text-muted-foreground">
+        {m.cycleGuide.chatHint}{" "}
+        <Link href={routes.cycleImportGuide} className="font-medium text-primary hover:underline">
+          {m.cycleGuide.chatHintLink}
+        </Link>
+      </p>
     </div>
   );
 }

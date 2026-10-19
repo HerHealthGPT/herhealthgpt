@@ -10,4 +10,8 @@ export const routes = {
   onboarding: "/onboarding",
   howItWorks: "/how-it-works",
   chat: "/chat",
+  cycleImportGuide: "/cycle-import-guide",
 } as const;
+
+/** The empty cycle-data template; its header is the importer's columns. */
+export const CYCLE_TEMPLATE_URL = "/templates/cycle-log-template.csv";

@@ -8,6 +8,7 @@ import { Illustration } from "@/components/ui/illustration";
 import { UrgencyScale } from "@/components/urgency-scale";
 import { routes } from "@/lib/routes";
 import { requestMessages } from "@/i18n/server";
+import { FillRowsIllustration } from "@/components/cycle-guide/step-illustrations";
 
 /**
  * The four urgency levels, in severity order — `knowledge/actions.yaml`.
@@ -130,6 +131,35 @@ export default async function HomePage() {
             </div>
           </div>
         </section>
+
+        <section className="border-b border-border/60 py-14 sm:py-16">
+
+          <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] lg:items-center lg:gap-16">
+
+            <div>
+
+              <h2 className="max-w-[24ch] text-2xl font-semibold tracking-tight sm:text-3xl">
+
+                {m.cycleGuide.promoTitle}
+
+              </h2>
+
+              <p className="mt-3 max-w-[52ch] text-muted-foreground">{m.cycleGuide.promoBody}</p>
+
+              <Button size="lg" variant="outline" asChild className="mt-6 min-w-[180px]">
+
+                <Link href={routes.cycleImportGuide}>{m.cycleGuide.promoCta}</Link>
+
+              </Button>
+
+            </div>
+
+            <FillRowsIllustration className="mx-auto h-40 w-full max-w-[280px] lg:justify-self-end" />
+
+          </div>
+
+        </section>
+
 
         <section className="py-12 sm:py-14">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">

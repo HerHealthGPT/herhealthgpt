@@ -13,6 +13,10 @@ export const onboarding = {
       title: "Good to know",
       body: "We tell you how soon to seek care and why — never what you have. We may mention conditions your symptoms are associated with in our sources, but that is a pattern, not a diagnosis; only a clinician can give you one. If you describe something that needs urgent attention we say so straight away, without asking anything further. And if something feels urgent to you, get seen rather than waiting for a reply.",
     },
+    cycle: {
+      title: "Bring your cycle history",
+      body: "Keep a record of your periods? Add it as a simple spreadsheet and the chat skips questions your record already answers. Account → Cycle data, or the paperclip in the chat.",
+    },
     sources: {
       title: "Trusted sources",
       body: "Everything we tell you comes from pages published by MedlinePlus, the Office on Women's Health, NICHD, the CDC and the NHS. We quote those pages directly rather than rewording them, and every quote links back to the page it came from so you can read it in full. Where two sources disagree about how urgent something is, we go with the more urgent one.",

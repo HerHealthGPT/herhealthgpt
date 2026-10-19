@@ -5,5 +5,6 @@ import { actions, errorPages, home } from "./ar/site";
 import { articles, conditions, dashboard, sourceNames } from "./ar/dashboard";
 import { account, onboarding } from "./ar/account";
 import { chat } from "./ar/chat";
+import { cycleGuide } from "./ar/cycle-guide";
 
-export const ar: Messages = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account, chat, errors, articles, sourceNames };
+export const ar: Messages = { common, nav, auth, home, actions, errorPages, dashboard, conditions, onboarding, account, chat, errors, articles, sourceNames, cycleGuide };

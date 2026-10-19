@@ -21,6 +21,8 @@ import {
 import { ApiError, friendlyApiError } from "@/lib/api/errors";
 import type { CycleDataPreview, CycleDataStatus, CycleDataSummary } from "@/lib/api/types";
 import { useI18n } from "@/i18n/locale-provider";
+import Link from "next/link";
+import { routes } from "@/lib/routes";
 
 /**
  * Upload a period-tracker export, check what was found, then keep it.
@@ -205,10 +207,15 @@ export function CycleDataImport({ onSaved }: { onSaved?: () => void }) {
 export function CycleDataCard() {
   const { m } = useI18n();
   return (
-    <Card>
+    <Card id="cycle-data" className="scroll-mt-20">
       <CardHeader>
         <CardTitle className="text-lg">{m.account.cycle.title}</CardTitle>
-        <CardDescription>{m.account.cycle.lead}</CardDescription>
+        <CardDescription>
+          {m.account.cycle.lead}{" "}
+          <Link href={routes.cycleImportGuide} className="font-medium text-primary hover:underline">
+            {m.cycleGuide.howToPrepare}
+          </Link>
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <CycleDataImport />
@@ -237,5 +244,57 @@ function SummaryLines({ summary }: { summary: CycleDataSummary }) {
         {answered.length ? `${c.willAnswer} ${answered.join(", ")}` : c.willAnswerNone}
       </li>
     </ul>
+  );
+}
+
+/**
+ * The dashboard's pointer to cycle data: whether she has added any, and the
+ * way to add or refresh it. Fetches its own status, so the dashboard's data
+ * hook stays as it was.
+ */
+export function CycleDataDashboardCard() {
+  const { m } = useI18n();
+  const g = m.cycleGuide;
+  // Days since the import: undefined while loading, null when there is none.
+  // Worked out when the status arrives, not during render.
+  const [days, setDays] = useState<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCycleData()
+      .then((status) => {
+        if (cancelled) return;
+        setDays(
+          status.imported_at === null
+            ? null
+            : Math.max(0, Math.floor((Date.now() - new Date(status.imported_at).getTime()) / 86_400_000)),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setDays(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{g.promoTitle}</CardTitle>
+        <CardDescription className="text-sm leading-relaxed">
+          {g.promoBody}{" "}
+          {days === undefined ? null : days === null ? g.dashboardNone : g.dashboardHas(days)}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-2">
+        <Button size="sm" asChild>
+          <Link href={`${routes.settings}#cycle-data`}>{g.dashboardCta}</Link>
+        </Button>
+        <Button size="sm" variant="outline" asChild>
+          <Link href={routes.cycleImportGuide}>{g.howToPrepare}</Link>
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
