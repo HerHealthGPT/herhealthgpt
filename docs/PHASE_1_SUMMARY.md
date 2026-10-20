@@ -1,5 +1,9 @@
 # Phase 1 — seed knowledge
 
+> **A record of Phase 1 (2026-08-04).** Counts here are from that date; the
+> knowledge base now has 39 features, 19 conditions, 150 evidence rows and 17
+> warning-sign rules (2026-10-20, [`ARCHITECTURE.md`](ARCHITECTURE.md)).
+
 What was built, what the numbers are, and what is wrong with it.
 
 Completed 2026-08-04. Everything below is reproducible from `make fetch` onward.

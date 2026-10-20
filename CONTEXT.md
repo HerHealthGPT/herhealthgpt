@@ -151,7 +151,9 @@ lives in `packages/contracts/src/herhealth_contracts/scoring.py`. Settled
 
 ## Open question
 
-**The thresholds are probably too low.** Expressing them in log-odds showed that
+**The thresholds are probably too low** (this concerns the retired rule-based
+controller, ADR 0011; the live system does not use these thresholds to stop).
+Expressing them in log-odds showed that
 one `strong_support` row reaches 0.818 and clears `stop_confidence` of 0.65 on
 its own, so the controller could stop after a single answer. The number should
 be set by the evaluation set rather than by argument, so it is left as authored

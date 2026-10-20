@@ -1,894 +1,295 @@
 # HerHealthGPT
 
-A multilingual reproductive-health **triage and informational guidance** system.
-English, French, Arabic.
+A multilingual reproductive-health **triage and informational guidance**
+system, in English, Arabic and French. Live at
+[herhealthgpt.org](https://herhealthgpt.org).
 
 Master's capstone, School of Computing, Queen's University. Group 1-RF, Team 4.
 Supervisor: Dr. Rahatara Ferdousi. Mentors: Deloitte Innovation Hub, Egypt.
 
-> **Scope, stated once and enforced everywhere.** This system assesses *urgency*
-> and provides *information*. It does not diagnose. No file, comment, docstring,
-> string literal, commit message or UI copy may describe it as doing so. Its
-> output is an urgency action code and a cited explanation — never a conclusion
-> about what a user has.
+> **Scope, stated once and enforced everywhere.** This system assesses
+> *urgency* and provides *information*. It does not diagnose. No file, comment,
+> docstring, string literal, commit message or UI copy may describe it as doing
+> so. Its output is an urgency action code and a cited explanation, or an
+> informational answer, never a conclusion about what a user has.
 
-**Status: Phase 2 complete — knowledge base and triage controller.**
-All seven knowledge files are authored and validated: 37 features, 19
-conditions, 135 evidence rows, 16 red-flag rules, 5 sources, **151/151 quotes
-verified verbatim** against their cited source. The stopping controller and the
-evaluation harness are built and tested (399 tests). Counts as of 2026-08-19 —
-see `CLAUDE.md` for what changed and why.
-
-**Not built yet:** retrieval, model serving, API, frontend. See
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+**Status (2026-10-20).** Deployed on AWS and running on local models served
+from the campus GPU server. A woman describes a concern; the system asks a few
+questions and says how urgently to seek care and why, with citations, or
+answers a general question as a sourced information page. Accounts, a profile,
+cycle data imported from a tracking app, and kept files are built. The whole
+interface is in English, Arabic (right-to-left) and French.
 
 ### Start here
 
 | If you want to… | Read |
 |---|---|
-| **Start every local service and test Base / Fine-tuned** | [`docs/runbooks/running-the-app.md`](docs/runbooks/running-the-app.md) — both machines, verified end to end 2026-09-09 |
-| Start the pieces individually | [Run the full app](#run-the-full-app-local-laptop) · [Fine-tuned on campus](#fine-tuned-model-campus-vm--laptop) |
-| Understand how the reasoning works, **with diagrams** | [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) |
+| **Know what runs, on what, with which versions** | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| Follow one message through every layer, with ten traced examples | [`docs/experiments/2026-10-19-traced-consultations.md`](docs/experiments/2026-10-19-traced-consultations.md) |
+| Run it locally | [`docs/runbooks/running-the-app.md`](docs/runbooks/running-the-app.md) |
+| Serve the models on the GPU server | [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md) |
+| Deploy or operate production | [`docs/runbooks/aws-deploy.md`](docs/runbooks/aws-deploy.md) |
+| Know what has been measured, and the limits | [`docs/DATASHEET.md`](docs/DATASHEET.md) |
+| Understand the knowledge base | [`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md) |
 | Find your way around the repository | [`docs/REPO_MAP.md`](docs/REPO_MAP.md) |
-| Know what we are doing now and next | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
-| Read every module in detail | [`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md) |
 | Know why a decision was made | [`docs/adr/`](docs/adr/) |
-
-Offline controller smoke test (no GPU, no chat UI):
-
-```bash
-make install
-make triage CASE=services/backend/cases/sudden_severe_pain.yaml
-```
-
----
-
-## Table of contents
-
-- [Why it is built this way](#why-it-is-built-this-way)
-- [How it reasons](#how-it-reasons)
-- [Architecture](#architecture) (includes [Models this project uses](#models-this-project-uses))
-- [Repository layout](#repository-layout)
-- [The knowledge model](#the-knowledge-model)
-- [Verification protocol](#verification-protocol)
-- [Sources](#sources)
-- [Quickstart](#quickstart)
-- [Run the full app (local laptop)](#run-the-full-app-local-laptop)
-- [Fine-tuned model (campus VM + laptop)](#fine-tuned-model-campus-vm--laptop)
-- [Commands](#commands)
-- [CI](#ci)
-- [Evaluation](#evaluation)
-- [Roadmap](#roadmap)
-- [Language scope](#language-scope)
-- [Safety, privacy and licensing](#safety-privacy-and-licensing)
-- [Further reading](#further-reading)
+| The binding project rules | [`CLAUDE.md`](CLAUDE.md) |
 
 ---
 
 ## Why it is built this way
 
 A general-purpose multilingual model was evaluated on a 540-case-per-language
-benchmark of women's-health concerns. The findings drive the architecture:
+benchmark of women's-health concerns:
 
 - **Under-triage 0.718 in English.** Of cases whose correct answer was "see a
   doctor", 72% were routed to "routine".
-- Aggregate risk accuracy 0.667 against a majority-class baseline of 0.644 — the
-  accuracy number hid the safety failure entirely.
-- Fine-tuning collapsed clarification-seeking from **0.856 to 0.000** and pushed
-  French and Arabic under-triage to **0.994**: the model predicted "routine" for
-  538 of 540 French cases.
-- Cross-language consistency *improved* during that collapse, because the model
-  had collapsed onto one answer. **Consistency alone is not a safety metric.**
+- Aggregate risk accuracy 0.667 against a majority-class baseline of 0.644: the
+  accuracy number hid the safety failure.
+- Fine-tuning collapsed clarification-seeking from **0.856 to 0.000** and
+  pushed French and Arabic under-triage to **0.994**.
+- Cross-language consistency *improved* during that collapse.
+  **Consistency alone is not a safety metric.**
 
-Four consequences, all binding:
+So: **under-triage is the dominant failure mode**, and wherever a design choice
+trades false alarms against missed escalations, false alarms win.
+Cross-language comparison is on the action code, never on text.
 
-1. **No fine-tuning in the MVP.** RAG plus a deterministic controller.
-   Fine-tuning is a documented contingency, not a deliverable.
-2. **The triage decision lives in Python, not in the model or the prompt.** The
-   model extracts feature values and phrases text. It never decides whether to
-   ask another question or what urgency to assign.
-3. **Under-triage is the dominant failure mode.** Whenever a design choice trades
-   false alarms against missed escalations, choose false alarms.
-4. **Cross-language comparison is on the action code**, never on text similarity.
+## How it works
 
----
+1. **She writes in her own words.** Retrieval finds passages from the sources;
+   a small model call reads what her message answers, as values from a closed
+   list of features.
+2. **The model decides, grounded.** The base model (`Qwen/Qwen3.5-9B`) chooses
+   to ask one question, conclude with an urgency level, answer an
+   informational question, or decline an off-topic one
+   ([ADR 0011](docs/adr/0011-controller-free-triage.md),
+   [ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)).
+   It sees what she has answered, the authored evidence those answers match,
+   the warning-sign rules that have fired or are one answer away, a ranked
+   menu of questions, and the retrieved passages. It can only reply in the
+   `TriageDecision` shape, whose ids must come from the knowledge files.
+3. **Code checks the decision.** Gates send a reply back when it ignores a
+   fired warning sign, repeats a question, concludes too early, explains when
+   she described symptoms, or declines something that may be in scope. If a
+   warning sign has fired and the model still does not escalate, **code
+   concludes at the rule's urgency**. The reply is then validated against the
+   knowledge base and capped by what its sources support.
+4. **She sees** a question, an urgency with its reasons and sources (the
+   rule's quote, the authored evidence rows, the passages), or an information
+   page with "when to get help".
 
-## How it reasons
+Four urgencies, and nothing else: `SELF_CARE`, `ROUTINE_APPOINTMENT`,
+`URGENT_SAME_DAY`, `EMERGENCY`. A conclusion may say her answers "match
+patterns our sources associate with" a condition, never that she has it.
 
-A user describes a concern in her own words. The system asks a small number of
-clarifying questions, then says how urgently to seek care and why, with
-citations. If her answers match a red-flag rule at any point, it escalates
-immediately without asking anything further.
-
-**1. Red flags — deterministic, before any model call.** `red_flags.yaml` holds
-escalation rules derived *only* from explicit escalation language in a source.
-They are plain conditionals, they run first, they cannot be overridden by a
-model, and a match short-circuits straight to escalation.
-
-**2. Elimination over a differential — plain Python, no LLM.** Each answer adds
-an ordinal weight to a log-odds score per condition. `should_stop` checks in
-order, first match wins:
-
-| Step | Check |
-|---|---|
-| 1 | A red flag fired → escalate, no model call |
-| 2 | All conditions above `plausibility_floor` share one action → stop |
-| 3 | No unasked feature could change the action → stop |
-| 4 | Top plausibility above `stop_confidence`, `stop_margin` clear of second → stop |
-| 5 | `max_questions` (6) reached → stop with the differential |
-| 6 | Otherwise → ask one question |
-
-One question per turn, always. **Stopping at `SELF_CARE` requires a strictly
-higher bar than stopping at `ROUTINE_APPOINTMENT`** — enforced by the schema,
-which refuses to load `weights.yaml` if that inequality does not hold.
-
-The reasoning core takes no dependency on a model, a network or a server. It is
-driveable from a CLI with a scripted dialogue, which is what makes the evaluation
-harness possible.
-
-### Cycle data from a tracking app
-
-She can upload an export from her period-tracking app — from Settings, or the
-paperclip in the chat. The file is read and dropped; only dates, flow and a
-closed list of symptoms are kept, after she confirms what was found. Fresh data
-answers questions she would otherwise be asked (cycle length, regularity,
-period length), so consultations are shorter. It can make the system ask about
-a warning sign sooner, but it can never fire one on its own: pain severity is
-always asked about today. See
-[ADR 0019](docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md).
-
-### Where the model *is* used
-
-Language, not judgement. It interprets free text into feature values, renders
-probe questions in the user's language, and phrases the final explanation over
-retrieved cited passages. It does not decide urgency.
+**Cycle data.** She can import an export from her period-tracking app (our
+CSV template, Apple Health's export or shared PDF, or other files read by the
+model). Only dates, flow and a closed list of symptoms are kept, after she
+confirms; fresh data answers questions she would otherwise be asked, and
+asking about it gets a code-written breakdown
+([ADR 0019](docs/adr/0019-cycle-data-is-imported-from-any-tracker-and-may-pre-fill-answers.md)).
+She may also keep a copy of a file for 30 days
+([ADR 0020](docs/adr/0020-she-may-keep-an-uploaded-file-for-30-days.md)).
 
 ---
 
 ## Architecture
 
-Monorepo. Four independently deployable services, one contracts package.
+Full detail, with hardware, flags and versions:
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-| Service | Stack | Deployable | Why separate |
-|---|---|---|---|
-| `services/frontend` | Next.js, responsive web app | yes | Different runtime and build pipeline |
-| `services/backend` | FastAPI (Python 3.12) | yes | Triage, tracker, directory, visit prep, retrieval, safety, orchestration |
-| `services/data` | Python 3.12 | no — offline | Ingestion, validation, evaluation; runs in CI and by hand |
-
-**The frontend is a normal responsive web app.** No service worker, no manifest,
-no offline shell, no install prompt, no web push. Mobile-first layout with RTL
-support for Arabic. Do not add PWA scaffolding.
-
-**No model weights load inside the backend process.** The retriever runs in
-the backend over a FAISS index; embedding and reranking are HTTP calls to vLLM
-on the campus GPU box (ADR 0017). Reasoning runs on the same box through
-LangChain (ADR 0018): the base model decides, and our LoRA adapter words
-informational answers. There is no OpenRouter and no model selector.
-
-### Models this project uses
-
-| Role | Model | Where |
+| Part | Stack | Runs on |
 |---|---|---|
-| Decisions (extract and decide) | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | vLLM on the campus box, port 8002 |
-| Informational answers (fine-tuned LoRA) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) | Private HF repo; served on Lobot as adapter id `herhealth` from `/home/jovyan/models/herhealth-lora-v2` |
-| Retrieval embeddings | [`Qwen/Qwen3-Embedding-4B`](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | vLLM on the campus box, port 8003; index built by `make index` |
-| Retrieval reranker (off by default) | [`Qwen/Qwen3-Reranker-4B`](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | vLLM on the campus box, port 8004; used only when `HERHEALTH_RERANK=on` (ADR 0017: no measured gain) |
+| Frontend | Next.js 16, React 19, Tailwind 4; responsive web app, **not a PWA** | EC2 (Docker) |
+| Backend | FastAPI, Python 3.12, SQLAlchemy, LangChain; FAISS index in-process | EC2 (Docker) |
+| Database | PostgreSQL 16 | AWS RDS |
+| Models | vLLM 0.28 | campus GPU server, 4 × NVIDIA A16, reached through Cloudflare tunnels |
+| Proxy, TLS | Caddy, Let's Encrypt | EC2 |
+| Email | Amazon SES | AWS |
 
-**`Qwen/Qwen3.5-9B` is a multimodal hybrid, not a plain text model.** It loads
-as `Qwen3_5ForConditionalGeneration`: a vision tower plus a mixed attention
-stack, where only every fourth layer is full attention and the rest are gated
-linear-attention (Mamba-family) blocks. This drives real serving flags — both
-`image` and `video` must be capped to run text-only, and the KV cache
-reconciles two different page sizes. See
-[`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md) §0.2.
+### Models
 
-The LoRA was trained (QLoRA, `r=16`) on six-register styled answers for EN/FR/AR
-phrasing. Its module list matches that architecture: MLP projections on all 32
-layers, attention projections only on layers 3, 7, 11, 15, 19, 23, 27 and 31. It is **not** cleared to own triage decisions until a multi-turn
-retrain is reviewed — see ADR 0011 / ADR 0016 and the Fine-tuned section below.
-HF access to the private adapter needs a token with read access to the
-`herhealthgpt` org; that token lives on the serving host only, never in this
-repo.
+| Role | Model | Served |
+|---|---|---|
+| Extract, decide, write information pages | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) | vLLM :8002, tensor parallel 2 |
+| Comparison mode B only (plain chat) | fine-tuned LoRA [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) (private) | same process, as `herhealth` |
+| Retrieval embeddings | [`Qwen/Qwen3-Embedding-4B`](https://huggingface.co/Qwen/Qwen3-Embedding-4B) | vLLM :8003 |
+| Reranker (off: no measured gain) | [`Qwen/Qwen3-Reranker-4B`](https://huggingface.co/Qwen/Qwen3-Reranker-4B) | vLLM :8004 |
 
-### The dependency rule
+**The fine-tuned adapter is not on the product path.** It was trained on 2,700
+single-turn answers and never shown a clarifying question, so it may not
+decide until it is retrained on multi-turn data; and since 2026-10-13 the base
+model writes information pages too, because it was faster and did not copy
+passages. The adapter answers only in comparison mode B.
 
-**Nothing outside `packages/contracts/` may be imported across a service
-boundary.** Contracts holds the Pydantic schemas, error codes and safety policy;
-both sides depend on it and neither depends on the other. Enforced by
-`import-linter` in CI once a second Python service exists.
+**The decision is not constrained by guided decoding.** The model is asked for
+JSON, and the backend parses, repairs, validates and retries.
 
-Inside `services/backend`, the same rule applies by layer — `domain` ← `triage`
-← `adapters` ← `api`, dependencies pointing inward only — so the triage core
-stays testable without a server, a GPU or a network.
+### Rules that hold across the code
 
-### Policy as data
-
-The clinical reasoning lives in `knowledge/` as declarative YAML and CSV, not in
-code. A clinical change is a data diff that can be reviewed, reverted and
-regression-tested on its own.
-
-### Deploy
-
-Merge to main → path-filtered CI builds only what changed → image tagged with the
-git SHA → PR bumps that tag in `infra/envs/staging.env` → merge triggers a
-self-hosted runner on the GPU server. Rollback is `git revert`. Nothing is ever
-edited directly on the server.
-
----
+- **Nothing outside `packages/contracts/` is imported across services.** A
+  convention kept by review; no import-linter runs today.
+- **No model weights load in the backend**; every model call is HTTP to vLLM.
+- **Policy is data.** The clinical knowledge is in `knowledge/` as YAML and
+  CSV, so a clinical change is a reviewable diff.
+- **Deploy:** merge to `main` → CI builds images tagged with the git SHA →
+  pushed to ECR → the host migrates, switches, health-checks and rolls back by
+  itself on failure. Rollback by hand is `git revert`. Nothing is edited on the
+  server. `terraform apply` is run by hand, never by CI.
 
 ## Repository layout
 
 ```
 herhealthgpt/
 ├── services/
-│   ├── frontend/            Next.js responsive web app
-│   ├── backend/             FastAPI: triage, tracker, directory, visit prep,
-│   │                        retrieval, safety, orchestration
-│   ├── model/               vLLM: Qwen3.5-9B, embeddings, reranker
-│   └── data/                ingestion, validation, evaluation harness
-│       ├── src/herhealth_data/
-│       │   ├── cli.py       validate / build / eval
-│       │   └── ingest/      one module per source (phase 4)
-│       ├── eval/cases/      benchmark cases, version-controlled
-│       └── tests/
-├── packages/
-│   ├── contracts/           Pydantic schemas, error codes, safety policy
-│   └── types-ts/            TypeScript types generated from OpenAPI
-├── knowledge/               the seven hand-authored clinical files
-├── infra/                   compose.yml, envs/*.env, Caddy, Prometheus
-├── .github/workflows/       path-filtered CI
-├── .claude/skills/          binding constraints for humans and agents alike
-├── CLAUDE.md                the project spec; binding
-├── pyproject.toml           uv workspace root
-├── uv.lock                  committed; the source of truth for the environment
-└── CONTRIBUTING.md          environment setup, workflow, branching
+│   ├── frontend/        Next.js web app (en / ar / fr)
+│   ├── backend/         FastAPI: triage agent and gates, retrieval, accounts,
+│   │                    profile, cycle data, kept files, evaluation tools
+│   └── data/            ingestion, evidence batches, evaluation cases and scripts
+├── packages/contracts/  Pydantic schemas shared across services
+├── knowledge/           the seven knowledge files
+├── scripts/             serve-models.sh and tunnel-models.sh (GPU server), hygiene
+├── infra/               compose files, env templates, Caddy, host deploy scripts,
+│                        model serving config, Terraform
+├── docs/                architecture, ADRs, runbooks, experiments, datasheet
+└── .github/workflows/   path-filtered CI and the deploy
 ```
 
-`raw/` and `build/` are gitignored and reproducible from `make fetch build`.
+`raw/`, `build/` and `infra/envs/*.env` are git-ignored.
 
 ---
 
 ## The knowledge model
 
 Seven files in `knowledge/`, validated against the Pydantic schemas in
-`packages/contracts/`. **The schemas are the single definition; the files conform
-to them, not the other way round.**
+`packages/contracts/`. Counts read from the files on 2026-10-20:
 
 | File | Rows | What it is |
 |---|---|---|
-| `features.yaml` | ~50 | Everything the system may ask about |
-| `conditions.yaml` | 14 | Everything the system may consider |
-| `evidence.csv` | ~350 | The sparse grid connecting them |
-| `red_flags.yaml` | ~25 | Deterministic escalation rules |
-| `sources.yaml` | ~15 | Provenance, licence, precedence |
-| `weights.yaml` | — | Ordinal-to-log-odds mapping, tunable |
-| `actions.yaml` | — | Four action codes, resolved per locale |
+| `features.yaml` | 39 | everything the system may ask about |
+| `conditions.yaml` | 19 | everything a conclusion may name as a matching pattern |
+| `evidence.csv` | 150 | the sparse grid connecting them |
+| `red_flags.yaml` | 17 | warning-sign rules, from explicit escalation language only |
+| `sources.yaml` | 5 | provenance, licence, precedence |
+| `actions.yaml` | 4 | the four action codes, resolved per locale |
+| `weights.yaml` | — | ordinal weights (used by the retired controller) |
 
-Plus `passages.parquet`, generated by ingestion — the only artifact produced at
-scale.
-
-### The five evidence weights, and nothing else
-
-```
-strong_support   weak_support   neutral   argues_against   rules_out
-```
-
-**No probabilities.** No likelihood ratios, prevalence figures or confidence
-scores anywhere. `neutral` means **omit the row**: 14 × 50 is 700 possible cells
-but only ~350 carry meaning.
-
-### The four action codes, and nothing else
-
-```
-SELF_CARE   ROUTINE_APPOINTMENT   URGENT_SAME_DAY   EMERGENCY
-```
-
-Locale-specific instructions — "call 111", "see your GP" — never appear in a
-knowledge file or a stored passage. Source content is UK and US; users are in
-Egypt. Codes are resolved per locale at response time.
-
-### Why the `argues_against` rows matter
-
-Without "regular periods `argues_against` PCOS", PCOS never drops out of the
-differential and elimination does not work. But sources list what a condition
-*causes*; they rarely state what argues against it. So an `argues_against` row is
-only written when a source explicitly frames the feature as distinguishing,
-excluding, or characteristic of an alternative — never inferred from absence in a
-symptom list. **If in doubt, omit the row.** A missing row is neutral, which is
-safe.
-
-### Conditions covered
-
-Phase 1 hand-authors three; the feature set extends to all fourteen without
-migration.
-
-| | Condition | | Condition |
-|---|---|---|---|
-| 1 | **PCOS** *(phase 1)* | 8 | Primary ovarian insufficiency |
-| 2 | **Endometriosis** *(phase 1)* | 9 | Pelvic inflammatory disease |
-| 3 | **Uterine fibroids** *(phase 1)* | 10 | Endometrial polyp |
-| 4 | Adenomyosis | 11 | Inherited bleeding disorder |
-| 5 | Hypothyroidism | 12 | Pregnancy-related bleeding |
-| 6 | Hyperprolactinaemia | 13 | `normal_variation` |
-| 7 | Functional hypothalamic amenorrhoea | 14 | `perimenopause` |
-
-The last two are not conditions in a textbook sense. `normal_variation` exists so
-`SELF_CARE` is reachable at all; `perimenopause` so PCOS is not over-suspected in
-women over 45. A differential without them systematically over-triages.
-
----
+Five evidence weights and nothing else: `strong_support`, `weak_support`,
+`neutral` (meaning *omit the row*), `argues_against`, `rules_out`. **No
+probabilities**, likelihood ratios or prevalence figures anywhere. Cancers are
+deliberately not modelled; warning-sign rules send her to care without naming
+why. Locale-specific instructions ("call 111") never appear in a knowledge
+file; action codes are resolved per locale. Detail:
+[`docs/KNOWLEDGE_BASE.md`](docs/KNOWLEDGE_BASE.md),
+[`knowledge/README.md`](knowledge/README.md).
 
 ## Verification protocol
 
-**This project has no clinician reviewer.** That is a resource constraint, and it
-changes what the knowledge base is allowed to contain.
+**This project has no clinician reviewer.** So every row must restate
+something a cited source says; no row may be an independent clinical
+judgement.
 
-> **The rule: every row must be a restatement of something a cited source says.
-> No row may be an independent clinical judgement.**
+1. Every row in `evidence.csv` and `red_flags.yaml` carries a `source_id` and a
+   verbatim `source_quote`; `make verify-quotes` checks each against the
+   fetched page.
+2. A second reader confirms the quote supports the row as written. This checks
+   provenance, not clinical correctness.
+3. A row that cannot be traced to a sentence is deleted, not softened.
+4. Anything needing inference beyond the source is out of scope.
 
-This makes verification a reading-comprehension task rather than a medical one —
-which is a task we can actually perform.
+Compensating controls: warning signs only from explicit escalation language;
+the bar for `SELF_CARE` above the bar for `ROUTINE_APPOINTMENT`; where sources
+conflict on urgency the higher wins, recorded in the row's note.
 
-1. Every row in `evidence.csv` and `red_flags.yaml` carries a `source_id` **and a
-   `source_quote`** holding the sentence or clause it was derived from. Both are
-   required by the schema; an empty quote fails to load.
-2. A second team member reads the quote and confirms it supports the row as
-   written. This checks provenance, not clinical correctness.
-3. If a row cannot be traced to a specific sentence, **it is deleted, not
-   softened**.
-4. Anything requiring inference beyond what the source states is out of scope.
-   Gaps are not filled with plausible clinical reasoning.
-
-There is deliberately **no `reviewed_by_clinician` field** or anything resembling
-one — such a field could only hold a value we are not in a position to assert.
-A test asserts no such field exists.
-
-**Compensating controls**, because unreviewed content means biasing conservative:
-
-- Red-flag rules derive only from explicit escalation language. Never inferred.
-- The `SELF_CARE` bar is strictly higher than the `ROUTINE_APPOINTMENT` bar.
-- Where sources conflict on urgency, the **higher** urgency wins and the conflict
-  is appended to `build/conflicts.jsonl`.
-- `DATASHEET.md` states plainly that the knowledge base is source-traceable but
-  **not clinician-adjudicated**.
-
-State this limitation wherever results are reported. Do not describe the
-knowledge base as clinically validated, expert-reviewed, or verified.
-
----
+**The knowledge base is source-traceable, not clinician-adjudicated. State this
+wherever results are reported.**
 
 ## Sources
 
-Terms were read from the sources' own pages on 2026-08-03. **Only usable sources
-appear in `sources.yaml`** — the rest were removed rather than listed, so nothing
-unusable can be cited by accident.
-
-| Source | Access | Licence | Status |
-|---|---|---|---|
-| MedlinePlus | Topic pages + topics XML, no key | Public domain **except** A.D.A.M. encyclopedia | **available** |
-| NICHD | Pages, no key | US federal, public domain *(unverified)* | **available** |
-| CDC | Pages, Socrata token optional | US federal, public domain *(unverified)* | **available** |
-| NHS website | Public pages, **manual reading only** | Crown copyright, no reuse grant | **citable_only** |
-
-Two independent facts per source: **precedence** decides who wins a
-disagreement, **status** decides whether the source is usable at all.
-
-- `available` — may be quoted **and** ingested into `passages.parquet`
-- `citable_only` — may be quoted with attribution; text must **not** enter the corpus
-
-**MedlinePlus has a split licence and it matters.** Topic summaries are public
-domain. The A.D.A.M. Medical Encyclopedia (`medlineplus.gov/ency/*`) is not, and
-its terms state: *"You may not ingest and/or brand the copyrighted content found
-on MedlinePlus in an EHR, patient portal, or other health IT system."* That
-clause names systems like this one. **The ingestion client must exclude `/ency/`
-by path.** Attribution required: *"Courtesy of MedlinePlus from the National
-Library of Medicine."*
-
-**NHS is manual reading only.** No Open Government Licence — the content policy
-states only "© Crown copyright". `robots.txt` carries `Disallow: /Conditions/`.
-Its "when to get help" sections are the best escalation language available, so it
-is quoted with attribution and never ingested.
-
-**Excluded, and why — do not re-investigate:** NICE CKS (UK-only Open Content
-Licence; CKS is separately third-party under its own EULA; terms forbid use "for
-any commercial gain" and bar use outside the UK without written agreement),
-RCOG/ACOG (copyright, permission required), UMLS (licence + account, not needed),
-WHO ICD (only resolves `TODO_VERIFY` codes; cosmetic), NCBI E-utilities and
-openFDA (out of MVP scope).
-
-**Precedence on conflict** (lower wins): NHS 2, NICHD/MedlinePlus 3, CDC 4.
-Numbering gaps are the removed sources. Never resolve a conflict silently.
-
-Raw fetches are immutable: `raw/{source}/{YYYY-MM-DD}/`, never overwritten. Every
-record stores `url`, `fetched_at`, `content_hash` and `licence`. Ask before any
-network call. **Tests never hit the network.**
-
----
-
-## Quickstart
-
-Install [uv](https://docs.astral.sh/uv/), [Docker Desktop](https://www.docker.com/products/docker-desktop/),
-and [Node.js 20+](https://nodejs.org/) (for the frontend).
-
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows PowerShell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Then:
-
-```bash
-git clone <repo> && cd herhealthgpt
-uv sync
-cp infra/envs/backend.env.example infra/envs/backend.env
-# Edit backend.env: set HERHEALTH_SESSION_SECRET (openssl rand -hex 32),
-# OPENROUTER_API_KEY, and HERHEALTH_TRIAGE_MODE=openrouter for real chat.
-```
-
-`uv sync` reads `.python-version`, downloads CPython 3.12 if needed, creates
-`.venv/`, and installs the lockfile. Prefer `uv run` over activating the venv.
-
-**`uv.lock` is committed and is the source of truth.** CI runs `uv sync
---locked`.
-
-You also need a built retrieval index at `build/index/`. It is built with
-`make fetch && make clean && make index`, which needs the embedding endpoint
-(`scripts/serve-models.sh`). Without an index, triage reports "not configured".
-
----
-
-## Run the full app (local laptop)
-
-> **Changed on 2026-10-12 (ADR 0017, ADR 0018).** The steps below were written
-> for the earlier stack and still mention OpenRouter, the Base / Fine-tuned
-> tabs, `HERHEALTH_TRIAGE_MODE=openrouter` and a retrieval service on `:8001`.
-> None of those exist now. The backend needs `HERHEALTH_TRIAGE_MODE=vllm`, a
-> retrieval index (`make index`), and the three model endpoints from
-> `scripts/serve-models.sh`. See `infra/envs/backend.env.example` for the
-> current settings. This section has not been rewritten yet.
-
-Three processes on the laptop, plus the model endpoints the retriever calls. The campus GPU is **optional** and only needed
-for the Fine-tuned tab (next section).
-
-| Process | Port | Role |
+| Source | Licence | Status |
 |---|---|---|
-| PostgreSQL (`infra/compose.yml`) | 5432 | Accounts + triage sessions |
-| `services/backend` (FastAPI) | **8000** | Triage API, auth, orchestration |
-| `services/frontend` (Next.js) | **3000** | Chat UI |
+| Office on Women's Health (womenshealth.gov) | US federal, public domain | quoted and retrieved |
+| MedlinePlus | public domain, **except** the A.D.A.M. encyclopedia (`/ency/`, excluded by path) | quoted and retrieved |
+| NICHD | US federal, public domain (unverified) | quoted and retrieved |
+| CDC | US federal, public domain (unverified) | quoted and retrieved |
+| NHS website | Crown copyright, no reuse grant | **quoted only**, never retrieved |
 
-**Retrieval needs the embedding endpoint.** A turn embeds the query through
-`HERHEALTH_EMBEDDING_URL` *before* the reasoning model; if that endpoint is
-unreachable you get `502`. Reranking through `HERHEALTH_RERANKER_URL` happens
-only when `HERHEALTH_RERANK=on`, and falls back to embedding order if the
-reranker is unreachable.
-
-### 1. Configure `infra/envs/backend.env`
-
-Minimum for **Base** (OpenRouter) chat:
-
-```env
-HERHEALTH_DATABASE_URL=postgresql+psycopg://herhealth:herhealth@localhost:5432/herhealth
-HERHEALTH_SESSION_SECRET=<openssl rand -hex 32>
-HERHEALTH_EMAIL_SENDER=console
-HERHEALTH_TRIAGE_MODE=openrouter
-OPENROUTER_API_KEY=sk-or-...
-HERHEALTH_INDEX_DIR=build/index
-HERHEALTH_EMBEDDING_URL=http://127.0.0.1:8003
-HERHEALTH_RERANKER_URL=http://127.0.0.1:8004
-HERHEALTH_COOKIE_SECURE=false
-HERHEALTH_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-```
-
-Add these only when testing Fine-tuned (after campus + Lobot proxy work):
-
-```env
-HERHEALTH_MODEL_SELECTOR=on
-HERHEALTH_VLLM_URL=https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8002
-HERHEALTH_VLLM_MODEL=herhealth
-HERHEALTH_VLLM_API_KEY=<JUPYTERHUB_API_TOKEN from the pod — rotates on cull>
-```
-
-Keep `HERHEALTH_TRIAGE_MODE=openrouter` when the selector is on: **Base** uses
-OpenRouter, **Fine-tuned** uses `HERHEALTH_VLLM_*`. Do not put the pod IP
-`10.244.x.x` in `HERHEALTH_VLLM_URL`.
-
-Frontend: set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in
-`services/frontend/.env.local` if the UI talks to the API directly (same CORS
-origins as above).
-
-### 2. Start PostgreSQL and migrate
-
-```powershell
-# From the repo root
-docker compose -f infra/compose.yml up -d postgres
-
-# Apply migrations (Git Bash / WSL, or load env then run alembic by hand on Windows)
-# Git Bash:
-set -a; . ./infra/envs/backend.env; set +a
-cd services/backend && uv run --extra api alembic upgrade head
-```
-
-Windows PowerShell equivalent for migrate / serve (load env, then run):
-
-```powershell
-Get-Content .\infra\envs\backend.env | ForEach-Object {
-  $line = $_.Trim()
-  if (-not $line -or $line.StartsWith('#')) { return }
-  $i = $line.IndexOf('=')
-  if ($i -lt 1) { return }
-  Set-Item -Path ("Env:" + $line.Substring(0, $i).Trim()) -Value $line.Substring($i + 1).Trim()
-}
-$env:HERHEALTH_KNOWLEDGE_DIR = (Resolve-Path .\knowledge).Path
-uv run --extra api --package herhealth-backend python -c "import asyncio; from alembic.config import main; main(['upgrade','head'])"
-# Prefer: cd services/backend; uv run --extra api alembic upgrade head
-```
-
-### 3. Retrieval — nothing to start
-
-There is no retrieval service any more (ADR 0017). The backend loads
-`build/index/` itself and calls the embedding and reranker endpoints. Check
-that the index exists and the endpoints answer:
-
-```powershell
-Get-Content .\build\index\manifest.json
-curl.exe http://127.0.0.1:8003/health
-curl.exe http://127.0.0.1:8004/health
-```
-
-### 4. Start the backend (`:8000`)
-
-```powershell
-# Terminal B — repo root, same env-loading block as above, then:
-$env:HERHEALTH_KNOWLEDGE_DIR = (Resolve-Path .\knowledge).Path
-uv run --extra api --package herhealth-backend python -m herhealth_backend.app
-```
-
-Or with make (Git Bash): `make serve`
-
-Check:
-
-```powershell
-curl.exe http://127.0.0.1:8000/health
-# {"status":"ok"}
-```
-
-Restart the backend after any change to `HERHEALTH_VLLM_*` or
-`HERHEALTH_MODEL_SELECTOR`.
-
-### 5. Start the frontend (`:3000`)
-
-```powershell
-# Terminal C
-cd services\frontend
-npm install   # first time only
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) → sign up / sign in → set
-date of birth if prompted (age band is injected into the triage prompt).
-
-### 6. Test Base model
-
-1. Open [http://localhost:3000/chat](http://localhost:3000/chat).
-2. Start a **new** chat. If the model tabs appear, leave **Base** selected.
-3. Send: *I've had irregular periods for three months.*
-4. Expect clarifying questions or a conclude with an action code — with RAG
-   citations and age context when DOB is on the account.
-
-Without `HERHEALTH_MODEL_SELECTOR=on`, the Base / Fine-tuned tabs are hidden
-and every turn uses OpenRouter.
-
-### 7. Common failure: `502` + `WinError 10061`
-
-```
-triage dependency HTTP failure: [WinError 10061] No connection could be made...
-POST /triage/turn → 502
-```
-
-That is almost always **the embedding endpoint not reachable**, not the chat
-model. Confirm `curl <HERHEALTH_EMBEDDING_URL>/health`, then retry. Campus can be up
-(`/v1/models` 200 on Lobot) while this laptop still 502s.
+NICE CKS, RCOG and ACOG are excluded on their terms. Fetching obeys each
+site's live `robots.txt`; raw fetches are immutable
+(`raw/{source}/{date}/`). Tests never hit the network.
 
 ---
 
-## Fine-tuned model (campus VM + laptop)
+## Running it
 
-The Fine-tuned tab calls the same RAG + system prompt + age-band injection as
-Base; only the reasoning HTTP client changes (campus LoRA `herhealth`).
-
-**Hugging Face artifact (project fine-tune):**
-[`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2)
-— private QLoRA on [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B).
-On campus we serve a local checkout at
-`/home/jovyan/models/herhealth-lora-v2` under the vLLM module name `herhealth`
-(`HERHEALTH_VLLM_MODEL=herhealth`).
-
-**The adapter is experimental / phrasing-trained.** It was not trained on
-clarifying-question turns and must not be treated as a reviewed triage
-decision-maker. See ADR 0011 / ADR 0016.
-
-**The per-answer unreviewed-model notice was removed on 2026-09-09** at the
-project owner's direction, and the Fine-tuned option is now marked
-`reviewed=True` in `_build_reasoning_models`. Nothing about the adapter's
-training changed — the paragraph above still stands. What still scopes it is
-`HERHEALTH_MODEL_SELECTOR`, off by default: per ADR 0016 the Fine-tuned option
-is **absent**, not merely unlabelled, in any deployment someone is being shown,
-and `default_model_id` still resolves to the base model so the adapter is only
-ever reached by an explicit click.
-
-**The base model is now an automatic fallback for the Fine-tuned tab.** When the
-adapter is unreachable, returns 502/503/504, or produces nothing that validates
-after its own three corrective retries, `FallbackReasoningClient` re-asks
-OpenRouter's base model and returns that instead. Measured 2026-09-09: 3/4
-identical in-scope turns succeeded against the adapter alone, 4/4 with the
-fallback, one turn taking 101 s because the adapter's retries are spent before
-the handover. A fallback is **not** surfaced to the user or recorded on the
-turn — `reasoning_model` still reports the model that was selected, not the one
-that answered.
-
-Full detail: [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md).
-
-Hub for this project: [https://lobot.cs.queensu.ca](https://lobot.cs.queensu.ca)
-· user `group-digi2026-g1`.
-
-### A. On the university Jupyter VM (Lobot)
-
-Closing JupyterLab (or Hub → Stop My Server) **kills the container** and vLLM.
-Keep a Lab tab open while testing.
-
-| | |
-|---|---|
-| Base | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) |
-| Fine-tune (HF) | [`herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2`](https://huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2) |
-| Adapter id (vLLM / env) | `herhealth` |
-| Adapter path on VM | `herhealth-lora-v2/` in the repo root (gitignored) |
-| Venv | `~/herhealthgpt-venv` |
-| Ports **inside the pod** | chat **8002**, embeddings 8003, reranker 8004 |
-| Pod IP `10.244.x.x` | **Not reachable from the laptop** |
-
-**1. Start** the chat, embedding and reranker processes (verified
-**2026-10-11**, vLLM 0.28.0, all three answering about two and a half minutes
-after the command):
-
-```bash
-bash scripts/serve-models.sh clean        # stop everything, free the GPUs
-bash scripts/serve-models.sh start all
-bash scripts/serve-models.sh check
-```
-
-Every model id, revision, port and GPU is in `infra/model/serve.conf`. Logs are
-in `/home/jovyan/herhealth-serve/`. The chat process runs with these settings:
-
-| Flag / env | Why |
-|---|---|
-| **`--disable-custom-all-reduce`** | **Mandatory.** Without it TP all-reduce corrupts activations → NaN logits → the sampler emits token 0 (`!`) forever, giving `!!!!!!!` answers, and startup deadlocks. Full write-up: runbook §0.1. |
-| `NCCL_P2P_DISABLE=1` / `NCCL_IB_DISABLE=1` | Without them, TP=2 hangs after NCCL init |
-| `VLLM_USE_FLASHINFER_SAMPLER=0` | FlashInfer JIT needs `curand.h` (missing on the image) |
-| `--enforce-eager` | Avoids CUDA-graph / Inductor spin at empty VRAM |
-| `--limit-mm-per-prompt '{"image":0,"video":0}'` | **Both** keys — the base is a multimodal hybrid, not a text model (runbook §0.2) |
-| `--tensor-parallel-size 2` | 17.98 GiB of bf16 weights do not fit one 14.6 GiB A16 |
-| `--max-model-len 32768` | Set in `infra/model/serve.conf`. The token cache holds 234,599 tokens with `--enforce-eager`, so 7.16 full-length requests fit (runbook §0.3) |
-| `TRITON_CACHE_DIR` under `/home/jovyan` | Survives culls |
-
-Wait for **`Application startup complete.`** (~30 s). Hundreds of `no matching
-PunicaWrapper ... will be ignored` warnings on the way are expected — that is
-vLLM skipping LoRA on the vision tower. Ctrl+C stops `tail` only.
-
-After a wipe, restore vLLM and the models first: `docs/runbooks/uni-server-vllm.md`.
-
-**2. Smoke-test on the VM:**
-
-```bash
-uv run python scripts/smoke_models.py --skip-structured   # all three processes
-
-curl -s http://127.0.0.1:8002/v1/models
-# must list Qwen/Qwen3.5-9B and herhealth
-
-curl http://127.0.0.1:8002/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "herhealth",
-    "messages": [{"role": "user", "content": "I have irregular periods and some pelvic pain, what could this mean?"}],
-    "max_tokens": 4000,
-    "chat_template_kwargs": {"enable_thinking": false}
-  }'
-```
-
-Always send `chat_template_kwargs: {"enable_thinking": false}` (the backend
-already does). Cloudflare quick tunnels are often **blocked** from this
-cluster (`api.trycloudflare.com` timeout) — use the Jupyter proxy below.
-
-### B. Reach campus from the laptop (Jupyter proxy)
-
-`jupyter_server_proxy` is enabled on Lobot. From the **pod** terminal:
-
-```bash
-echo "len=${#JUPYTERHUB_API_TOKEN}"
-curl -sS -H "Authorization: token ${JUPYTERHUB_API_TOKEN}" \
-  "https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8002/v1/models"
-```
-
-Expect JSON listing `herhealth`. Copy the token:
-
-```bash
-echo "$JUPYTERHUB_API_TOKEN"
-```
-
-Put it in laptop `HERHEALTH_VLLM_API_KEY`. That token **rotates when the
-Jupyter server restarts** — after a cull, copy a fresh one and restart the
-backend.
-
-From the **laptop** (PowerShell), after `backend.env` is filled:
-
-```powershell
-# Load HERHEALTH_VLLM_* from backend.env, then:
-curl.exe -sS -H "Authorization: Bearer $env:HERHEALTH_VLLM_API_KEY" `
-  "$env:HERHEALTH_VLLM_URL/v1/models"
-```
-
-Both `Bearer` and `token` schemes work against Lobot.
-
-### C. Wire the laptop and test the Fine-tuned tab
-
-1. Confirm local `:8000` and `:3000` are up ([above](#run-the-full-app-local-laptop)).
-2. Set `HERHEALTH_MODEL_SELECTOR=on` and the three `HERHEALTH_VLLM_*` values.
-3. Restart the backend so it rebuilds the model list.
-4. Open [http://localhost:3000/chat](http://localhost:3000/chat) → **new** chat.
-5. Click **Fine-tuned** (disabled until vLLM URL is configured and the backend
-   restarted). Tabs lock after the first user message in a session.
-6. Send a short symptom message. Expect the unreviewed-model notice, then a
-   turn that still used local RAG + age band, with reasoning from campus.
-
-If Fine-tuned stays greyed out: hard-refresh so `GET /triage/models` reloads.
-If you get `502`: check the embedding endpoint first.
-
-**If RAG succeeds but chat returns `504 Gateway Time-out` on the Lobot proxy**
-(backend log shows `POST …/proxy/8002/v1/chat/completions` → 504, UI says
-*"A service we rely on is temporarily unavailable"*): local retrieval is fine;
-the Hub/nginx proxy cut the request at ~60s while campus vLLM was still
-generating (often first LoRA Triton JIT). Warm inside the pod first (below).
-
-**If the Fine-tuned tab answers with `!!!!!!!!!!!`** (or the VM never binds
-`:8000` and the log repeats `No available shared memory broadcast block found
-in 60 seconds`): both are the same bug — vLLM's custom all-reduce running over
-the broken GPU-to-GPU link on these A16s, corrupting activations until the
-logits are NaN and the sampler emits token 0, which is `!` in Qwen's
-vocabulary. Fix: `--disable-custom-all-reduce` and `rm -rf ~/.cache/vllm`,
-both already in the step 2 command above. Confirm the log line reads
-`Using ['PYNCCL'] all-reduce backends` with no `CUSTOM`. Diagnosed and fixed
-2026-09-09; full write-up in the runbook §0.1.
-
-**If the VM returns `EngineCore encountered an issue` / worker dies with
-`apply_token_bitmask_inplace` / `CUDA: unspecified launch failure`:** the
-engine is dead — restart vLLM. That crash was triggered by
-`response_format: json_object` (xgrammar structured outputs). The laptop
-backend no longer sends that field to Fine-tuned / vLLM; restart the local
-backend after pulling that fix, then warm and retry.
-
-On the **Jupyter terminal**, after a fresh serve is up, warm LoRA **without**
-`response_format`:
-
-```bash
-time curl -s http://127.0.0.1:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "herhealth",
-    "messages": [{"role": "user", "content": "Say hello in one short sentence."}],
-    "max_tokens": 64,
-    "chat_template_kwargs": {"enable_thinking": false}
-  }'
-```
-
-Wait until it returns (may take 1–3 minutes the first time). Run it once more —
-the second should be much faster — then retry Fine-tuned from the laptop.
-
-Other hosts (friend PC, vast.ai): see
-[`friend-pc-vllm-setup.md`](docs/runbooks/friend-pc-vllm-setup.md) and
-[`dev-vllm-lora-endpoint.md`](docs/runbooks/dev-vllm-lora-endpoint.md).
-
----
+Locally (backend, frontend, PostgreSQL, and the models on the GPU server):
+[`docs/runbooks/running-the-app.md`](docs/runbooks/running-the-app.md).
+Serving the models: [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md).
+Production: [`docs/runbooks/aws-deploy.md`](docs/runbooks/aws-deploy.md).
 
 ## Commands
 
 | Command | Does |
 |---|---|
-| `make install` | `uv sync` — create or refresh `.venv` from the lockfile |
-| `make validate` | check `knowledge/` against the contracts schemas |
-| `make test` | pytest |
-| `make lint` | ruff both packages, mypy strict on `packages/contracts/` |
-| `make fmt` | ruff format and autofix |
-| `make migrate` | apply Alembic migrations using `infra/envs/backend.env` |
-| `make serve` | run the backend API on `127.0.0.1:8000` |
-| `make build` | fetch → clean → chunk → `build/passages.parquet` *(phase 4)* |
-| `make eval` | run the controller over the benchmark cases *(phase 3)* |
-| `make lock` | re-resolve `uv.lock` after a dependency change |
-| `make sync-check` | fail if `uv.lock` has drifted |
+| `make install` | `uv sync` from the lockfile |
+| `make validate` | check `knowledge/` against the schemas |
+| `make evidence` | build `evidence.csv` from the approved batches |
+| `make verify-quotes` | check every quote against the fetched pages (needs `make fetch clean`) |
+| `make index` | build the retrieval index (needs the embedding server) |
+| `make test` / `make test-api` | Python tests without / with the database (about 1,050 in all) |
+| `make test-frontend` | install and build the frontend (`npm ci && npm run build`) |
+| `make lint` / `make fmt` | ruff, mypy strict on contracts |
+| `make migrate` / `make serve` | apply migrations / run the API on `127.0.0.1:8000` |
+| `make eval-red-flags` | live red-flag recall, one case per rule |
+| `make eval-languages` | same urgency across English, Arabic, French |
+| `make trace-turns` | trace consultations through every layer |
+| `make eval` | the retired rule-based controller |
+| `make hygiene` | the repository hygiene check CI runs on every PR |
 
-`make` is not installed by default on Windows — `winget install
-ezwinports.make`, or run the PowerShell steps in
-[Run the full app](#run-the-full-app-local-laptop).
-
----
 ## CI
 
-Every workflow is **path-filtered**. A frontend change must not rebuild the model
-image. When adding a workflow, the `paths:` key is mandatory.
-
----
+Path-filtered workflows: `backend`, `frontend`, `data`, `terraform` (plan
+only), `hygiene` (every PR), and `deploy` on merges to `main`. A frontend
+change does not rebuild the backend.
 
 ## Evaluation
 
-Reuses an existing 540-case-per-language benchmark with matched register variants
-and labels for concern category, risk level, recommended action and clarification
-need. **Labels are silver, not clinician-adjudicated. Say so wherever reported.**
+The benchmark (540 cases per language, six registers) has **silver labels, not
+clinician-adjudicated**. Risk labels come from the English text and propagate
+by `canonical_case_id`; English keyword rules are never run on translations.
 
-Risk labels are derived once from the English source text and propagated to other
-languages by `canonical_case_id`. **Never run English keyword rules on translated
-text** — that produced language-asymmetric labels skewed toward routine.
-
-**Blocks merge:** red-flag recall (must be 100%), per-language under-triage,
-clarification recall on ambiguous cases, grounding, cross-language action
-agreement. **Reported but not gated:** over-triage, average questions asked.
-
----
-
-## Roadmap
-
-| Phase | Work | State |
-|---|---|---|
-| **1** | Scaffold, contracts schemas, seed knowledge for three conditions, validators | in progress |
-| **2** | Reasoning core — `update`, `should_stop`, `next_question`; unit tests for every stopping branch; scripted-dialogue CLI, no model in the loop | next |
-| **3** | Evaluation — simulated patient, under/over-triage, clarification recall and specificity, average questions, questions that changed nothing | |
-| **4** | Ingestion — one client per source, escalation criteria extracted first, `make fetch clean build` reproducing `passages.parquet` with a stable hash | |
-
-Phase order is deliberate. Elimination is evaluated on three hand-written
-conditions **before** anything is ingested. If it does not work at three
-conditions, ten thousand scraped passages will not fix it.
-
----
+Latest measurements, with their limits, are in
+[`docs/DATASHEET.md`](docs/DATASHEET.md). Among them: red-flag recall 17 of 17
+rules on the live pipeline; the same urgency in all three languages on the 6
+of 10 scripted consultations that concluded in all three, and none lower than
+English.
 
 ## Language scope
 
-Probe text is authored in **English only** for now. The serving model is
-multilingual and renders questions at response time. The schema leaves room for
-authored `fr` and `ar_eg` probes without migration.
-
-**Known consequence, recorded deliberately:** deferring authored probes means
-question wording in French and Arabic is model-generated rather than reviewed.
-The benchmark above found severe language-specific regressions in non-English
-output, so a sample of generated probes in both languages is reviewed for drift
-before Phase 2 ships. When the authored Egyptian Arabic layer lands it will be
-written by a native speaker — never machine translated.
-
----
+The interface is fully translated into English, Arabic and French. The chat
+replies in the language she writes in. Question wording is authored in
+English and rendered by the model at response time; the schema allows authored
+`fr`, `ar` and `ar_eg` wording later without migration. **Arabic and French
+output has not been reviewed by a native speaker.** Egyptian-Arabic benchmark
+text already exists and is not generated.
 
 ## Safety, privacy and licensing
 
 - **Not a diagnostic device, and not a substitute for clinical assessment.**
-- **Escalation is deterministic.** Red flags are plain conditionals evaluated
-  before any model call and cannot be overridden by a model.
-- **Bias toward escalation.** Where a judgement call trades false alarms against
-  missed escalations, the false alarm wins, and the reason is recorded in the
-  row's `note`.
-- **No invented numbers.** No probability, likelihood ratio, prevalence figure or
-  confidence score appears anywhere in the knowledge base.
-- **Source-traceable, not clinician-adjudicated.** See
-  [Verification protocol](#verification-protocol) and `DATASHEET.md`.
-- **Licence recorded per source.** The repository stays private.
-- **Secrets never enter the repository.** `*.env` is gitignored;
-  `infra/envs/*.env.example` documents required keys with empty values.
-
----
+- **Bias toward escalation.** False alarms win over missed escalations.
+- **Warning signs are enforced in code** once her answers satisfy a rule; that
+  depends on her answer being read correctly, which is measured, not proven.
+- **Her data** is hers to see, replace and delete, and goes with her account.
+- **Licence recorded per source**; NHS text is never ingested.
+- **Secrets never enter the repository.** `*.env` is git-ignored;
+  `infra/envs/*.env.example` lists the keys with empty values.
 
 ## Further reading
 
-- [`CLAUDE.md`](CLAUDE.md) — the project spec. Binding.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — environment setup, workflow, branching
-- [`knowledge/README.md`](knowledge/README.md) — the seven files in detail
-- [`docs/runbooks/`](docs/runbooks/) — standing up the model endpoint, SES,
-  Google OAuth
-- [`.claude/skills/`](.claude/skills/) — binding constraints on clinical
-  authoring, repo conventions and source ingestion
+- [`CLAUDE.md`](CLAUDE.md): the project rules. Binding.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): environment setup, workflow, branching.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md): what is next.
+- [`docs/CODE_GUIDE.md`](docs/CODE_GUIDE.md): the modules in detail.
+- [`.claude/skills/`](.claude/skills/): constraints on clinical authoring, repo
+  conventions and source ingestion.

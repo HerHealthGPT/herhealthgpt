@@ -85,12 +85,13 @@ source conflict about its relation to premature menopause.
 
 | Role | Model | Notes |
 |---|---|---|
-| Reads her message, decides ask or conclude | `Qwen/Qwen3.5-9B` (base) | output constrained to the `TriageDecision` schema |
-| Words informational answers | QLoRA adapter on the same base | **phrasing only**; trained on 2,700 single-turn answers and never shown a clarifying question, so it may not decide anything until retrained on multi-turn data |
+| Reads her message, decides, writes information pages | `Qwen/Qwen3.5-9B` (base) | reply checked against the `TriageDecision` schema and the knowledge base after generation (no guided decoding) |
+| Comparison mode B only | QLoRA adapter on the same base | **not on the product path** since 2026-10-13; trained on 2,700 single-turn answers and never shown a clarifying question, so it may not decide anything until retrained on multi-turn data |
 | Retrieval | `Qwen/Qwen3-Embedding-4B` over sentence-level passages | the reranker exists and is off: no measured gain |
 
 All three run on the campus GPU server
-([ADR 0018](adr/0018-local-models-decide-and-the-adapter-answers.md)).
+([ADR 0018](adr/0018-local-models-decide-and-the-adapter-answers.md));
+hardware, versions and serving flags are in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 ## Data she gives the system
 

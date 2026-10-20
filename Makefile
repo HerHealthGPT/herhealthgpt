@@ -191,7 +191,7 @@ migrate:
 # Uses the package entry point (not the uvicorn CLI) so Windows gets a
 # psycopg-compatible event loop.
 serve:
-	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api python -m herhealth_backend.app
+	set -a; . ./infra/envs/backend.env; set +a; $(UV) run --extra api --extra retrieval python -m herhealth_backend.app
 
 # The repo-hygiene guard — see docs/security/0001-*.md. Stdlib only, so it
 # runs without the virtualenv and without a network. CI runs the same command

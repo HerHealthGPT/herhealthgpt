@@ -4,9 +4,21 @@
 **Question it answers:** how does a sentence typed by a user become "see a GP
 this week", and how do we know that answer is not made up?
 
-Everything here is taken from the real files. Numbers current at **2026-08-05**:
-37 features, 12 conditions, 89 evidence rows, 14 red-flag rules, 5 sources,
-**103/103 quotes verified verbatim**, 398 tests passing.
+Everything here is taken from the real files. **Counts on 2026-10-20:** 39
+features, 19 conditions, 150 evidence rows, 17 warning-sign rules, 5 sources.
+Some diagrams and examples below were drawn on 2026-08-05 (37 features, 12
+conditions, 89 rows, 14 rules) and keep those numbers; the structure they show
+has not changed.
+
+> **How the knowledge base is used changed on 2026-08-31
+> ([ADR 0011](adr/0011-controller-free-triage.md), [ADR 0018](adr/0018-local-models-decide-and-the-adapter-answers.md)).**
+> The files, the schema, the graph and the verification (§3, §3a, §4, §7–§10)
+> are exactly as described. §5, §6 and §6a describe the **rule-based
+> controller, which no longer decides**: today the base model decides, shown
+> what her answers match in this graph, the warning signs that have fired or
+> are one answer away, and a ranked menu of questions, and code gates check
+> its reply. The controller is kept for `make eval` and as the design
+> reference. What runs: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
 | Section | |
 |---|---|
@@ -18,7 +30,7 @@ Everything here is taken from the real files. Numbers current at **2026-08-05**:
 | [5. A consultation](#5-how-a-consultation-runs) | End to end |
 | [6. The controller](#6-the-stopping-controller--six-rules-in-order) | Six stopping rules |
 | [6a. The numbers](#6a-the-numbers-explained) | Where every weight and threshold comes from |
-| [7. Red flags](#7-red-flags--14-rules-that-outrank-everything) | The 14 escalation rules |
+| [7. Red flags](#7-red-flags--14-rules-that-outrank-everything) | The escalation rules (17 today) |
 | [8. Verification](#8-how-we-know-the-rows-are-not-made-up) | How we know rows are not invented |
 | [9. Sources](#9-sources-and-why-only-these-five) | And why only these five |
 | [10. Limitations](#10-what-the-knowledge-base-cannot-do) | Stated plainly |
@@ -27,14 +39,17 @@ Everything here is taken from the real files. Numbers current at **2026-08-05**:
 
 ## 1. The one-paragraph version
 
-The system never asks a language model what is wrong with someone. Instead we
+The system never asks a language model what is wrong with someone. We
 hand-authored a small graph: **questions** on one side, **conditions** on the
 other, and **weighted edges** between them, where every edge is a restatement of
-a sentence from a named medical source. A plain-Python controller walks that
-graph — it adds up evidence, decides which question would best separate the
-conditions still in play, and stops when no further question could change the
-advice. The model's only jobs are turning what a user wrote into answers, and
-turning the controller's decision into a sentence in her language.
+a sentence from a named medical source. Each turn, code reads her answers
+against that graph: which evidence rows they match, which warning-sign rules
+have fired or are one answer away, and which question would best separate the
+conditions still in play. The base model is given exactly that, decides
+whether to ask or conclude, and may only answer with ids from these files.
+Code then checks the reply, and escalates in code if a warning sign has fired
+and the model did not. (Until 2026-08-31 a plain-Python controller made the
+decision itself; §6 describes it.)
 
 ---
 
@@ -678,7 +693,7 @@ the fix is a real choice — see
 
 ---
 
-## 7. Red flags — 14 rules that outrank everything
+## 7. Red flags — 14 rules that outrank everything (17 as of 2026-10-20)
 
 ```mermaid
 flowchart LR

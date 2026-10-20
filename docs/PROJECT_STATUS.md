@@ -1,5 +1,10 @@
 # HerHealthGPT — project status
 
+> **Superseded: a snapshot from 2026-08-19, kept as a record.** It describes the
+> rule-based controller era ("model serving does not exist", 135 rows, 16
+> warning-sign rules). Current status: [`ROADMAP.md`](ROADMAP.md). What runs:
+> [`ARCHITECTURE.md`](ARCHITECTURE.md). Checked 2026-10-20.
+
 Three things, in order: what the core system looks like (UML), what's built
 versus what's next, and where we are in the overall build sequence.
 
