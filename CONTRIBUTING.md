@@ -76,8 +76,8 @@ Run from the repo root.
 | `make test` | pytest |
 | `make lint` | ruff across both packages, plus mypy strict on `packages/contracts/` |
 | `make fmt` | ruff format and autofix |
-| `make build` | fetch → clean → chunk → `build/passages.parquet` *(phase 4)* |
-| `make eval` | run the triage controller over the benchmark cases *(phase 3)* |
+| `make index` | build the FAISS retrieval index (needs the embedding server) |
+| `make eval` | the retired controller over the benchmark cases; `make eval-red-flags`, `make eval-languages`, `make trace-turns` measure the live pipeline |
 | `make lock` | re-resolve `uv.lock` after a dependency change |
 | `make sync-check` | fail if `uv.lock` has drifted from the pyproject files |
 

@@ -1,5 +1,11 @@
 # Handoff — 2026-09-02
 
+> **Superseded, kept as a record.** This note was written for one session on
+> 2026-09-02; much of it has since changed (OpenRouter and the selector were
+> removed, the models run on the campus GPU server, production is live). It
+> asks to be deleted once absorbed; that is the team's call. Current state:
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
 Written for the next agent session (Cursor). Repo state at the time of writing:
 branch `frontend`, working tree clean, everything pushed. Delete this file once
 its contents have been absorbed.

@@ -43,12 +43,16 @@ Consequences, all binding:
    [`docs/research/0001`](docs/research/0001-llm-triage-architecture.md) —
    that note's findings still stand and are not retracted by this line; the
    ADR's own risk register restates them unsoftened. The decision is grounded,
-   never free judgement: every turn injects the full text of `red_flags.yaml`
-   plus retrieved evidence-statement and source passages, and the model's only
-   output channel is `TriageDecision`
-   (`packages/contracts/src/herhealth_contracts/decision.py`), a
-   schema-constrained structure enforced by vLLM guided decoding — the one
-   hard rule left, in place of a log-odds score. **The current QLoRA adapter
+   never free judgement: every turn injects the warning-sign rules that have
+   fired or are one answer away (up to 8, from `red_flags.yaml`; none on an
+   opening message with nothing answered yet), the evidence rows her answers
+   match, a ranked menu of questions, and retrieved evidence-statement and
+   source passages. The model's only output channel is `TriageDecision`
+   (`packages/contracts/src/herhealth_contracts/decision.py`). **It is not
+   constrained during generation (no guided decoding):** the model is asked
+   for JSON, and the client parses, repairs, validates and retries
+   (`triage/clients.py`, `triage/vocabulary.py`) — checked after the fact, in
+   place of a log-odds score. Corrected 2026-10-20 from the running code. **The current QLoRA adapter
    (trained on `ft_corpus_v1.jsonl`, 2,700 rows — see below) may not be
    handed this decision as it stands** — it was shown no example where the correct move is a
    clarifying question, which is the documented cause of clarification
@@ -58,8 +62,12 @@ Consequences, all binding:
    2026-10-12: as the decision-maker it returned 0 valid decisions on 30
    first-turn questions, against 23 for the base model. Since
    [ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)
-   the base model (`Qwen/Qwen3.5-9B`, same vLLM process) decides, and the
-   adapter's one job is wording an accepted informational answer.
+   the base model (`Qwen/Qwen3.5-9B`, same vLLM process) decides. **Since
+   2026-10-13 it also writes informational pages** (`HERHEALTH_PAGE_MODEL`
+   unset: the adapter took 95 s and copied passages; the base wrote a page in
+   33 s), so the adapter is not on the product path at all. It answers only in
+   comparison mode B (plain chat, no retrieval, no checks), which is on in
+   production.
 2. **`TriageDecision`'s schema is the deterministic safety net that remains.**
    `ask` requires a `next_feature_id` from `features.yaml`'s closed
    vocabulary; `conclude` requires an `action_code` from `actions.yaml` and,
@@ -90,20 +98,21 @@ Consequences, all binding:
 
 ## Architecture
 
-Monorepo. Four independently deployable services, one contracts package.
+Monorepo. Two deployed services (frontend, backend), one data pipeline, one
+contracts package. The model servers are not in the deploy: they run on the
+campus GPU server (`docs/ARCHITECTURE.md`).
 
 ```
 services/frontend/    Next.js, responsive web app (NOT a PWA — see below)
-services/backend/     FastAPI: triage, tracker, directory, visit prep,
-                      retrieval, safety rules, orchestration
-services/data/        ingestion, evaluation harness, benchmark cases
-packages/contracts/   Pydantic schemas, error codes, safety policy
-packages/types-ts/    TypeScript generated from the OpenAPI spec
+services/backend/     FastAPI: triage (agent, gates, retrieval, safety rules),
+                      accounts, profile, cycle data, kept files, evaluation tools
+services/data/        ingestion, evidence batches, evaluation cases and scripts
+packages/contracts/   Pydantic schemas shared across services
 knowledge/            the seven knowledge files (see below)
+scripts/              serve-models.sh, tunnel-models.sh (GPU server), hygiene
 infra/                compose.yml (local dev), compose.prod.yml (production),
-                      envs/*.env, caddy/, deploy/ (host scripts), terraform/
-                      (AWS). Caddy is kept — now on the EC2 host; CloudWatch
-                      replaces Prometheus for production.
+                      envs/*.env, caddy/, deploy/ (host scripts), model/
+                      (serving config), terraform/ (AWS)
 .github/workflows/    CI (path-filtered) and the production deploy
 ```
 
@@ -112,7 +121,8 @@ offline shell, no install prompt, no web push. Mobile-first responsive layout,
 RTL support for Arabic. Do not add PWA scaffolding, and do not suggest it.
 
 **Import rule:** nothing outside `packages/contracts/` may be imported across
-service boundaries. Enforced by import-linter in CI.
+service boundaries. Kept by review: no import-linter is configured or run
+(checked 2026-10-20), so do not rely on CI to catch a violation.
 
 **No model weights load inside the backend process.** Embedding and reranking
 are HTTP calls to vLLM on the campus GPU box (`scripts/serve-models.sh`,
@@ -140,10 +150,14 @@ Rollback by hand is `git revert` (same pipeline). `terraform apply` is run
 manually, never by CI. Nothing is ever edited directly on the server — the SSM
 shell is for reading logs and diagnosing.
 
-**There is no OpenRouter and no model selector.** Every turn runs on the local
-models through LangChain ([ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)):
-the base model extracts what she said and decides, and the fine-tuned adapter
-words informational answers only (see "The fine-tuned model" below). The served retrieval index (`make index`) never contains quote-only (NHS)
+**The product runs on the local models only.** Every product turn runs on
+them through LangChain ([ADR 0018](docs/adr/0018-local-models-decide-and-the-adapter-answers.md)):
+the base model extracts what she said, decides, and writes informational
+pages. The comparison modes (`HERHEALTH_COMPARISON_MODES`, on in production)
+add a model choice in the chat: A, the base model through OpenRouter (offered
+only when an OpenRouter key is set; none is); B, the fine-tuned adapter as a
+plain chat; C, the product. **Everything that runs, with versions, flags and
+hardware, is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).** The served retrieval index (`make index`) never contains quote-only (NHS)
 passages, and the backend refuses to load one that does. **Production reaches
 the campus models through Cloudflare quick tunnels** (`scripts/tunnel-models.sh`);
 their addresses change when a tunnel restarts, so `tunnel-models.sh watch` runs
@@ -649,7 +663,7 @@ What follows from that, and what does not:
   | translation workflow | `HerHealthGPT-LU_seed/translation_handoff/` — per-row translator, reviewer, status and notes |
   | lineage audit | `EXPERIMENT_LINEAGE_AUDIT.md` — **read this before comparing any two result sets** |
   | published weights | `huggingface.co/herhealthgpt/qwen3.5-9b-herhealth-enfrar-lora-v2` |
-  | weights as served | `/home/jovyan/models/herhealth-lora-v2` on the campus box, registered as `--lora-modules herhealth=…` |
+  | weights as served | `/home/jovyan/Grad-Project/herhealthgpt/herhealth-lora-v2` on the campus box (git-ignored), registered as `--lora-modules herhealth=…` (checked 2026-10-20) |
 
 - **Arabic exists in two registers, and this is an asset that is easy to miss.**
   Every benchmark row carries both Modern Standard Arabic (`ar_text`) and an
@@ -709,15 +723,13 @@ Three consequences bind anyone serving this model:
    Diagnosed and fixed on the campus VM 2026-09-09;
    [`docs/runbooks/uni-server-vllm.md`](docs/runbooks/uni-server-vllm.md) §0.1
    is the full write-up and the first thing to read when a serve misbehaves.
-3. **`max_model_len` must exceed the injected prompt.** A triage turn's system
-   prompt is ~3,200-3,600 tokens *before* retrieval — `DEFAULT_SYSTEM_PROMPT`
-   plus the feature vocabulary plus all of `red_flags.yaml` rendered verbatim
-   plus the JSON shape instruction. 4096 leaves nothing to generate into;
-   8192 is the verified working value. `_chat_completions_body` in
-   `services/backend/src/herhealth_backend/triage/clients.py` sends no
-   `max_tokens`, so vLLM defaults to whatever remains in the window — which
-   turns an oversized prompt into a validation failure and a retry loop
-   rather than a clean error. That gap is open.
+3. **`max_model_len` must exceed the injected prompt.** A decision prompt was
+   15,000–21,600 characters in the 2026-10-19 traces, before retrieved
+   passages. The server runs with `--max-model-len 32768`, and every call now
+   sets `max_tokens` (`triage/chain.py`: extract 300, decide 1,200, page
+   1,100), so an oversized prompt fails cleanly instead of eating the reply's
+   room. (Earlier, with 4096 and no `max_tokens`, it turned into a retry
+   loop.)
 
 ## Language scope
 
@@ -762,7 +774,8 @@ non-zero; CI does not run it.
 - Python 3.12, ruff, mypy strict on `packages/contracts/`
 - Conventional commits, scoped: `feat(data):`, `fix(knowledge):`
 - Short branches, under two days
-- CODEOWNERS per folder — check before editing outside your area
+- No CODEOWNERS file exists (checked 2026-10-20); ask the owning teammate before
+  editing outside your area
 - **Stop after each numbered deliverable and wait.**
 - **Never generate more than 10 clinical rows without showing them for review.**
 - Ask before any network call
