@@ -62,7 +62,7 @@ Built once at start-up by `app/main.py:186` (`_build_triage_agent`).
 | 4 | Compose the prompt: system prompt + turn context + her profile and cycle data + "reply in her language" | code | `agent.py:100`, `:747`–`:789` |
 | 5 | Decide: `ask`, `conclude`, `inform` or `decline`, as JSON | base model `Qwen3.5-9B`; the LangChain client adds the retrieved passages and the JSON shape, parses, repairs, rejects wording and checks the closed vocabulary, retrying with feedback | `agent.py:790`, `chain.py:137`, `clients.py:349`, `vocabulary.py:70` |
 | 6 | Gates, in order; each sends the reply back once, and some then act in code | code | `agent.py:795`–`:811` |
-| 7 | On an informational answer: search again per page section and have the adapter write the page | adapter `herhealth` (LoRA on the base, vLLM) | `agent.py:1215`, `chain.py:548` |
+| 7 | On an informational answer: search again per page section and write the page | base model (`HERHEALTH_PAGE_MODEL` unset; the adapter is not used) | `agent.py:1215`, `chain.py:548` |
 | 8 | On an informational answer: which features the question is about, for "when to get help" | base model | `agent.py:831`, `chain.py:323` |
 
 The gates (step 6):
@@ -102,8 +102,8 @@ characters (saved per call in `build/trace/prompts/`): the system prompt
 turn context, her profile and cycle data, and the language line. The
 retrieved passages and the JSON format are added after it by the LangChain
 client. The extract step sees only the conversation and the feature list.
-The adapter sees only the draft answer and the passages grouped by page
-section.
+The page writer (the base model; the fine-tuned adapter is not on this path)
+sees only the draft answer and the passages grouped by page section.
 
 ## The ten cases
 
@@ -126,7 +126,7 @@ section.
   0.79). The extract step found nothing about her. The decision model (30 s)
   chose `inform`, using the PCOS topic block. Five more searches fetched
   passages per page section (overview, symptoms, causes, when to see a
-  doctor, treatment), and the adapter wrote the page from the draft and
+  doctor, treatment), and the base model wrote the page from the draft and
   those passages (36 s). The topic reader picked 10 PCOS features, from which
   code built "when to get help". Shown: a sectioned page citing womenshealth,
   MedlinePlus and NICHD passages.
@@ -157,7 +157,7 @@ section.
 |---|---|---|---|
 | Decision model (base) | 49 | 566 s | 11.5 s |
 | Extract step (base) | 35 | 43 s | 1.2 s |
-| Answer writer (adapter) | 1 | 36 s | 36 s |
+| Page writer (base) | 1 | 36 s | 36 s |
 | Topic reader (base) | 1 | 5 s | 4.9 s |
 | Retrieval (embedding + FAISS) | 40 | 3.5 s | 0.09 s |
 

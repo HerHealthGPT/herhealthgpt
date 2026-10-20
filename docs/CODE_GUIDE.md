@@ -4,11 +4,18 @@ Every module in the repository, what it is responsible for, and why it is shaped
 that way. Read [`CLAUDE.md`](../CLAUDE.md) first for *what* the system does; this
 document covers *how the code is arranged*.
 
-**Status:** Phase 2. `packages/contracts`, `services/data` and the triage core of
-`services/backend` exist. The backend's API layer has begun with a walking
-skeleton — a FastAPI app, a PostgreSQL connection and a health check (the `app/`
-package and `migrations/`); the Accounts domain built on it does not exist yet.
-`services/frontend` and `services/model` do not exist at all.
+**Status (2026-10-20).** Everything is built and deployed: contracts, the data
+pipeline, the backend (triage agent, accounts, cycle data, kept files), the
+frontend, and the model servers on the campus GPU server. What runs, with
+versions: [`ARCHITECTURE.md`](ARCHITECTURE.md); the path of one message, file
+by file: [`experiments/2026-10-19-traced-consultations.md`](experiments/2026-10-19-traced-consultations.md).
+
+This guide was written when the rule-based controller decided. Its sections
+on `packages/contracts`, `services/data` and the knowledge files are current;
+the backend's running path is summarised in
+[The running path](#the-running-path-since-adr-0011) below, and the sections on
+`triage/state.py`, `engine.py` and `dialogue.py` describe the retired
+controller, kept for `make eval`.
 
 ---
 
@@ -48,17 +55,16 @@ ingest_targets.yaml          what to fetch, and the rules
         │                      raw/{source}/{date}/manifest.jsonl
         │                      services/data/ingest.lock.jsonl (tracked)
         ▼
-   make clean  ─────────────▶  build/clean/*.json              (phase 4, not built)
+   make clean  ─────────────▶  build/clean/*.json
         │                      sectioned text, boilerplate stripped
         ▼
-   make build  ─────────────▶  build/passages.parquet          (phase 4, not built)
-        │                      build/conflicts.jsonl
+   make index  ─────────────▶  build/index (FAISS)             (needs the embedding server)
         ▼
    make validate ───────────▶  knowledge/ checked against the schemas
         │
         ├──────────────────▶  make triage — one scripted consultation, traced
         ▼
-   make eval   ─────────────▶  benchmark metrics               (phase 3, not built)
+   make eval   ─────────────▶  the retired controller's metrics (eval-red-flags, eval-languages: the live pipeline)
 ```
 
 Everything but `build` exists. `build` is an honest stub that exits `2` naming
@@ -379,6 +385,24 @@ everything is worse than no validation step at all.
 Argument parsing only — a table of contents. Every default comes from `paths`.
 
 ---
+
+## The running path (since ADR 0011)
+
+| Module | Responsibility |
+|---|---|
+| `app/main.py` | builds the FastAPI app and the `TriageAgent` (`_build_triage_agent`): which model plays which role, the gates switched on |
+| `app/config.py` | every `HERHEALTH_*` setting and its default |
+| `app/triage/routes.py` | `POST /triage/turn`: load the chat, her profile and cycle data, run the agent, check and repair the reply, attach sources, store |
+| `app/accounts/` | registration, sign-in, sessions, email codes, Google, profile, `cycle_import.py`, `stored_files.py` |
+| `triage/agent.py` | `TriageAgent.run_turn`: retrieve, extract, build the turn context, compose the prompt, decide, the six gates, information pages |
+| `triage/chain.py` | LangChain clients per role: extract, decide, page writer, topic reader; temperature 0, thinking off |
+| `triage/clients.py` | parse a reply into `TriageDecision`, repair what is safe, reject case-note wording, retry feedback |
+| `triage/vocabulary.py`, `provenance.py` | check every id against the knowledge files and every citation against this turn's passages; cap urgency by sources |
+| `triage/context.py` | the turn context (answers, matched evidence, warning signs, question menu) and "when to get help" |
+| `triage/retrieval.py` | the FAISS retriever over `build/index`, the embedding client, the optional reranker |
+| `triage/cycle_data.py` | imported cycle data: freshness, pre-filled answers, the code-written breakdown |
+| `triage/language.py` | which language to reply in |
+| `evaluation/` | red-flag recall, cross-language agreement, decision runs, traces |
 
 ## `services/backend`
 

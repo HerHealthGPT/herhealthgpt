@@ -1,20 +1,16 @@
 ---
-status: runbook
+status: historical
 ---
 
 # Runbook: vLLM + LoRA on a friend's GPU PC (UltraViewer / remote desktop)
 
-> **Retrieval changed on 2026-10-12 ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md)).**
-> `services/model`, port 8001, `bge-m3`, `HERHEALTH_MODEL_SERVICE_URL`,
-> `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
-> The retriever runs inside the backend over an index built by `make index`,
-> and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
-> `HERHEALTH_RERANKER_URL`). **OpenRouter and the Base / Fine-tuned selector
-> were removed the same day ([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)):**
-> the mode is `HERHEALTH_TRIAGE_MODE=vllm`, the base model decides and the
-> adapter words informational answers. Passages below that describe the
-> retrieval service, its image, the published index, OpenRouter or the
-> selector are history and have not been rewritten yet.
+> **Historical: this is not how the system runs.** The models are served on
+> the campus GPU server ([`uni-server-vllm.md`](uni-server-vllm.md)) and the
+> whole stack is described in [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
+> (checked 2026-10-20). This file records an earlier, alternative way of
+> serving the adapter (a friend's Windows PC over remote desktop). Its commands still mention removed pieces
+> (OpenRouter, the Base / Fine-tuned selector, a retrieval service on `:8001`,
+> `bge-m3`) and are kept only as a record.
 
 Use this when you are sitting at a friend's Windows PC over UltraViewer and
 cannot copy-paste from their terminal. **Transfer this file** (or

@@ -1,5 +1,26 @@
 # The new flow, explained
 
+> **Written for a meeting, before the system was built as it now runs.** The
+> plain-language explanations still hold, but five things differ from what
+> runs today (checked 2026-10-20):
+>
+> 1. **The base model decides, not the fine-tuned one.** `Qwen/Qwen3.5-9B`
+>    reads her message, decides, and since 2026-10-13 also writes information
+>    pages. The fine-tuned adapter is served but answers only in comparison
+>    mode B ([ADR 0018](adr/0018-local-models-decide-and-the-adapter-answers.md)).
+> 2. **Not every warning-sign rule is sent every time.** There are 17 rules;
+>    the model sees those that have fired or are one answer away (up to 8),
+>    and code escalates when a rule has fired and the model did not.
+> 3. **Four reply shapes, not two:** `ask`, `conclude`, `inform` (answer a
+>    general question) and `decline` (off-topic).
+> 4. **The reply is checked after it is written, not constrained while it is
+>    written** (no guided decoding), and gates send it back when needed.
+> 5. **Retrieval uses `Qwen3-Embedding-4B`**, not `bge-m3`.
+>
+> What runs, in full: [`ARCHITECTURE.md`](ARCHITECTURE.md). One message
+> traced through every layer:
+> [`experiments/2026-10-19-traced-consultations.md`](experiments/2026-10-19-traced-consultations.md).
+
 For the meeting. Uses the real component names throughout — every technical
 term is explained the first time it appears, in brackets, so this is readable
 without an AI or software background but still says exactly what's being
@@ -431,9 +452,9 @@ produced 18 example conversations (one per condition currently authored in
 
 | Term | Plain meaning |
 |---|---|
-| Embedding model / semantic search model | A small AI that turns text into numbers so similar meanings can be matched quickly. Here: `bge-m3`. |
+| Embedding model / semantic search model | A small AI that turns text into numbers so similar meanings can be matched quickly. Here: `Qwen3-Embedding-4B`. |
 | Retrieval / RAG | Fetching real, cited facts before asking an AI to answer, instead of trusting its memory. |
-| Reasoning model | The AI that actually decides what to ask or conclude. Here: the fine-tuned paper model + its base model. |
+| Reasoning model | The AI that actually decides what to ask or conclude. Here: the base model, `Qwen3.5-9B`. |
 | QLoRA | A lightweight way to fine-tune a large AI model by training a small add-on piece instead of retraining the whole thing. |
 | Structured output schema (`TriageDecision`) | A strict form the AI's reply must fit, checked by code, so it can't invent an answer outside the allowed options. |
 | Deterministic controller | The old plain-code decision logic being removed — always the same output for the same input, no AI involved. |
