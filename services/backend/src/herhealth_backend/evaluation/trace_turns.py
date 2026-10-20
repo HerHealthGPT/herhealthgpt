@@ -229,7 +229,7 @@ def run_case(agent: TriageAgent, case: dict[str, Any], prompt_dir: Path) -> dict
             retrieval=Recorder(agent.retrieval, "retrieval (embedding + FAISS)", log, save),
             reasoning=Recorder(agent.reasoning, "decision model (base, vLLM)", log, save),
             extractor=Recorder(agent.extractor, "extract step (base, vLLM)", log, save),
-            answer_writer=Recorder(agent.answer_writer, "answer writer (adapter, vLLM)", log, save),
+            answer_writer=Recorder(agent.answer_writer, "page writer (base, vLLM)", log, save),
             symptom_topics=Recorder(agent.symptom_topics, "topic reader (base, vLLM)", log, save),
         )
         history.append(Message(role="user", content=message))

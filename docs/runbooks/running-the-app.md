@@ -2,341 +2,121 @@
 status: runbook
 ---
 
-# Runbook: running the whole app, on both machines
+# Runbook: running the whole app locally
 
-> **Retrieval changed on 2026-10-12 ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md)).**
-> `services/model`, port 8001, `bge-m3`, `HERHEALTH_MODEL_SERVICE_URL`,
-> `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
-> The retriever runs inside the backend over an index built by `make index`,
-> and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
-> `HERHEALTH_RERANKER_URL`). **OpenRouter and the Base / Fine-tuned selector
-> were removed the same day ([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)):**
-> the mode is `HERHEALTH_TRIAGE_MODE=vllm`, the base model decides and the
-> adapter words informational answers. Passages below that describe the
-> retrieval service, its image, the published index, OpenRouter or the
-> selector are history and have not been rewritten yet.
+Rewritten 2026-10-20 from how it actually runs. What runs and why:
+[`../ARCHITECTURE.md`](../ARCHITECTURE.md). The earlier version (OpenRouter,
+the Base / Fine-tuned tabs, a retrieval service on `:8001`) described a stack
+that no longer exists; it is in git history.
 
-Everything below was executed end to end on **2026-09-09** and the results are
-what this file records — not what the design intends. Two machines:
+Two ways to run it:
 
-| Machine | Runs | Needed for |
+| Setup | Models | Backend, frontend, database |
 |---|---|---|
-| **Campus VM** (Lobot JupyterHub, `group-digi2026-g1`) | vLLM + the `herhealth` LoRA | the **Fine-tuned** tab only |
-| **Your laptop** | Postgres, retrieval, backend, frontend | everything |
+| **A. All on the campus pod** (how it runs today) | vLLM on the pod, `127.0.0.1:8002/8003` | on the pod too |
+| **B. Laptop** | the pod's models through the tunnel addresses | on the laptop |
 
-The laptop stack works on its own. **Base** chat runs entirely off OpenRouter and
-never touches campus. Start the VM only when you need the Fine-tuned tab.
+Either way the models run on the campus GPU server; nothing else needs a GPU.
 
----
-
-## Part 1 — Campus VM (skip if you only need Base)
-
-Full detail, including the flags and why each one exists, is in
-[uni-server-vllm.md](uni-server-vllm.md). The short version:
-
-1. Open JupyterLab → File → New → Terminal. **Leave the tab open** — closing it
-   kills the container and vLLM with it.
-2. Clean, then start, using blocks A and B of
-   [uni-server-vllm.md §0](uni-server-vllm.md).
-3. Wait for `Application startup complete.` (~30 s).
-4. Verify on the VM:
-   ```bash
-   curl -s http://127.0.0.1:8000/v1/models
-   ```
-   Must list `Qwen/Qwen3.5-9B` and `herhealth`, with `herhealth`'s `parent`
-   set to the base model.
-5. Copy the proxy token — it **rotates on every Jupyter restart**:
-   ```bash
-   echo "$JUPYTERHUB_API_TOKEN"
-   ```
-6. Confirm the route your laptop will use, from the VM:
-   ```bash
-   curl -sS -H "Authorization: token ${JUPYTERHUB_API_TOKEN}" \
-     "https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000/v1/models"
-   ```
-
-**Never put the pod IP (`10.244.x.x`) in any laptop config.** It is reachable
-only from inside the Kubernetes cluster.
-
----
-
-## Part 2 — Laptop configuration
-
-`infra/envs/backend.env` (gitignored; copy from `backend.env.example`). The
-values that matter for this runbook:
-
-```env
-HERHEALTH_DATABASE_URL=postgresql+psycopg://herhealth:herhealth@localhost:5432/herhealth
-HERHEALTH_SESSION_SECRET=<openssl rand -hex 32>
-HERHEALTH_TRIAGE_MODE=openrouter
-OPENROUTER_API_KEY=sk-or-...
-HERHEALTH_MODEL_SERVICE_URL=http://127.0.0.1:8001
-HERHEALTH_COOKIE_SECURE=false
-HERHEALTH_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-
-# Fine-tuned tab only
-HERHEALTH_MODEL_SELECTOR=on
-HERHEALTH_VLLM_URL=https://lobot.cs.queensu.ca/user/group-digi2026-g1/proxy/8000
-HERHEALTH_VLLM_MODEL=herhealth
-HERHEALTH_VLLM_API_KEY=<JUPYTERHUB_API_TOKEN from Part 1 step 5>
-```
-
-Two things that trip people up:
-
-- **`HERHEALTH_TRIAGE_MODE` stays `openrouter` even when using Fine-tuned.**
-  The mode selects the *default*; the tab selects the client. Base →
-  OpenRouter, Fine-tuned → `HERHEALTH_VLLM_*`.
-- **No trailing slash on `HERHEALTH_VLLM_URL`.** The client appends
-  `/v1/chat/completions` itself.
-
-Prerequisites: [uv](https://docs.astral.sh/uv/), Docker Desktop, Node 20+, and
-a built index at `build/index/`. Confirm the index with:
+## 0. The models (campus pod)
 
 ```bash
-cat build/index/manifest.json     # 4,454 passages / 1024 dims / BAAI/bge-m3
+scripts/serve-models.sh start      # chat :8002 (base + adapter), embed :8003, rerank :8004
+scripts/serve-models.sh check      # are they up, and do they require the key?
 ```
 
----
-
-## Part 3 — Start the laptop stack
-
-**Order matters.** Every triage turn calls retrieval on `:8001` *before* the
-reasoning model, so a backend without retrieval returns `502` no matter how
-healthy campus is.
-
-### 1. Postgres
+Settings are in `infra/model/serve.conf`; the bearer key is
+`HERHEALTH_MODELS_API_KEY` in `infra/envs/models.env`. Details and
+troubleshooting: [`uni-server-vllm.md`](uni-server-vllm.md). Check:
 
 ```bash
-docker compose -f infra/compose.yml up -d postgres
-docker exec infra-postgres-1 pg_isready -U herhealth      # "accepting connections"
+K=$(sed -n 's/^HERHEALTH_MODELS_API_KEY=//p' infra/envs/models.env)
+curl -s -H "Authorization: Bearer $K" http://127.0.0.1:8002/v1/models   # Qwen/Qwen3.5-9B and herhealth
 ```
 
-### 2. Migrations (first run, and after pulling new ones)
+## 1. Configure `infra/envs/backend.env`
+
+Copy `infra/envs/backend.env.example` and fill in. The ones that matter:
+
+| Key | Setup A | Setup B |
+|---|---|---|
+| `HERHEALTH_DATABASE_URL` | `postgresql+psycopg://…@127.0.0.1:5432/herhealth` | same, on the laptop |
+| `HERHEALTH_SESSION_SECRET` | `openssl rand -hex 32` | same |
+| `HERHEALTH_TRIAGE_MODE` | `vllm` | `vllm` |
+| `HERHEALTH_VLLM_URL` | `http://127.0.0.1:8002` | the `MODELS_CHAT_URL` tunnel address |
+| `HERHEALTH_EMBEDDING_URL` | `http://127.0.0.1:8003` | the `MODELS_EMBED_URL` tunnel address |
+| `HERHEALTH_VLLM_API_KEY` / `HERHEALTH_MODELS_API_KEY` | the models key | same |
+| `HERHEALTH_INDEX_DIR` | `build/index` | `build/index` (copy it from the pod) |
+| `HERHEALTH_UPLOAD_DIR` | e.g. `build/uploads` | same; empty switches kept files off |
+| `HERHEALTH_COOKIE_SECURE` | `false` (plain HTTP) | `false` |
+| `HERHEALTH_EMAIL_SENDER` | `console` (codes printed to the log) or `ses` | same |
+| `HERHEALTH_COMPARISON_MODES` | `on` to show the mode choice in the chat | same |
+
+Never print or commit this file; it holds secrets.
+
+## 2. Database
+
+The pod has no Docker. PostgreSQL 16 runs from a local install:
 
 ```bash
-set -a; . ./infra/envs/backend.env; set +a
-cd services/backend && uv run --extra api alembic upgrade head
-cd ../..
+# Setup A (pod), once a session if it is not already running
+pg_ctl -D /home/jovyan/herhealth-pgdata -o "-c listen_addresses=127.0.0.1 -c port=5432" -l /tmp/pg.log start
+# Setup B (laptop with Docker)
+make db-up
 ```
 
-`alembic current` should print a revision ending `(head)` — as of 2026-09-09
-that is `0009_dob_and_health_note`.
-
-### 3. Retrieval — `services/model` on :8001
+Then apply the migrations (`0001`–`0012`):
 
 ```bash
-export HERHEALTH_INDEX_DIR="$(pwd)/build/index"
-uv run --package herhealth-model python -m herhealth_model
+make migrate
 ```
 
-First load of `bge-m3` takes **1–3 minutes**. Wait for it:
+## 3. Backend (`:8000`)
 
 ```bash
-curl -s http://127.0.0.1:8001/health          # {"status":"ok"}
+make serve          # loads backend.env; needs the api and retrieval extras
+curl -s http://127.0.0.1:8000/health    # {"status":"ok"}
 ```
 
-**Do not start the backend until this answers.** Measured 2026-09-09: it took
-~35 s to become healthy, while the backend was ready in under 15 s — so the
-backend comes up *first* and looks fine while every turn still 502s.
+On the pod, `uv` needs its environment outside the repository:
+`export UV_PROJECT_ENVIRONMENT=/tmp/herhealth-venv UV_CACHE_DIR=/tmp/uv-cache`
+before any `uv` or `make` command.
 
-### 4. Backend — FastAPI on :8000
-
-```bash
-set -a; . ./infra/envs/backend.env; set +a
-export HERHEALTH_KNOWLEDGE_DIR="$(pwd)/knowledge"
-uv run --extra api --package herhealth-backend python -m herhealth_backend.app
-```
-
-```bash
-curl -s http://127.0.0.1:8000/health          # {"status":"ok"}
-```
-
-Restart this after **any** change to `HERHEALTH_VLLM_*` or
-`HERHEALTH_MODEL_SELECTOR`.
-
-### 5. Frontend — Next.js on :3000
+## 4. Frontend (`:3000`)
 
 ```bash
 cd services/frontend
-npm install        # first time only
-npm run dev
+npm ci
+npm run dev                 # or: npm run build && npx next start -p 3000
 ```
 
-Next takes ~50 s to serve its first request. <http://localhost:3000>
+The frontend calls `/api/*`, which Next.js forwards to `BACKEND_URL`
+(default `http://localhost:8000`). Open http://localhost:3000, register, and
+use the code printed in the backend log if the email sender is `console`.
 
-### PowerShell equivalent for steps 2–4
-
-`set -a; . ./file` is Git Bash. In PowerShell, load the env file like this:
-
-```powershell
-Get-Content .\infra\envs\backend.env | ForEach-Object {
-  $line = $_.Trim()
-  if (-not $line -or $line.StartsWith('#')) { return }
-  $i = $line.IndexOf('=')
-  if ($i -lt 1) { return }
-  Set-Item -Path ("Env:" + $line.Substring(0, $i).Trim()) -Value $line.Substring($i + 1).Trim()
-}
-```
-
----
-
-## Part 4 — Verify, without opening a browser
-
-### The whole stack in one block
+## 5. Check the whole path without a browser
 
 ```bash
-printf "postgres  %s\n" "$(docker exec infra-postgres-1 pg_isready -U herhealth 2>&1 | tail -1)"
-printf "model     %s\n" "$(curl -s -m 5 http://127.0.0.1:8001/health)"
-printf "backend   %s\n" "$(curl -s -m 5 http://127.0.0.1:8000/health)"
-printf "frontend  HTTP %s\n" "$(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:3000/)"
-
-set -a; . ./infra/envs/backend.env; set +a
-curl -s -m 20 -H "Authorization: Bearer $HERHEALTH_VLLM_API_KEY" \
-  "$HERHEALTH_VLLM_URL/v1/models"
+make trace-turns CASE=T05-emergency-en   # one consultation through every layer
 ```
 
-Expected, all four green plus both model ids from campus.
-
-### Retrieval on its own
-
-```bash
-curl -s -X POST http://127.0.0.1:8001/search \
-  -H "Content-Type: application/json" \
-  -d '{"query":"irregular periods and pelvic pain","k":3}'
-```
-
-Each hit must carry a real `feature_id` and `condition_id` — not just a
-`passage_id`. If they are null the prompt cannot name a feature, and the model
-will invent one.
-
-### The full RAG + Fine-tuned path
-
-`/triage/*` requires a signed-in session, so the fastest end-to-end check
-drives the clients directly — the same three objects `routes.py` wires up:
-
-```python
-from pathlib import Path
-import os
-from herhealth_contracts.loading import load_knowledge_base
-from herhealth_backend.triage.agent import Message, TriageAgent
-from herhealth_backend.triage.clients import HttpRetrievalClient, VllmReasoningClient
-from herhealth_backend.triage.vocabulary import validate_against_knowledge_base
-
-base = load_knowledge_base(Path(os.environ["HERHEALTH_KNOWLEDGE_DIR"]))
-agent = TriageAgent(
-    base=base,
-    reasoning=VllmReasoningClient(),                        # campus LoRA
-    retrieval=HttpRetrievalClient(base_url="http://127.0.0.1:8001"),
-)
-turn = agent.run_turn([Message(role="user", content="I've had irregular periods for three months.")])
-validate_against_knowledge_base(turn.decision, agent.base, turn.retrieved)   # what the API does
-print(turn.decision)
-```
-
-**`validate_against_knowledge_base` is the step that matters.** Without it the
-check is far more optimistic than the app: `TriageDecision` alone does *not*
-enforce the closed vocabularies, and a decision that parses can still be
-rejected by the route as a `ClosedVocabularyViolation` → `502`.
-
-### In the browser
-
-<http://localhost:3000/chat> → sign in → set date of birth if prompted (the age
-band is injected into the triage prompt) → **new** chat → pick **Base** or
-**Fine-tuned** → send *"I've had irregular periods for three months."*
-
-Tabs lock after the first user message in a session, so choose before sending.
-
----
-
-## Part 5 — What the Fine-tuned tab actually does today
-
-Measured 2026-09-09 over repeated identical runs of the same in-scope opening
-message, through the full retrieve → reason → validate path.
-
-**Before the fallback landed: 3 of 4 runs returned 200, the fourth was a 502.**
-Latency 16.5 s – 63 s per turn.
-
-**After (2026-09-09, same message, same method): 4 of 4 returned 200**, with the
-base-model fallback firing exactly once — on the run that previously failed.
-Latency 28.8 s / **101.6 s** / 47.1 s / 36.0 s. That 101.6 s is the fallback
-path: `VllmReasoningClient` spends all three of its own corrective retries
-against the adapter before `FallbackReasoningClient` hands over to OpenRouter,
-so a recovered turn costs roughly the failed attempt *plus* a fresh one. It fits
-inside `REASONING_TIMEOUT_SECONDS` (150 s), but not with much room — if turns
-start timing out, lowering `MAX_DECISION_ATTEMPTS` for the vLLM primary is the
-lever, because handing over sooner is cheaper than retrying a model that is
-failing for structural reasons.
-
-The failure modes below are what the fallback now absorbs. They have not gone
-away; they are recovered from.
-
-That is the honest state of the integration. Three distinct causes, all
-observed:
-
-1. **`citations` omitted on an `ask`.** By far the most common. The model
-   decides to ask a clarifying question and sends no citation, which
-   `TriageDecision` rejects — *"a decision must be grounded in at least one
-   citation or a red_flag_id"*. `_decide_via_chat_completions` retries up to
-   `MAX_DECISION_ATTEMPTS` (3) with corrective feedback appended. Usually the
-   retry fixes it; run 3 exhausted all three attempts and became a 502.
-2. **`"conclude": false` sent as an extra key.** The model treats the
-   `type` values as boolean flags — `extra_forbidden`. Recovered on retry.
-3. **Out-of-vocabulary condition ids.** One run returned
-   `matching_conditions` including **`menopause`**, which is *not* in
-   `conditions.yaml` — the real id is `perimenopause`. `TriageDecision`
-   accepted it; only `validate_against_knowledge_base` catches it, as a
-   `ClosedVocabularyViolation` → 502.
-
-None of this is the model server misbehaving — campus vLLM answered every
-request correctly. It is the JSON contract being enforced by validation on
-receipt rather than by constrained decoding, which is the documented gap in
-[ADR 0011](../adr/0011-controller-free-triage.md)'s migration checklist item 7.
-
-**Cases 1 and 2 now fail over to the base model**; case 3 does not.
-`ClosedVocabularyViolation` is raised by `routes.py` *after* the client returns,
-so `FallbackReasoningClient` never sees it — that route retries against the same
-client instead. An out-of-vocabulary condition id is therefore still a possible
-502.
-
-**The per-answer "unreviewed model" notice was removed on 2026-09-09.** The
-Fine-tuned option is `reviewed=True`, so `UnreviewedModelNotice` renders
-nothing. The adapter's training did not change, and neither did anything in
-Part 5 above; what still keeps it out of a demo is `HERHEALTH_MODEL_SELECTOR`
-being off by default, and `default_model_id` still resolving to the base
-model.
-
-**Two known-and-expected behaviours that are not defects:**
-
-- The adapter frequently **concludes without asking first**. It is
-  phrasing-trained only; `gold_seeds_styled.csv` contains no example where the
-  correct move is a clarifying question. See CLAUDE.md.
-- The out-of-scope path works. *"Who won the football match last night?"*
-  correctly returned `type=decline` with no citations and no action code, in
-  7.6 s.
-
----
+It builds the agent as the API does and prints the outcome; the full trace is
+in `build/trace/`.
 
 ## Troubleshooting
 
-| Symptom | Cause and fix |
+| Symptom | Cause, fix |
 |---|---|
-| `502` / `WinError 10061` on every turn | `:8001` is not listening. It is slower to start than the backend — check `curl http://127.0.0.1:8001/health` first, always. |
-| `502` with `ClosedVocabularyViolation` in the backend log | The model used a feature/condition/red-flag id outside the closed vocabulary. Expected at some rate today — see Part 5. |
-| `502` with `malformed JSON` after 3 attempts | The retry loop was exhausted, usually on the missing-citation rule. Retry the message. |
-| **Fine-tuned** tab greyed out | `HERHEALTH_VLLM_URL` unset, or the backend was not restarted after setting it. Restart, then hard-refresh so `GET /triage/models` reloads. |
-| `504 Gateway Time-out` from the Lobot proxy | The Hub cut the request at ~60 s. Warm the LoRA with a short curl on the VM first, then retry. |
-| Fine-tuned worked yesterday, 403 today | `JUPYTERHUB_API_TOKEN` rotated. Re-copy it (Part 1 step 5), update `backend.env`, restart the backend. |
-| Everything on the VM is gone | The Jupyter server was culled. Re-run [uni-server-vllm.md §0](uni-server-vllm.md); the token will have rotated too. |
-| Model replies are `!!!!!!!` | Custom all-reduce corrupting TP output. [uni-server-vllm.md §0.1](uni-server-vllm.md). |
-
----
+| Chat answers "not configured" (503) | `HERHEALTH_TRIAGE_MODE` is not `vllm`, or the index is missing at `HERHEALTH_INDEX_DIR` (run `make index`) |
+| 502 on every chat turn | the model servers or the tunnel are down: `serve-models.sh check`, `tunnel-models.sh status` |
+| Replies of `!!!!!!` | the chat server was started without `--disable-custom-all-reduce` ([`uni-server-vllm.md`](uni-server-vllm.md) §0.1) |
+| 401 from a model server | the key in `backend.env` does not match `models.env` |
+| Sign-in works but you are logged straight out | `HERHEALTH_COOKIE_SECURE` must be `false` on plain HTTP |
+| `make serve` fails importing LangChain or FAISS | run with `--extra retrieval` (the Makefile does) |
 
 ## Shutting down
 
 ```bash
-# laptop: Ctrl+C the frontend, backend and model terminals, then
-docker compose -f infra/compose.yml down
-
-# VM: stop vLLM (or just close JupyterLab, which kills it anyway)
-kill "$(cat /home/jovyan/vllm.pid)"
+# backend and frontend: Ctrl+C, or kill by PID (list with: ps -eo pid,args | grep -E "[n]ext-server|[h]erhealth_backend")
+scripts/serve-models.sh stop     # only if nobody else needs the models
 ```

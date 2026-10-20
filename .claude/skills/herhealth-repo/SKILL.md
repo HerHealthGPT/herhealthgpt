@@ -10,30 +10,34 @@ description: >
 
 ## Layout
 
-services/frontend/    Next.js PWA
-services/backend/     FastAPI: triage, tracker, retrieval, safety, orchestration
-services/data/        ingestion, evaluation harness, benchmark cases
-packages/contracts/   Pydantic schemas, error codes, safety policy
-packages/types-ts/    TypeScript types generated from OpenAPI
+services/frontend/    Next.js responsive web app (NOT a PWA), en / ar / fr
+services/backend/     FastAPI: triage agent and gates, retrieval, accounts,
+                      cycle data, kept files, evaluation tools
+services/data/        ingestion, evidence batches, evaluation cases and scripts
+packages/contracts/   Pydantic schemas shared across services
 knowledge/            features.yaml conditions.yaml evidence.csv red_flags.yaml
                       sources.yaml weights.yaml actions.yaml
-infra/                compose.yml, envs/*.env, Caddy, Prometheus
-.github/workflows/    path-filtered CI
+scripts/              serve-models.sh, tunnel-models.sh (GPU server), hygiene
+infra/                compose files, envs/*.env, Caddy, deploy/, model/, terraform/
+.github/workflows/    path-filtered CI and the deploy
+
+What runs, with versions: docs/ARCHITECTURE.md.
 
 ## Import rule
 
 Nothing outside packages/contracts/ may be imported across service boundaries.
-Enforced by import-linter in CI. A service needing something from another service
+Kept by review: no import-linter runs (checked 2026-10-20). A service needing something from another service
 means the thing belongs in contracts, or the boundary is wrong.
 
 ## CI
 
-Every workflow uses path filters. A frontend change must not rebuild the model
-image. Always add the paths: key when creating a workflow.
+Every workflow uses path filters. A frontend change must not rebuild the backend
+or the backend. Always add the paths: key when creating a workflow.
 
 ## Ownership
 
-CODEOWNERS per folder, not per repo. Check it before editing outside your area.
+There is no CODEOWNERS file (checked 2026-10-20). Ask the owning teammate before
+editing outside your area.
 
 ## Conventions
 

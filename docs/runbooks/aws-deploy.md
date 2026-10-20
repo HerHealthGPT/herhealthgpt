@@ -4,20 +4,15 @@ status: runbook
 
 # Runbook: deploying HerHealthGPT to AWS (one EC2 host, docker compose)
 
-> **Retrieval changed on 2026-10-12 ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md)).**
-> `services/model`, port 8001, `bge-m3`, `HERHEALTH_MODEL_SERVICE_URL`,
-> `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
-> The retriever runs inside the backend over an index built by `make index`,
-> and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
-> `HERHEALTH_RERANKER_URL`). **OpenRouter and the Base / Fine-tuned selector
-> were removed the same day ([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)):**
-> the mode is `HERHEALTH_TRIAGE_MODE=vllm`, the base model decides and the
-> adapter words informational answers. Passages below that describe the
-> retrieval service, its image, the published index, OpenRouter or the
-> selector are history and have not been rewritten yet.
+> **Updated 2026-10-20 against what runs.** Production is three containers
+> (Caddy, frontend, backend); the retrieval index is baked into the backend
+> image from a GitHub release, and the backend reaches the models on the
+> campus GPU server through Cloudflare tunnels (§12). The full picture:
+> [`../ARCHITECTURE.md`](../ARCHITECTURE.md). There is no retrieval service, no
+> bge-m3 and no OpenRouter in the product path any more.
 
-Production is **one EC2 server** running four containers — Caddy, frontend,
-backend, retrieval — plus a managed RDS PostgreSQL database, all in `us-east-1`,
+Production is **one EC2 server** running three containers — Caddy, frontend,
+backend — plus a managed RDS PostgreSQL database, all in `us-east-1`,
 all described in Terraform under `infra/terraform/`. Images come from ECR; a
 GitHub Actions workflow deploys by telling the host, through SSM, to run
 `/opt/herhealth/deploy.sh <git-sha>`.
@@ -29,7 +24,7 @@ GitHub Actions workflow deploys by telling the host, through SSM, to run
                        +----------v-----------+  public subnet
  internet --80/443-->  |  EC2 t3.large (AL2023)|
                        |  caddy ─┬─> frontend:3000
-                       |         └─> backend:8000 ──> retrieval:8001 (internal only)
+                       |         └─> backend:8000 ──> campus models (tunnel, §12)
                        +----------┬-----------+
                                   │ 5432 (from this security group only)
                        +----------v-----------+  private subnets
@@ -53,7 +48,7 @@ GitHub Actions workflow deploys by telling the host, through SSM, to run
 | **No WAF** | Caddy and the app are directly on the internet. | Cost. Rate limits in the app (resend limits, wrong-code lockout) are the only abuse control. |
 | **Control of `main` is control of the server** | The deploy role uploads `deploy.sh`, `compose.prod.yml` and the Caddyfile to `deploy/<sha>/`, and the host runs them **as root**. The custom SSM document restricts the **command line** (one validated `Sha` parameter), **not the content** that runs. So anyone who can push to `main`, or merge into it, can run anything as root on the host, read the database credentials in `/run/herhealth`, and read every user's data. | Deploying on a push needs a path from the repository to the server, and this is its price. The mitigations are procedural, not technical: required reviews and status checks on `main`, no direct pushes, no admin bypass, and few people with write access. |
 | **NHS text excluded from the deployed index** | Production retrieval cannot return NHS passages or the 53 evidence statements backed by NHS rows — see [the NHS decision](#the-nhs-decision). The index is built with `--exclude-quote-only`. | Licence: NHS content is `citable_only`. |
-| **Base model only** | No fine-tuned adapter in production — see [Model](#model-base-only-in-production). | The adapter is not cleared to make triage decisions. |
+| **Models on a campus pod, through quick tunnels** | Every chat turn depends on the campus GPU server and a Cloudflare quick tunnel whose address changes on restart; the watchdog republishes (one redeploy, a few minutes without chat). The product uses the base model only; the fine-tuned adapter answers only in comparison mode B. See §12. | No GPU budget on AWS; the university provides the GPUs. |
 
 ## 0. What already exists (verified read-only, 2026-10-06)
 
@@ -200,13 +195,16 @@ Terraform creates these **empty**; no value ever passes through Terraform or
 its state. Fill each once:
 
 ```bash
-aws secretsmanager put-secret-value --secret-id herhealth/prod/openrouter-api-key \
-  --secret-string 'sk-or-...'
 aws secretsmanager put-secret-value --secret-id herhealth/prod/session-secret \
   --secret-string "$(openssl rand -hex 32)"
 aws secretsmanager put-secret-value --secret-id herhealth/prod/google-client-id \
   --secret-string '<client id>.apps.googleusercontent.com'
 ```
+
+Terraform also creates `herhealth/prod/openrouter-api-key`; **nothing reads
+it any more** (comparison mode A would need it, and is therefore not offered).
+The models key is not here: it is the GitHub secret `MODELS_API_KEY`, which the
+deploy writes to `/run/herhealth/models.env` (§12).
 
 The Google client id is **optional**: leave it unfilled and the site runs
 without Google sign-in (the button is hidden; the backend reports it
@@ -334,119 +332,31 @@ Add `https://herhealthgpt.org` to Google's OAuth client — see
 
 ## 6. The retrieval index
 
-The retrieval image bakes `build/index/` (vectors, passages, manifest). That
-directory is generated and gitignored, so production gets it from the artifacts
-bucket: published **once per version**, read by CI, never edited.
-
-### The NHS decision
-
-`run_index` embeds NHS passages on purpose (we may *read and quote* them, which
-authoring needs), flagging each `may_be_ingested=False`;
-`services/model/src/herhealth_model/app.py` filters them at query time, **before** top-k ranking. But the index *files*
-still contain the NHS text. Decision: **no NHS text may enter the S3 bucket or
-any container image.** So the deployed index is to be built with a flag
-(`--exclude-quote-only`) that drops every `may_be_ingested=False` passage before
-embedding, and `scripts/publish-index.sh` refuses to upload an index that has
-any.
-
-> **Status: implemented** on the `index` command (2026-10-09), with tests in
-> `services/data/tests/test_cli.py`. Without the flag the index still holds NHS
-> text, and `publish-index.sh` refuses it.
-
-What it changes, and what it does not:
-
-- **Retrieval results are identical to today's served behaviour.** The runtime
-  filter already ranked only ingestable passages, so removing the rest at build
-  time returns the same top-k (the only difference would be an exact score tie).
-- **It does shrink the evidence-statement pool.** Each evidence statement embeds
-  its `source_quote` verbatim, so every NHS-backed row is dropped: **53 of the
-  146 rows** in `knowledge/evidence.csv` as of this writing. `adenomyosis` (NHS
-  only) has no evidence statement in production, and neither do the features
-  `abnormal_discharge`, `bloating_or_digestive_symptoms` and
-  `low_mood_or_anxiety` (NHS-only rows). That was already true at query time;
-  production simply cannot return them. Where NHS is the *only* source, a missing
-  statement is the correct representation of a source we may not serve.
-- **The 2026-09-02 evaluation numbers refer to a different, unfiltered index**
-  (4,454 passages, NHS included in the files). They are not the numbers for this
-  deployed index. Quote any retrieval figure with the index it came from.
-
-### Building the index on GitHub (the usual way)
-
-**Actions → build-index → Run workflow** on `main`. A runner fetches and cleans
-the sources, pins bge-m3 (`scripts/pin-bge-m3.py`, optional revision input),
-builds with `--exclude-quote-only`, and runs `publish-index.sh` — the dry-run
-checks, then the upload. The job summary prints `RETRIEVAL_INDEX_VERSION` and
-`BGE_M3_REVISION` to set as repository variables. It needs the variables
-`AWS_INDEX_ROLE_ARN` (`terraform output index_role_arn`) and `ARTIFACTS_BUCKET`.
-
-The index role can write only `index/`, and trusts only `main` — so, like the
-deploy role, **control of `main` is control of what the site retrieves**. That is
-the accepted cost of not building by hand (decided 2026-10-09). If the fetch of
-any document fails, the workflow fails rather than publishing a thinner index.
-
-### Building the index by hand (needs a network step — ask first)
-
-There is **no `make index` target** in the Makefile (the Dockerfile, ADR 0011 and
-other docs mention one; it was never added). The command that exists:
+The backend loads a FAISS index from `/app/index` (`HERHEALTH_INDEX_DIR`). The
+index is generated, git-ignored, and built where the embedding server is: on
+the campus GPU server.
 
 ```bash
-make fetch && make clean          # NETWORK: fetches source pages. Ask first.
-uv run --extra retrieval python -m herhealth_data.cli index \
-    --exclude-quote-only --index-dir build/index-deploy
+make index                              # embeds with Qwen3-Embedding-4B (:8003), excludes NHS text
+scripts/publish-index-release.sh        # uploads index.tar.gz as a GitHub release, sets INDEX_RELEASE
 ```
 
-Inputs: `build/clean/*.json` (from `make clean`) and `knowledge/`. Model:
-`BAAI/bge-m3` (sentence-transformers), L2-normalised, no prefixes, batch 128,
-float32, 1024 dimensions, brute-force cosine search (no FAISS, no reranker — ADR
-0010). `--exclude-quote-only` is required for production (see the status note
-above).
+The deploy workflow downloads the release named by the repository variable
+`INDEX_RELEASE` (today `index-20261013-…`), refuses it if its manifest says it
+holds quote-only text, and bakes it into the backend image. A new index
+reaches production on the next backend build after `INDEX_RELEASE` changes.
 
-The index must be built with **the same bge-m3 revision the image bakes**. The
-CLI cannot take a revision, so pin the weights through the Hugging Face cache
-(the Dockerfile does the same for the image):
+**The NHS decision.** NHS content is `citable_only`: it may be quoted with
+attribution, never distributed. So the deployed index is built without NHS
+passages and without the evidence statements backed by NHS rows (53 of 150),
+`publish-index-release.sh` refuses an index containing any, and the backend
+refuses to load one. NHS rows still reach the model through the evidence join
+and are still shown as quoted sources; they are only not retrievable.
 
-```bash
-python -c "import os, pathlib; from huggingface_hub import snapshot_download; \
-rev = '<40-hex sha>'; snap = pathlib.Path(snapshot_download('BAAI/bge-m3', revision=rev, ignore_patterns=['onnx/*', 'imgs/*', '*.jpg', '*.png'])); \
-refs = snap.parents[1] / 'refs'; refs.mkdir(exist_ok=True); (refs / 'main').write_text(rev)"
-HF_HUB_OFFLINE=1 uv run --extra retrieval python -m herhealth_data.cli index \
-    --exclude-quote-only --index-dir build/index-deploy
-```
-
-> **Open: a built copy of the 2026-09-02 index.** If the team has one, a filtered
-> index can be *derived* from it with no re-embedding and no network: drop the
-> rows where `may_be_ingested` is false from `passages.jsonl` and the matching
-> rows of `vectors.npy` (line *i* ↔ row *i*) and rewrite the manifest count. But
-> it would lack the evidence rows added since (146 now vs 140 then), and its
-> bge-m3 revision is unknown. A rebuild is the way to a known-good pin.
-
-### One-time upload
-
-```bash
-scripts/publish-index.sh --index-dir build/index-deploy \
-    --bge-m3-revision <40-hex sha> --dry-run     # every check, no AWS
-scripts/publish-index.sh --index-dir build/index-deploy \
-    --bge-m3-revision <40-hex sha> --bucket "$(terraform -chdir=infra/terraform/prod output -raw artifacts_bucket)"
-```
-
-It refuses if `manifest.json` `model_name` is not `BAAI/bge-m3` (the hashing
-stand-in must never ship), if any passage is `may_be_ingested=false` or from the
-`nhs` source, if the three files disagree on the passage count, or if that
-version already exists. The version is a content hash. It writes
-`s3://<bucket>/index/<version>/` (SSE-S3) including `build-info.json`
-(`bge_m3_revision`, passage count, publish time). Then set the repository
-variables `RETRIEVAL_INDEX_VERSION` and `BGE_M3_REVISION`.
-
-CI re-verifies all of this before building, **fails if the index's recorded
-revision differs from `BGE_M3_REVISION`**, and records both as image labels
-(`org.herhealthgpt.index-version`, `org.herhealthgpt.bge-m3-revision`) —
-`docker inspect` tells you what a running image was built from.
-
-**Later alternative (not built):** put the vectors in the RDS instance with
-pgvector. It would remove the index-publish step and let the index change
-without an image rebuild, at the cost of a retrieval rewrite (`PassageIndex` is
-a numpy matrix today) and a re-evaluation. bge-m3 still has to run somewhere
-either way — pgvector stores vectors, it does not embed queries.
+**Leftovers.** The GitHub variables `BGE_M3_REVISION`, `RETRIEVAL_INDEX_VERSION`
+and `AWS_INDEX_ROLE_ARN` belong to the retired bge-m3 retrieval service and are
+not read by any workflow. The index released on 2026-10-13 predates batch 27
+(four rows); rebuild and republish to include them.
 
 ## 7. First deploy
 
@@ -523,16 +433,8 @@ these with `docker images` after the first deploy):
 |---|---|---|---|
 | `herhealth-backend` | about 0.5-0.7 GB | about 0.2-0.3 GB | python slim + FastAPI, SQLAlchemy, psycopg, boto3, argon2 |
 | `herhealth-frontend` | about 0.35-0.5 GB | about 0.15 GB | node slim + the Next.js standalone output |
-| `herhealth-retrieval` | **about 8-10 GB** | **about 4-5 GB** | torch **with CUDA libraries** (about 5-6 GB) + bge-m3 weights (about 2.3 GB) + Python deps |
 
-The retrieval figure is dominated by something the Dockerfile's "CPU only"
-comment does not deliver: `uv.lock` resolves `torch 2.13.0` from PyPI, whose Linux
-wheel depends on the CUDA 13 stack (`cuda-toolkit`, `nvidia-cudnn`, `nvidia-nccl`,
-and more). This host has no GPU, so those gigabytes are dead weight in every
-image, in ECR, on the volume and in every pull. Switching the retrieval image to a
-CPU-only torch wheel would cut it to roughly 3.5-4 GB; that is a change to
-`pyproject.toml` / `uv.lock` (a shared file and a network re-lock), so it is
-**not done here**. It is the first thing to try if pulls or disk hurt.
+The backend image also carries the FAISS index (40 MB) and LangChain.
 
 One release is therefore about 9-11 GB; the running plus the new release about
 20 GB at the peak of a deploy, plus the OS, swap and logs.
@@ -673,11 +575,11 @@ cd /opt/herhealth
 | What is running | `docker compose -p herhealth --env-file release.env -f compose.prod.yml ps` |
 | Running release | `cat /opt/herhealth/release.env` (`TAG=`) |
 | Live config files | `/opt/herhealth/compose.prod.yml`, `/opt/herhealth/caddy/Caddyfile` (previous release's copies in `previous/`) |
-| Logs, live | `docker logs -f herhealth-backend-1` (also `-frontend-1`, `-retrieval-1`, `-caddy-1`) |
-| Logs, history | CloudWatch Logs: `/herhealth/prod/{caddy,frontend,backend,retrieval}` (retention 30 days) |
+| Logs, live | `docker logs -f herhealth-backend-1` (also `-frontend-1`, `-caddy-1`) |
+| Logs, history | CloudWatch Logs: `/herhealth/prod/{caddy,frontend,backend}` (retention 30 days; the `retrieval` group is a leftover) |
 | First-boot log | `/var/log/herhealth-bootstrap.log` |
 | Deploy history | the GitHub Actions run (it prints `deploy.sh`'s output), and Systems Manager → Run Command → Command history in the console |
-| Image provenance | `docker inspect <image> --format '{{json .Config.Labels}}'` (index version, bge-m3 revision) |
+| Image provenance | `docker inspect <image> --format '{{json .Config.Labels}}'` (git revision); the index's own `manifest.json` is inside the backend image at `/app/index` |
 | Memory / disk | `free -h`, `df -h /` |
 
 **Do not edit files on the server to change behaviour.** Change the repo and
@@ -734,8 +636,8 @@ the first apply, in this order:
 | `terraform plan`: `compose_sha256` invalid | Not 64 lowercase hex | Look it up on the Compose release page for `compose_version` |
 | `terraform apply`: A record already exists | Something already points at that name | Do not overwrite; find out what, decide, then delete or import deliberately |
 | Workflow: "repository variable … is not set" | §5 not finished | Set the variable named in the error |
-| Workflow: "built with bge-m3 revision X, but BGE_M3_REVISION is Y" | Index and image pinned to different weights | Set `BGE_M3_REVISION` to the index's revision, or rebuild and republish the index |
-| Workflow: quote-only passage found in the index | Wrong index published | Rebuild with `--exclude-quote-only`, republish, update `RETRIEVAL_INDEX_VERSION` |
+| Workflow: "the index holds quote-only text and may not be deployed" | Wrong index published | `make index` (it excludes NHS text), then `scripts/publish-index-release.sh` |
+| Workflow: "repository variable INDEX_RELEASE is not set" | No index published yet | `scripts/publish-index-release.sh` sets it |
 | Workflow: "Not authorized to perform sts:AssumeRoleWithWebIdentity" | The token's `sub` is not one the trust policy lists. GitHub now sends `repo:Owner@<id>/name@<id>:...` | CloudTrail → `AssumeRoleWithWebIdentity` → `userIdentity.userName` shows the exact `sub`. Set `github_owner_and_repo_with_ids` (`variables.tf`) to match and apply |
 | Workflow: cannot assume role | Not on `main`, or repo casing | The role trusts only `repo:HerHealthGPT/herhealthgpt:ref:refs/heads/main` |
 | Workflow: cannot assume role, after someone added `environment:` to the deploy job | A job that uses a GitHub Environment gets a **different** OIDC `sub` (`repo:HerHealthGPT/herhealthgpt:environment:<name>`), so the trust condition on `ref:refs/heads/main` no longer matches | `deploy.yml` deliberately has no `environment:`. If one is ever added, change the `sub` condition in `deploy_trust` (`iam_oidc.tf`) in the **same commit**. Do not widen it to a wildcard to make it work |
@@ -779,8 +681,9 @@ Tick these before showing the site to anyone.
 - [ ] `https://api.herhealthgpt.org/health` returns 200.
 - [ ] One full triage conversation completes (retrieval + the campus models).
 - [ ] The tunnel watchdog is running on the pod (§12): `cat $RUN_DIR/tunnel-watch.pid`.
-- [ ] The retrieval image's labels show the expected index version and bge-m3
-      revision (`docker inspect`, §13).
+- [ ] The deployed index is the intended release: the deploy log prints its
+      manifest (embedding model, passages, built at), and `INDEX_RELEASE`
+      names it.
 - [ ] Known statement gaps are understood: DMARC is `p=none`; bounce/complaint
       SNS handling is not built (the account suppression list covers the effect);
       the knowledge base is source-traceable but **not clinician-adjudicated**,

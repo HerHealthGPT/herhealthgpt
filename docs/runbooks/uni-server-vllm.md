@@ -2,25 +2,25 @@
 status: runbook
 ---
 
-# Runbook: serving the LoRA adapter on the university VM (JupyterHub)
+# Runbook: serving the models on the university GPU server (JupyterHub)
 
-> **Retrieval changed on 2026-10-12 ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md)).**
-> `services/model`, port 8001, `bge-m3`, `HERHEALTH_MODEL_SERVICE_URL`,
-> `build-index.yml`, `pin-bge-m3.py` and `publish-index.sh` no longer exist.
-> The retriever runs inside the backend over an index built by `make index`,
-> and calls the embedding and reranker endpoints (`HERHEALTH_EMBEDDING_URL`,
-> `HERHEALTH_RERANKER_URL`). **OpenRouter and the Base / Fine-tuned selector
-> were removed the same day ([ADR 0018](../adr/0018-local-models-decide-and-the-adapter-answers.md)):**
-> the mode is `HERHEALTH_TRIAGE_MODE=vllm`, the base model decides and the
-> adapter words informational answers. Passages below that describe the
-> retrieval service, its image, the published index, OpenRouter or the
-> selector are history and have not been rewritten yet.
+> **Checked against the running servers on 2026-10-20.** The current layout
+> is the section right below; the full picture (hardware, versions, what each
+> model does, the tunnels) is [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
+> Since ADR 0018 every product call goes to the base model, **including
+> informational pages since 2026-10-13**: the adapter is served but answers
+> only in comparison mode B. Retrieval runs inside the backend
+> ([ADR 0017](../adr/0017-qwen3-embedding-and-reranker-on-langchain.md));
+> `services/model`, port 8001, `bge-m3` and OpenRouter as a fallback no
+> longer exist.
 
 ## Current layout: three processes (since 2026-10-11)
 
-Sections 0 to 5 below describe the single-process serve as it ran before
-2026-10-11. They are kept for their diagnosis notes (0.1 and 0.2 still
-apply in full). The commands in this section replace theirs.
+**Sections 0 to 8 below describe the single-process serve as it ran before
+2026-10-11** (adapter under `/home/jovyan/models/`, `--max-model-len 8192`, a
+laptop reaching it with OpenRouter as fallback). They are kept for their
+diagnosis notes: §0.1 (the `!!!!` bug) and §0.2 (the multimodal base) still
+apply in full. Do not follow their commands; use this section.
 
 | Process | Model | GPUs | Port |
 |---|---|---|---|
@@ -30,6 +30,18 @@ apply in full). The commands in this section replace theirs.
 
 Every value comes from `infra/model/serve.conf`. The adapter is read from
 `herhealth-lora-v2/` in the repo root.
+
+The chat server as it runs (2026-10-20, vLLM 0.28.0, 4 × NVIDIA A16):
+
+```
+vllm serve Qwen/Qwen3.5-9B --revision c202236235762e1c871ad0ccb60c8ee5ba337b9a \
+  --enable-lora --lora-modules herhealth=<repo>/herhealth-lora-v2 --max-lora-rank 16 \
+  --max-model-len 32768 --tensor-parallel-size 2 --disable-custom-all-reduce \
+  --enforce-eager --limit-mm-per-prompt '{"image":0,"video":0}' \
+  --host 127.0.0.1 --port 8002            # key in the environment as VLLM_API_KEY
+```
+
+Why each flag: [`../ARCHITECTURE.md`](../ARCHITECTURE.md) §2.
 
 ```bash
 bash scripts/serve-models.sh clean        # stop everything, free the GPUs
@@ -101,6 +113,22 @@ That file has never been started. It was validated on this box with
 need the Docker CLI, which is not part of this pod's image and disappears on
 restart; without it those tests skip.
 
+### Reaching it from production
+
+The pod takes no inbound connections. `scripts/tunnel-models.sh` opens
+Cloudflare quick tunnels to :8002 and :8003 and publishes their addresses to
+GitHub (`start`, then `publish`, which redeploys). Their addresses change when
+a tunnel restarts, so leave the watchdog running:
+
+```bash
+bash scripts/tunnel-models.sh start && bash scripts/tunnel-models.sh publish
+nohup bash scripts/tunnel-models.sh watch >/dev/null 2>&1 &   # reopens and republishes
+bash scripts/tunnel-models.sh status
+```
+
+After a pod restart: `serve-models.sh start all`, then the three tunnel
+commands above.
+
 ### Restoring after a wipe
 
 The launcher expects vLLM at `/home/jovyan/herhealthgpt-venv`, the models in
@@ -130,7 +158,7 @@ After a pod restart the processes are gone and nothing restarts them:
 run `start all` again. Keep a JupyterLab tab open while testing, or idle
 culling will stop the pod.
 
-## 0. Start the server (copy-paste)
+## 0. Start the server (history: the single-process serve before 2026-10-11)
 
 Closing the JupyterLab tab (or Hub → Stop My Server) **kills the container**.
 vLLM dies with it. The pod IP (`10.244.x.x`) is gone. Home-volume files may
