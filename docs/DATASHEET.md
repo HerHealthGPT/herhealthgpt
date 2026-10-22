@@ -125,6 +125,8 @@ All English unless stated; silver labels; one run at temperature 0.
 How a reply is produced, layer by layer, with ten traced consultations:
 [experiments/2026-10-19-traced-consultations.md](experiments/2026-10-19-traced-consultations.md)
 (`make trace-turns`).
+How it retrieves and decides, with three more scenarios and every earlier one summarised:
+[experiments/2026-10-22-how-it-retrieves-and-decides.md](experiments/2026-10-22-how-it-retrieves-and-decides.md).
 
 ## What has not been measured
 
