@@ -107,15 +107,18 @@ these runs), is assembled in this order:
    knowledge files and every citation against this turn's passages; on
    failure, retry once with the reason.
 7. **Gates** (code), in this order: her data, unclear decline, explanation
-   when she described symptoms, conclusion too early or a more severe warning
-   sign one answer away, repeated question, warning sign ignored. Each sends
-   the reply back with the reason; three of them act in code if the model
-   still does not comply.
+   when she described symptoms, conclusion too early (or, **only while no
+   warning sign has fired**, a more severe warning sign one answer away),
+   repeated question, warning sign ignored. Each sends the reply back with
+   the reason; three of them act in code if the model still does not comply.
+   Once a warning sign has fired, its conclusion stands at once (since PR #79).
 8. **Informational answers only**: search again per page section, write the
    page, add "when to get help" from the knowledge files.
 9. **Route** (code): cap the urgency by what the cited sources support, attach
    the sources (the warning-sign quote, the authored evidence rows behind any
-   named condition, the cited passages), store the turn, and return it.
+   named condition, the cited passages), and on a warning-sign conclusion the
+   more severe warning signs one answer away ("Get emergency care now if you
+   also have:"); store the turn, and return it.
 
 ---
 
@@ -157,6 +160,10 @@ case, which exists in English, Arabic and French.
 
 ### Scenario B: a warning sign in the first message (W01)
 
+*As run before PR #79. With the fix, the first reply stands: one model call,
+15 s, "see someone today" plus five emergency signs listed (see the
+follow-up below).*
+
 > *"I've had pain low in my tummy for two days and it's getting worse. Today I
 > feel hot and shivery. Should I be worried?"* (age band 20–29)
 
@@ -176,6 +183,9 @@ Total 35 s, of which about 20 s were the two re-prompts. She was never asked
 whether she felt faint.
 
 ### Scenario C: pain with different discharge (W02)
+
+*As run before PR #79. With the fix: one model call, 22 s, the same five
+emergency signs listed.*
 
 > *"My lower tummy has been aching on and off this week and my discharge seems
 > different. Is that something to worry about?"*
@@ -217,6 +227,7 @@ in short, how each one retrieved and decided:
 | To answer informationally, or decline | the model, sent back once by a gate if it looks wrong |
 | An urgency **without** a warning sign | the model, capped by its sources in code |
 | An urgency **with** a warning sign met | code guarantees it: the model is sent back, then code concludes |
+| The emergency signs one answer away, beside a same-day warning-sign conclusion | code, from `red_flags.yaml` |
 | Which conditions may be named | the model, limited to `conditions.yaml`; never beside a warning sign below EMERGENCY |
 | The breakdown of her cycle data | code |
 | "When to get help" on an information page | code, from the knowledge files |
@@ -227,7 +238,7 @@ in short, how each one retrieved and decided:
    decided by a matched rule, and in scenario A by code after the model asked
    two more questions instead.
 2. **The two gates undo each other, and the check for a more serious sign is
-   lost.** In scenarios B and C a same-day rule was met and an EMERGENCY rule
+   lost. (Fixed in PR #79; see the follow-up below.)** In scenarios B and C a same-day rule was met and an EMERGENCY rule
    (`pelvic_pain_with_faintness`) was one answer away. The
    premature-conclusion gate correctly demanded the faintness question; the
    red-flag gate then rejected any question because a rule was met, and the
@@ -265,7 +276,8 @@ scenario B's woman was told to be seen today.) Re-run live:
 | Scenario A | EMERGENCY on turn 2 | unchanged |
 | Red-flag recall, 17 rules | 17/17 both modes | 17/17 both modes |
 
-Sections 4 and 6 above describe the behaviour before the fix.
+Scenarios B and C in section 4, and finding 2 in section 6, record the runs
+before the fix; sections 3 and 5 describe the behaviour after it.
 
 ## 7. Reproduce
 
