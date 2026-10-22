@@ -53,7 +53,7 @@ from herhealth_backend.triage.agent import (
     render_known_background,
 )
 from herhealth_backend.triage.comparison import MODEL_C, MODEL_LABELS, PlainChatResponder
-from herhealth_backend.triage.context import care_guidance, join_evidence
+from herhealth_backend.triage.context import build_turn_context, care_guidance, join_evidence
 from herhealth_backend.triage.cycle_data import (
     CycleSummary,
     asks_about_cycle_data,
@@ -477,6 +477,11 @@ async def _run_turn(
         question=request.message,
         mentioned=(*decision.observed, *turn.mentioned),
     )
+    emergency_signs = _emergency_signs(
+        decision, agent.base, {**observed, **decision.observed}, loaded.asked
+    )
+    if emergency_signs:
+        payload["emergency_signs"] = emergency_signs
     her_data = _her_data_use(
         cycle_summary,
         cycle_answers,
@@ -694,6 +699,34 @@ def _profile_age_band(user: User) -> str | None:
     if user.date_of_birth is None:
         return None
     return age_band_for(user.date_of_birth, today=date.today())
+
+
+def _emergency_signs(
+    decision: TriageDecision,
+    base: KnowledgeBase,
+    answers: Mapping[str, str],
+    asked: Sequence[str],
+) -> list[dict[str, str]]:
+    """The more severe warning signs one answer away from a warning-sign
+    conclusion, for the chat to show as "get emergency care now if you have".
+
+    A rule that has fired is concluded at once; a strictly more severe rule
+    that needs one more answer is not asked about first but listed, so she
+    is told to be seen today without delay and also when it becomes an
+    emergency (2026-10-22, docs/experiments/2026-10-22-how-it-retrieves-and-
+    decides.md). Read from ``red_flags.yaml`` by code; same shape as
+    ``care_guidance``'s warning signs.
+    """
+    if decision.type is not DecisionType.CONCLUDE or decision.red_flag_id is None:
+        return []
+    context = build_turn_context(base, given=answers, asked=asked, prose=())
+    severity = {action.code: action.severity for action in base.actions.actions}
+    concluded = severity[decision.action_code] if decision.action_code else -1
+    return [
+        {"rule_id": s.rule.id, "action": s.rule.action.value, "source_id": s.rule.source_id}
+        for s in context.near_misses
+        if severity[s.rule.action] > concluded
+    ]
 
 
 def _her_data_use(

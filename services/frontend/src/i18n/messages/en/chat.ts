@@ -70,6 +70,7 @@ export const chat = {
   care: {
     title: "When to get help",
     emergency: "Get emergency care now if you have:",
+    emergencyAlso: "Get emergency care now if you also have:",
     urgent: "See a doctor today if you have:",
     baseline: "For symptoms our sources link to this topic, they usually advise:",
     invite: "Is this about you? Tell me what you're experiencing and I'll tell you how soon to be seen.",
