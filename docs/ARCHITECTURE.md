@@ -175,7 +175,8 @@ knowledge files → compose the prompt → decide → gates → for an informati
 answer, write the page and "when to get help" → route checks (repair,
 closed vocabulary, provenance cap) → sources and cycle-data use attached →
 stored → returned. Every step with its file and line, and ten traced
-examples: [`experiments/2026-10-19-traced-consultations.md`](experiments/2026-10-19-traced-consultations.md).
+examples: [`experiments/2026-10-19-traced-consultations.md`](experiments/2026-10-19-traced-consultations.md). Retrieval versus decision, scenario by scenario:
+[`experiments/2026-10-22-how-it-retrieves-and-decides.md`](experiments/2026-10-22-how-it-retrieves-and-decides.md).
 
 The gates, in order (`agent.py` `run_turn`): her data, unclear decline,
 inform with symptoms, premature conclusion (needs 5 answers), repeated
