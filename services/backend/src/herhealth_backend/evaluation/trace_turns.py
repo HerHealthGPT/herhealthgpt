@@ -197,6 +197,7 @@ def run_case(agent: TriageAgent, case: dict[str, Any], prompt_dir: Path) -> dict
     from herhealth_backend.app.triage.routes import (
         _breakdown_language,
         _decision_payload,
+        _emergency_signs,
         _her_data_use,
         _passage_from_cited,
         _with_breakdown,
@@ -299,6 +300,9 @@ def run_case(agent: TriageAgent, case: dict[str, Any], prompt_dir: Path) -> dict
                 for c in payload.get("cited_passages", [])
             ],
             "care_guidance": payload.get("care_guidance"),
+            "emergency_signs": _emergency_signs(
+                decision, agent.base, {**observed, **decision.observed}, asked
+            ),
             "her_data": her,
         }
         turns.append(record)
