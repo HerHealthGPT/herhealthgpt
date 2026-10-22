@@ -558,3 +558,34 @@ def test_a_question_about_her_data_is_left_alone(base: KnowledgeBase) -> None:
     result = turn(agent, "Is my cycle data healthy?", about_her_data=True)
     assert result.decision.next_feature_id == "pelvic_pain_severity"
     assert len(reasoning.prompts) == 1
+
+
+# --- A fired rule escalates at once (2026-10-22, scenario B) ----------------------
+
+#: `pelvic_pain_with_fever` (URGENT_SAME_DAY) has fired; `pelvic_pain_with_faintness`
+#: (EMERGENCY) is one answer away, on `feeling_faint`, which has not been asked.
+FEVER = {"pelvic_pain_severity": "moderate", "fever": "yes"}
+
+
+def test_a_warning_sign_conclusion_is_not_sent_back_to_screen(base: KnowledgeBase) -> None:
+    """The more severe signs are listed with the conclusion by the route
+    instead of asked first, so the conclusion stands on the first call."""
+    reasoning = Reasoning(_conclude("URGENT_SAME_DAY", "pelvic_pain_with_fever"))
+    agent = TriageAgent(
+        base=base, reasoning=reasoning, retrieval=Retrieval(), enforce_red_flags=True
+    )
+    result = turn(agent, observed=dict(FEVER))
+    assert result.decision.red_flag_id == "pelvic_pain_with_fever"
+    assert len(reasoning.prompts) == 1
+
+
+def test_a_question_instead_of_escalating_is_still_overruled(base: KnowledgeBase) -> None:
+    reasoning = Reasoning(
+        ask("feeling_faint"), _conclude("URGENT_SAME_DAY", "pelvic_pain_with_fever")
+    )
+    agent = TriageAgent(
+        base=base, reasoning=reasoning, retrieval=Retrieval(), enforce_red_flags=True
+    )
+    result = turn(agent, observed=dict(FEVER))
+    assert result.decision.type is DecisionType.CONCLUDE
+    assert result.decision.action_code.value == "URGENT_SAME_DAY"  # type: ignore[union-attr]

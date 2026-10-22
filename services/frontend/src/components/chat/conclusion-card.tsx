@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Siren } from "lucide-react";
 
 import { CitedSources } from "@/components/chat/cited-sources";
 import { HerDataSource } from "@/components/chat/her-data-source";
@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { TriageDecision } from "@/lib/api/types";
+import { urgencyHeadingClasses } from "@/lib/design/urgency";
 import {
   actionDisplay,
   buttonClassesForTone,
@@ -69,6 +70,25 @@ export function ConclusionCard({ decision, onStartNewChat }: ConclusionCardProps
       <CardContent className="space-y-4">
         <UnreviewedModelNotice model={decision.reasoning_model} />
         <p className="text-sm leading-relaxed text-foreground/90">{decision.rationale}</p>
+
+        {/* Emergency signs one answer away from the warning sign that fired,
+            from red_flags.yaml (routes._emergency_signs): she is told to be
+            seen today at once, and also when it becomes an emergency. */}
+        {decision.emergency_signs && decision.emergency_signs.length > 0 ? (
+          <div className="rounded-lg border border-border/70 bg-background/70 p-3 text-sm">
+            <p className={`flex items-center gap-1.5 font-medium ${urgencyHeadingClasses.EMERGENCY}`}>
+              <Siren className="size-4" aria-hidden />
+              {m.chat.care.emergencyAlso}
+            </p>
+            <ul className="mt-1 list-disc space-y-0.5 ps-6">
+              {decision.emergency_signs.map((sign) => (
+                <li key={sign.rule_id}>
+                  {m.chat.care.signs[sign.rule_id] ?? sign.rule_id.replaceAll("_", " ")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         {decision.matching_conditions.length > 0 ? (
           <div>

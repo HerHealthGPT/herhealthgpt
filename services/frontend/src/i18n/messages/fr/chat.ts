@@ -73,6 +73,7 @@ export const chat: ChatMessages = {
   care: {
     title: "Quand demander de l'aide",
     emergency: "Demandez des soins d'urgence maintenant si vous avez :",
+    emergencyAlso: "Demandez des soins d'urgence maintenant si vous avez aussi :",
     urgent: "Consultez un médecin aujourd'hui si vous avez :",
     baseline: "Pour les symptômes que nos sources relient à ce sujet, elles conseillent généralement :",
     invite: "Cela vous concerne ? Décrivez-moi ce que vous ressentez et je vous dirai dans quel délai consulter.",

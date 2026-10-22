@@ -1386,8 +1386,15 @@ class TriageAgent:
         if decision.type is not DecisionType.CONCLUDE or self.min_answers <= 0:
             return result
 
-        met = turn_context.fired.severity if turn_context.fired else -1
-        escalation = next((s for s in turn_context.near_misses if s.severity > met), None)
+        # Only while nothing has fired. Once a rule has fired the reply
+        # escalates at once and the route lists the more severe signs one
+        # answer away (routes._emergency_signs). Measured 2026-10-22: asking
+        # first, then concluding, either lost the question (the red-flag gate
+        # sent it back) or, when kept, made her answer up to five screening
+        # questions before being told to be seen today.
+        escalation = (
+            next(iter(turn_context.near_misses), None) if turn_context.fired is None else None
+        )
 
         # A FIRED RULE IS NEVER CHALLENGED FOR THINNESS. This is the condition
         # that matters most here, and the first version of this method got it
