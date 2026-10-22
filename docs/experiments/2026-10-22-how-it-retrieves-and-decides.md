@@ -248,6 +248,25 @@ in short, how each one retrieved and decided:
    inputs came from the exact lookups (answers, rules, evidence rows); the
    retrieved passages supplied reading material and some citations.
 
+## Follow-up: finding 2 fixed the same day (PR #79)
+
+Once a warning-sign rule has fired, the reply now concludes at once: the
+premature-conclusion gate no longer sends it back to screen. Instead the route
+lists every strictly more severe rule one answer away
+(`routes._emergency_signs`, from `red_flags.yaml`), and the conclusion card
+shows them under "Get emergency care now if you also have:". (Asking every
+screening question first was tried and measured: 7 turns and 145 s before
+scenario B's woman was told to be seen today.) Re-run live:
+
+| | before | after |
+|---|---|---|
+| Scenario B | 3 model calls, 35 s, faintness never asked | 1 call, 15 s; same-day plus 5 emergency signs listed, faintness first |
+| Scenario C | 3 calls, 48 s | 1 call, 22 s; the same 5 signs listed |
+| Scenario A | EMERGENCY on turn 2 | unchanged |
+| Red-flag recall, 17 rules | 17/17 both modes | 17/17 both modes |
+
+Sections 4 and 6 above describe the behaviour before the fix.
+
 ## 7. Reproduce
 
 ```bash
