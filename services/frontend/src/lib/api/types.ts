@@ -187,6 +187,9 @@ export type TriageDecision = {
   /** What of her imported cycle data this reply drew on (backend
    *  `_her_data_use`). Absent when it drew on none. */
   her_data?: HerDataUse;
+  /** On a warning-sign conclusion: more severe signs one answer away
+   *  (backend `routes._emergency_signs`), shown as "get emergency care now". */
+  emergency_signs?: CareGuidance["warning_signs"];
 };
 
 export type HerDataUse = {
