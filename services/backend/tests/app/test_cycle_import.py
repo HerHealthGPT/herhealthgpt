@@ -177,3 +177,23 @@ def test_the_apple_health_pdf_reads_no_name_or_symptom() -> None:
 
     assert "Test Person" not in extraction.model_dump_json()
     assert all(not day.symptoms for day in extraction.days)
+
+
+def test_a_model_day_with_an_unreadable_date_is_dropped_alone() -> None:
+    """A report gives start dates and lengths; the model lists each period day
+    as "unspecified", and one day written in the report's own format ("26 Sep")
+    is dropped on its own rather than failing the whole reply."""
+    reply = json.dumps(
+        {
+            "source_app": "flo",
+            "days": [
+                {"date": "26 Sep", "flow": "unspecified"},
+                {"date": "2026-08-02", "flow": "unspecified"},
+                {"date": "2026-08-01", "flow": "unspecified"},
+            ],
+        }
+    )
+    extraction = _read(b"Cycle history\n1 Aug, 2 days\n", extractor=lambda _: reply)
+
+    assert [str(day.date) for day in extraction.days] == ["2026-08-01", "2026-08-02"]
+    assert {day.flow for day in extraction.days} == {FlowLevel.UNSPECIFIED}
